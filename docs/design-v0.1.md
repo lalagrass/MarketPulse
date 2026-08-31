@@ -5,12 +5,12 @@
 | 文件標題 | MarketPulse：股癌風格「族群先、輪動次、強勢股最後」之 Mac 本地 MVP |
 | 作者 | 待填 |
 | 日期 | 2026-08-30 |
-| 修訂 | 2026-08-31 r3.30（兩種 leakage：價量禁止看未來；現行 taxonomy 套歷史 = 視覺化回放，允許且必須揭露。不改公式、不砍 H3/H4 出 v0.1、不縮小 PR DAG。另見 `docs/coding-contract.md`。） |
+| 修訂 | 2026-08-31 r3.31（拒絕 RS20-only ranking／砍 rotation_score／砍六態／砍大盤標籤出 MVP。公式政策 = D104，不是刪掉組合。另見 `docs/coding-contract.md`。） |
 | 狀態 | Design Freeze |
 | 產品名稱 | MarketPulse |
 | 目標市場 | 台股上市（TWSE）+ 上櫃（TPEx）普通股 |
 | 部署形態 | Apple Silicon Mac 單機、單使用者、盤後日頻批次 |
-| 工作區 | `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.29；本輪 r3.30 只收視覺化回放／taxonomy 後見之明契約，不改數學。規格 `docs/design-v0.1.md`；實作契約 `docs/coding-contract.md`） |
+| 工作區 | `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.30；本輪 r3.31 只收「不要發明因子」契約重述，不改數學。規格 `docs/design-v0.1.md`；實作契約 `docs/coding-contract.md`） |
 
 **版本切分（讀文件先看這段）：**
 
@@ -242,6 +242,7 @@ MarketPulse 的定位是**盤面閱讀的個人作業系統**，不是自動交�
 | D103 | 產品 MVP JTBD | 每天只答四問 + 資料徽章：(1) 誰強 (2) 誰變強 (3) 誰變弱 (4) 相對領先是否 A→B。資料夠不夠 = `signal_status` 徽章，不是 Coverage %。FORBIDDEN：把 Q4 寫成資金流。不能幫這四問的功能，產品 MVP 不做。H1–H4 不是產品完成條件 | 採納「最小能證明核心 idea」；拒絕 M0–M4 取代 PR DAG、100 檔 bake-off、第二套 state、先驗 episode |
 | D104 | 公式出處 | 概念可標準：個股報酬、超額 RS、漲跌家數、% above MA、Top-N。組合必須自有：lag-1 TV 權、value_share 重疊規則、value_thrust、rank-of-rank、固定 K 的 relative_position、股癌六態。FORBIDDEN：RRG 當引擎、砍 rotation_score、position=252d percentile、theme regime=MA20/MA60、CMF／HHI／Breadth Thrust、把 TV／breadth 踢出排名只當 confirmation | 不要為創新而創新 ≠ 把雷達換成未完全公開的 JdK。出處表不是改公式 |
 | D105 | 兩種 leakage | **價量／宇宙／流動性看未來 = 正確性 bug，禁止。** 現行 theme YAML 套到歷史日期 = 研究解讀限制，產品 MVP **允許**，且必須揭露。產品回放名稱 = historical visualization replay。第一條產品路徑：一份 `themes/v1.yaml` + 價量 as-of。FORBIDDEN：把 PIT taxonomy／`valid_from` membership 歷史／reconstructed snapshot YAML 當產品 MVP 實作。Level 3 GO 仍不得宣稱「當時已知」。A→B 公式不改成口語版。MATCH 留在 snapshot metadata；第一條產品路徑只需要 `run_id` / `as_of` / `algorithm_version` / `classification_version`。H3／H4／random_exclusive／economic materiality 第一張 Timeline 之前不准實作，但不從 v0.1 規格刪除 | MarketPulse 不是回測交易策略。第一問是 4–6 月輪動能不能被一張圖呈現。為第二個問題（當時是否已知）解第一版 = 過度設計 |
+| D106 | 不要發明因子 ≠ 刪掉組合 | 人眼看 RS20／value_share／breadth／Rank Δ 並列，**對**。Timeline 排名仍由四成分 rank-of-rank 產生，**不是** `rank(RS20)`。六態 = 四成分上的 presentation heuristic（含落後補漲），不是要回測的新模型。market_regime = Brief 大盤描述（partition-not-select），不是產品分類器，也不是從規格刪除。5-theme = H-tax，不是產品 MVP DoD。FORBIDDEN：RS20-only ranking、砍 `rotation_score`、把六態縮成四個英文態當產品主詞、砍 market_regime 出 v0.1、加 `classification_mode` CONTEMPORANEOUS／RECONSTRUCTED、把 \(G_T\)=membership_asof 當產品 MVP 要求、把 `value_thrust` 改名 TVAttention | 「不要自己發明 scoring system 再驗證」= 不要優化權重、不要印 87.3。已經做到（D95）。刪掉組合會把 TV／breadth 踢出排名，那才是新因子實驗 |
 
 ### 五條不可破壞 invariant（給 coding agent）
 
@@ -625,7 +626,7 @@ Build a thin MarketPulse domain engine on mature libraries.
 
 ### 7. 專案目錄
 
-`/Users/chenyuying/workspace/MarketPulse` 目前是 **docs-only** 的 `dev` freeze（r3.23–r3.30）；應用程式碼尚未開始。目標：
+`/Users/chenyuying/workspace/MarketPulse` 目前是 **docs-only** 的 `dev` freeze（r3.23–r3.31）；應用程式碼尚未開始。目標：
 
 ```
 /Users/chenyuying/workspace/MarketPulse/
@@ -1288,7 +1289,8 @@ theme regime         ≠ Close>MA20>MA60. That is not this field.
 market regime        = descriptive only. MUST NOT select themes.
 value_thrust gloss   MAY say "participation expansion". Identifier stays.
 FORBIDDEN in v0.1    CMF, HHI, Breadth Thrust, JdK RS-Ratio library,
-                     confirmation-only split that drops TV/breadth from ranking.
+                     confirmation-only split that drops TV/breadth from ranking,
+                     rank(rotation) = rank(RS20) only (D106).
 ```
 
 有效個股列 = 下面凍結的 \(I_t\)（宇宙 ∩ 流動性\(_{t-1}\) ∩ 有效價\(_t\) ∩ 非 exclusions）。**禁止**用 T 日 `trading_money` 當流動性。SMA／rolling 的 lookback **不含當日**（`sma_include_current: false`）：\(\mathrm{SMA}_N(x)_t = \mathrm{mean}(x_{t-N},\ldots,x_{t-1})\)。資料不足 → NULL。
@@ -3144,7 +3146,7 @@ launchd 預設 18:30 Asia/Taipei 是對 TWSE ~15:00、FinMind adj ~17:30 的合�
 - TPEx 上櫃收盤 dated JSON：`https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_close/stk_quote_result.php?l=zh-tw&d={ROC}/MM/DD&o=json`
 - TWSE/TPEx OpenAPI：今日快照，**不是**歷史。
 - FinMind v4：<https://finmind.github.io/llms-full.txt> — `Trading_turnover` = 成交筆數；`TaiwanStockPriceAdj` 為由最近交易日向前還原。
-- 工作區：`/Users/chenyuying/workspace/MarketPulse` 在 `dev`；freeze commits r3.23–r3.30。規格 `docs/design-v0.1.md`，實作契約 `docs/coding-contract.md`，決策備忘 `docs/design-delta-gpt-vs-grok.md`。應用程式碼尚未開始。
+- 工作區：`/Users/chenyuying/workspace/MarketPulse` 在 `dev`；freeze commits r3.23–r3.31。規格 `docs/design-v0.1.md`，實作契約 `docs/coding-contract.md`，決策備忘 `docs/design-delta-gpt-vs-grok.md`。應用程式碼尚未開始。
 
 ---
 
@@ -3301,21 +3303,22 @@ Does GO pass?
 
 ---
 
-## Freeze（r3.30）
+## Freeze（r3.31）
 
 **核心模型不再改。不要再開 architecture redesign。不要寫 `design-v0.2.md`。不要導入 Adj、Sharpe、z-score、動態權重、ML。不要改 H1 公式、11-theme、lag-1、Timeline 數學、A→B 門檻。不要縮小 PR DAG。不要從 v0.1 規格刪 H3／H4。不要再為下一輪 GPT review 改公式。下一刀是 Gate 0。**
 
 實作時先讀 `docs/coding-contract.md`，衝突以本設計文件公式／Freeze 為準。
 
-r3.28 產品 MVP scope 與 r3.29 公式出處仍有效。本輪只收兩種 leakage 契約，**不改任何公式**：
+r3.28–r3.30 仍有效。本輪只收「不要發明因子」契約重述（D106），**不改任何公式**：
 
-1. **D105：兩種 leakage。** 價量／宇宙／流動性看未來 = bug，禁止。現行 YAML 套歷史 = visualization replay，允許且必須揭露。PIT taxonomy 不是產品 MVP。  
-2. **D104：公式出處。** 個股報酬／超額 RS／漲跌家數／% above MA／Top-3 = 標準概念。lag-1 TV 權、value_share、value_thrust、rank-of-rank、固定 K position、股癌六態 = 自有。不要為創新而創新 ≠ 換成 RRG 引擎。  
-3. **D91 收緊：** `rank_momentum` 已是 rank 空間的相對動量。禁止再加 JdK RS-Ratio／RS-Momentum 軸。Timeline 不是 RRG trail。  
-4. **禁止砍 `rotation_score`。** 它是內部排序工具（D95 人眼禁出）。砍掉會拆掉 `rotation_rank`／`relative_position`／Rank Δ。  
-5. **禁止** `relative_position` = 252 日 RS percentile／z-score；禁止 theme regime = MA20/MA60；禁止把 TV／breadth 踢出排名當 confirmation-only。  
-6. **禁止 v0.1** CMF、HHI、Breadth Thrust。value_thrust 識別字不改；人眼可說 participation expansion。對外仍用股癌語言，不改成 Improving 當 Brief 主詞。  
-7. **禁止** 第一張 Timeline 之前實作 H3／H4、random_exclusive、economic materiality、classification provenance 狀態機、reconstructed snapshot YAML。H3／H4 仍留在 v0.1 SECONDARY（PR 6），不是刪除。  
+1. **D106：並列顯示 ≠ RS20-only ranking。** Brief 本來就並列 RS20／Thrust／Breadth／Rank Δ，不印 score。Timeline 排名仍由四成分 rank-of-rank 產生。`rank(RS20)` 當唯一排序 = 把 TV／breadth 踢出排名，已禁止（D104 confirmation-only）。Rank 位移本身就是人眼輪動（D99），不需要另造 `rank_momentum` 以外的訊號。  
+2. **D105：兩種 leakage。** 價量／宇宙／流動性看未來 = bug，禁止。現行 YAML 套歷史 = visualization replay，允許且必須揭露。PIT taxonomy 不是產品 MVP。禁止把 `classification_mode` CONTEMPORANEOUS／RECONSTRUCTED 或 \(G_T\)=membership_asof 加回產品路徑。  
+3. **D104：公式出處。** 個股報酬／超額 RS／漲跌家數／% above MA／Top-3 = 標準概念。lag-1 TV 權、value_share、value_thrust、rank-of-rank、固定 K position、股癌六態 = 自有。不要為創新而創新 ≠ 刪掉組合。  
+4. **禁止砍 `rotation_score`。** 它是內部排序工具（D95 人眼禁出）。砍掉會拆掉 `rotation_rank`／`relative_position`／Rank Δ。禁止把 `value_thrust` 改名 TVAttention。  
+5. **六態與大盤標籤不從規格刪。** 六態 = presentation heuristic（含落後補漲），不是要優化閾值的新模型。market_regime = Brief 大盤描述，不進 score、不選題；不是 MVP DELETE。  
+6. **5-theme = H-tax，不是產品 MVP DoD。** 產品路徑 = 11-theme Brief + Timeline。`v1-five.yaml` 留 SECONDARY；禁止當 `chart` 預設。H1–H4 不擋產品 MVP（已是 D103）。  
+7. **禁止** `relative_position` = 252 日 RS percentile／z-score；禁止 theme regime = MA20/MA60；禁止 v0.1 CMF、HHI、Breadth Thrust。  
+8. **禁止** 第一張 Timeline 之前實作 H3／H4、random_exclusive、economic materiality、classification provenance 狀態機、reconstructed snapshot YAML。H3／H4 仍留在 v0.1 SECONDARY（PR 6），不是刪除。  
 
 ```text
 SOURCE OF TRUTH ORDER

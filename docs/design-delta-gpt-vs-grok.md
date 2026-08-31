@@ -2,10 +2,10 @@
 
 - **日期：** 2026-08-30
 - **用途：** 後續評估、改規格、或回看「為什麼不照 GPT 稿做／為什麼不照 r1 做」時用。**不是**實作規格。實作以設計文件為準。
-- **設計文件（現行 r3.30，凍結）：** `docs/design-v0.1.md`  
+- **設計文件（現行 r3.31，凍結）：** `docs/design-v0.1.md`  
 - **實作契約：** `docs/coding-contract.md`
 - **審查筆記：** `/var/folders/k3/f9js6pcj02xclk75ds1nhzl40000gn/T/grok-chenyuying/grok-design-review-cc86276c.md`
-- **工作區：** `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.29；本輪 r3.30 只收視覺化回放／taxonomy 後見之明契約，不改數學）
+- **工作區：** `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.30；本輪 r3.31 只收「不要發明因子」契約重述，不改數學）
 
 本檔記錄三份來源之間的**衝突**、r1 內部**不一致**、以及 r2／r3 **改寫了什麼**。若之後要推翻某一列，改這張表並同步設計文件，不要只改程式。
 
@@ -959,3 +959,32 @@ FinMind 有 `TaiwanStockInfo`／daily／Adj 與 token 600/hr、無 token 300/hr�
 | 再加 RS5 當訊號 | **拒絕當新 ranking component。** RS5/20/60 診斷窗已 freeze |
 
 **Verdict：APPROVE 兩種 leakage 與視覺化回放。拒絕把 H3／H4／A→B 數學／MATCH 從規格刪掉。Freeze at r3.30。下一步仍是 Gate 0 → PR1 → PR2。未說開始 Gate 0 不准動手寫 ingest。**
+
+---
+
+## 40. r3.31 「砍 composite、改 RS20 ranking」（不要發明因子 ≠ 刪掉組合）
+
+來源：GitHub freeze 再評主張研究系統化過頭；MVP 應並列標準指標、不要自己發明 scoring system。建議：Timeline 改 `rank(RS20)`、砍 `rotation_score`／`rank_momentum`、六態縮成四英文態、market_regime 砍出 MVP、5-theme 非必須、加 `classification_mode` CONTEMPORANEOUS／RECONSTRUCTED、\(G_T\)=membership_asof 當 anti-leakage。coding agent 只改三件事：RS20 ranking、regime 降級、H1–H4 不擋 Brief+Timeline。
+
+| 點 | 處分 |
+|---|---|
+| 核心產品是族群輪動雷達，不是預測平台 | **維持** |
+| PRIMARY = Brief + Timeline；score 不是產品 | **維持（D95）** |
+| 人眼並列 RS20／Value Share／Breadth／Rank Δ | **維持。** Brief 本來就是這張表 + Thrust + State |
+| Rank 位移本身就是輪動顯示 | **維持（D99）。** 不是新訊號 |
+| 保留 value_share／RS／breadth／value_thrust | **維持。** thrust 降級為輔助 = 已是人眼欄，不是唯一排序 |
+| 不要優化 30/25/20/25 權重、不要 backtest score | **採納契約（D106）。** 權重凍結，不准當因子實驗 |
+| Timeline 改 `rank(RS20)`；砍 `rotation_score` | **拒絕。** 這是 confirmation-only split（D104）。砍 score 會拆 rank／position／Rank Δ |
+| `relative_position` 改成整數 Rank Y 軸 | **拒絕改公式。** `rotation_rank` 已是整數；Y = 固定 K 的 position。等價顯示可在 PR7 討論，不是現在改數學 |
+| 六態縮成 LEADING／IMPROVING／WEAKENING／LAGGING | **拒絕當產品主詞。** 六態已是 presentation heuristic；落後補漲是第五態。對內枚舉可對應四象限（已 freeze） |
+| 砍 market_regime 出 MVP | **拒絕從規格刪。** 已是 partition-not-select、不進 score。股癌第一問是大盤。PR7 Brief 上下文，不是第一個 slice |
+| 11-theme 不砍；5-theme 非產品必須 | **採納 DoD 澄清。** 5-theme 已是 H-tax，不是產品 MVP 完成條件，也不是 `chart` 預設。不從規格刪 YAML |
+| H1–H4 不擋 Daily Brief + Timeline | **已是 D103。** 第三件 coding-agent 要求已經在契約裡 |
+| Replay 保留；disclaimer 就夠 | **已是 D105** |
+| 加 `classification_mode` CONTEMPORANEOUS／RECONSTRUCTED | **拒絕。** 這是剛砍掉的 PIT taxonomy 狀態機 |
+| 產品 MVP 的 \(G_T\)=membership_asof(T-1) | **拒絕。** 與 D105 衝突。產品路徑 = 凍結 YAML 成員 |
+| 公式政策：標準概念優先、自創 composite 禁止 | **採納前半為 D104 重述。** 拒絕後半「因此刪掉 rank-of-rank」。組合是產品語意（誰相對領先，且量能／breadth 有跟上），不是新因子 |
+| Layer 1 產品／Layer 2 誠信／Layer 3 研究 | **已是 PRIMARY／價量 as-of／SECONDARY** |
+| 不要再設計，開始實作 | **維持。** 下一刀仍是 Gate 0 → PR1 → PR2 |
+
+**Verdict：APPROVE「不要發明因子、不要優化權重、人眼並列標準欄」。拒絕 RS20-only ranking、砍 score、砍六態／大盤標籤、把 PIT taxonomy 用 classification_mode 加回來。Freeze at r3.31。下一步仍是 Gate 0 → PR1 → PR2。未說開始 Gate 0 不准動手寫 ingest。**

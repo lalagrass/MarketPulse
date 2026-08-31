@@ -1,7 +1,7 @@
 # MarketPulse v0.1 coding contract
 
 THIS FILE IS AN IMPLEMENTATION CONTRACT.  
-The full design `docs/design-v0.1.md` (r3.30) is the source of truth.  
+The full design `docs/design-v0.1.md` (r3.31) is the source of truth.  
 This file is the subset a coding agent must not violate.
 
 ```text
@@ -146,7 +146,7 @@ OWN: frozen theme YAML, price/volume as-of, E_T/M_T/I_T, TV-weight, breadth, thr
 RRG: conceptual reference only. No JdK RS-Ratio. No RRG library. Timeline is not an RRG chart.  
 `rank_momentum` already encodes relative-momentum in rank space. Do not add a second JdK axis.
 
-Formula provenance (D104): reuse standard *concepts* (stock return, excess RS, A/D, % above MA, Top-3). Own the aggregation and composition (lag-1 TV-weight, value_share overlap rule, value_thrust, rank-of-rank, fixed-K position, 股癌 6-state). Do not replace that composition with RRG quadrants.
+Formula provenance (D104/D106): reuse standard *concepts* (stock return, excess RS, A/D, % above MA, Top-3). Own the aggregation and composition (lag-1 TV-weight, value_share overlap rule, value_thrust, rank-of-rank, fixed-K position, 股癌 6-state). Do not replace that composition with RRG quadrants or with `rank(RS20)` as the only Timeline sort. Side-by-side display of RS / value share / breadth / Rank Δ is the product; the internal sort remains the four-component rank-of-rank. Do not optimize the 0.30/0.25/0.20/0.25 weights.
 
 ## Forbidden
 
@@ -160,8 +160,10 @@ Second `theme_state` classifier. Golden Episode expected-state YAML before bars 
 RRG / JdK as the rotation engine. Delete `rotation_score`.  
 `relative_position` = 252d RS percentile or z-score. Theme regime = MA20/MA60.  
 CMF, HHI, Breadth Thrust. Confirmation-only split that drops TV/breadth from ranking.  
+Rank Timeline / `rotation_rank` by RS20 only. Shrink 6-state to four English states as the product labels. Delete `market_regime` from the v0.1 spec. Rename `value_thrust` to TVAttention.  
 Treat A→B as capital flow. Make H1–H4 a product-MVP completion criterion.  
 Implement PIT taxonomy / valid_from membership history / reconstructed snapshot YAML before the first Timeline.  
+Add `classification_mode` CONTEMPORANEOUS / RECONSTRUCTED. Require G_T = membership_asof history as product MVP.  
 Claim visualization replay means contemporaneous knowledge.  
 Implement a looser informal A→B detector.  
 Implement H3, H4, random_exclusive, or economic materiality before the first Timeline.  
