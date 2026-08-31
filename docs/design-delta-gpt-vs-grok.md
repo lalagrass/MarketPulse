@@ -2,10 +2,10 @@
 
 - **日期：** 2026-08-30
 - **用途：** 後續評估、改規格、或回看「為什麼不照 GPT 稿做／為什麼不照 r1 做」時用。**不是**實作規格。實作以設計文件為準。
-- **設計文件（現行 r3.24，凍結）：** `docs/design-v0.1.md`  
+- **設計文件（現行 r3.25，凍結）：** `docs/design-v0.1.md`  
 - **實作契約：** `docs/coding-contract.md`
 - **審查筆記：** `/var/folders/k3/f9js6pcj02xclk75ds1nhzl40000gn/T/grok-chenyuying/grok-design-review-cc86276c.md`
-- **工作區：** `/Users/chenyuying/workspace/MarketPulse`（`dev` 已有 r3.23 freeze commit）
+- **工作區：** `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.24；本輪 r3.25 只收人眼顯示）
 
 本檔記錄三份來源之間的**衝突**、r1 內部**不一致**、以及 r2／r3 **改寫了什麼**。若之後要推翻某一列，改這張表並同步設計文件，不要只改程式。
 
@@ -772,3 +772,31 @@ rotation_score → hypothesis → negative control → walk-forward → GO
 | 繼續大改 2800 行 spec | **拒絕。** 本輪只修產品契約 |
 
 **Verdict：APPROVE 產品契約收緊。拒絕砍 PR、拒絕 golden 當 Gate 0。Freeze at r3.24。下一步仍是 Gate 0 → PR1 → PR2。**
+
+---
+
+## 34. r3.25 GitHub freeze 再評（研究 8.5／產品 7；批准 freeze，開始 Gate 0）
+
+來源：對 `dev` 上 r3.24 規格的完整再讀。評語：**研究設計 8.5/10，產品 MVP 7/10，工程實作風險仍偏高。** 批准 freeze。前提：不要再改 design，開始 Gate 0。
+
+GitHub 頁面上「1 commit」是 reviewer 當下的瀏覽快照；本機 `dev` 當時已有 r3.23 `a774d99` 與 r3.24 `afacda5`。這次仍是 **design contract review**，不是 code review。
+
+| 點 | 處分 |
+|---|---|
+| 核心產品沒跑掉；PRIMARY = Brief + Timeline；score 不是產品 | **維持** |
+| Future leakage / PIT honesty / immutable snapshot / conservative MISSING_DATA | **維持。不改** |
+| rank-of-rank 犧牲 magnitude | **不改公式。** 收緊 D36：五欄必須一起呈現 |
+| Timeline 其實仍依賴 score→position | **承認，不改數學。** 產品語意 = Rotation Map，不是 Strength Chart |
+| value_thrust、overlap 分子全額／分母一次、A→B ≠ capital flow | **維持** |
+| MISSING_DATA 整 theme 出局對小股與 2330 同等嚴厲 | **維持 conservative（D81）。** Phase 1.5 才考慮 impact-weighted |
+| H1 circularity；GO 看起來比證據更正式 | **維持。** 不改 gate、不加 p-value。人眼顯示 D97 |
+| GO 改名 CONTINUE | **採納人眼標籤（D97）。** 識別字仍 `verdict=GO`。`GO → CONTINUE`，`NO-GO → STOP` |
+| ROTATION TODAY 四桶摘要 | **採納 Brief 契約（D98）。** 由既有 regime + status 衍生，不是新分類器。PR 7 才做 |
+| Timeline 五欄一起、不能只看線 | **採納 D36 收緊。** today-strip，PR 7 |
+| 一句話定位：輪動雷達，不是量化交易系統 | **採納。** Overview 加上；不是新產品 |
+| MVP 太大、像小型量化研究平台 | **維持 D92 + 當前 slice。** digest／H1–H4 是護欄不是本體。第一輪仍只准 Gate 0→PR1→PR2 |
+| 現在停止加功能，開始 Gate 0 | **維持。** 不改公式、不縮小 PR DAG、不開 v0.2 |
+| Streamlit／leaders／52w／Adj／ML | **維持 P2 freeze** |
+| 再做一次 architecture／改 RS 權重 | **拒絕** |
+
+**Verdict：APPROVE 人眼顯示契約。核心模型不動。Freeze at r3.25。下一步仍是 Gate 0 → PR1 → PR2。未說開始 Gate 0 不准動手寫 ingest。**
