@@ -38,6 +38,21 @@ It uses established market-analysis concepts and focuses its own code on Taiwan 
 - pandas-ta: https://github.com/JameRawlings/pandas-ta
 - RRG-Lite: https://github.com/BennyThadikaran/RRG-Lite
 
+## Run
+
+```text
+uv sync --extra dev
+uv run marketpulse download --start 2026-07-20 --end 2026-08-31
+uv run marketpulse validate
+uv run marketpulse analyze
+uv run marketpulse brief
+uv run marketpulse chart
+uv run marketpulse replay --start 2026-07-20 --end 2026-08-31
+uv run pytest
+```
+
+Raw official JSON is stored locally under `data/raw/` and is not redistributed.
+
 ## Important
 
 These documents intentionally replace the previous design.

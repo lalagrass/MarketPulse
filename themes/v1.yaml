@@ -1,0 +1,123 @@
+classification_version: "theme-v0.2.0-eleven"
+taxonomy_frozen_at: "2026-08-30"
+notes: >
+  Frozen 11-theme overlay for MarketPulse MVP.
+  Replay with this file is historical visualization replay,
+  not contemporaneous knowledge of the taxonomy.
+
+themes:
+  ai_server:
+    name: AI伺服器
+    members:
+      - "2382"  # 廣達
+      - "3231"  # 緯創
+      - "6669"  # 緯穎
+      - "2324"  # 仁寶
+      - "2356"  # 英業達
+      - "2376"  # 技嘉
+      - "2377"  # 微星
+      - "3037"  # 欣興 overlap PCB
+      - "8046"  # 南電 overlap PCB
+      - "2313"  # 華通 overlap PCB
+
+  pcb:
+    name: PCB
+    members:
+      - "3037"  # 欣興
+      - "8046"  # 南電
+      - "2313"  # 華通
+      - "2368"  # 金像電
+      - "5469"  # 瀚宇博
+      - "6278"  # 台表科
+
+  high_speed_materials:
+    name: 高速材料/CCL
+    members:
+      - "2383"  # 台光電
+      - "6274"  # 台燿
+      - "6213"  # 聯茂
+      - "8358"  # 金居
+
+  optical_cpo:
+    name: 光通訊/CPO
+    members:
+      - "3081"  # 聯亞
+      - "3363"  # 上詮
+      - "4979"  # 華星光
+      - "6442"  # 光聖
+      - "3234"  # 光環
+      - "4977"  # 眾達-KY
+      - "3450"  # 聯鈞
+      - "6451"  # 訊芯-KY
+      - "3163"  # 波若威
+      - "2455"  # 全新
+
+  passive_components:
+    name: 被動元件
+    members:
+      - "2327"  # 國巨
+      - "2492"  # 華新科
+      - "6173"  # 信昌電
+      - "3026"  # 禾伸堂
+      - "2478"  # 大毅
+      - "6449"  # 鈺邦
+      - "6175"  # 立敦
+
+  memory:
+    name: 記憶體
+    members:
+      - "2337"  # 旺宏
+      - "2344"  # 華邦電
+      - "2408"  # 南亞科
+      - "8299"  # 群聯
+      - "3006"  # 晶豪科
+      - "6531"  # 愛普
+      - "3260"  # 威剛
+
+  semiconductor_test:
+    name: 半導體測試/測試介面
+    members:
+      - "6223"  # 旺矽
+      - "6510"  # 精測
+      - "2449"  # 京元電子 overlap foundry
+      - "6239"  # 力成 overlap foundry
+      - "3711"  # 日月光 overlap foundry
+
+  ai_power:
+    name: AI電力/電源
+    members:
+      - "2308"  # 台達電
+      - "6409"  # 旭隼 overlap 重電
+      - "6282"  # 康舒
+      - "3043"  # 海韻
+      - "6115"  # 鎰勝
+
+  thermal:
+    name: 散熱/液冷
+    members:
+      - "3017"  # 奇鋐
+      - "3324"  # 雙鴻
+      - "6230"  # 尼得科超眾
+      - "3653"  # 建準
+      - "5439"  # 高力
+
+  foundry_advanced:
+    name: 先進製程
+    members:
+      - "2330"  # 台積電
+      - "3711"  # 日月光
+      - "6488"  # 環球晶
+      - "3532"  # 台勝科
+      - "6239"  # 力成
+      - "2449"  # 京元電子
+
+  heavy_electric:
+    name: 重電
+    members:
+      - "1519"  # 華城
+      - "1504"  # 東元
+      - "1513"  # 中興電
+      - "1612"  # 宏泰
+      - "1605"  # 華新
+      - "1514"  # 亞力
+      - "6409"  # 旭隼 overlap ai_power
