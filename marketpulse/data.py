@@ -9,6 +9,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import date, datetime, timedelta
+from http.client import IncompleteRead
 from pathlib import Path
 from typing import Any
 
@@ -84,15 +85,29 @@ def daterange(start: date, end: date) -> list[date]:
     return days
 
 
-def fetch_json(url: str, timeout: float = 30.0) -> dict[str, Any]:
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"HTTP {exc.code} for {url}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"request failed for {url}: {exc}") from exc
+def fetch_json(url: str, timeout: float = 30.0, retries: int = 4) -> dict[str, Any]:
+    last_err: Exception | None = None
+    raw = ""
+    for attempt in range(retries):
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw = resp.read().decode("utf-8")
+            break
+        except urllib.error.HTTPError as exc:
+            last_err = exc
+            if exc.code in {429, 500, 502, 503, 504} and attempt + 1 < retries:
+                time.sleep(2.0 * (attempt + 1))
+                continue
+            raise RuntimeError(f"HTTP {exc.code} for {url}") from exc
+        except (urllib.error.URLError, IncompleteRead, TimeoutError, OSError) as exc:
+            last_err = exc
+            if attempt + 1 < retries:
+                time.sleep(2.0 * (attempt + 1))
+                continue
+            raise RuntimeError(f"request failed for {url}: {exc}") from exc
+    else:
+        raise RuntimeError(f"request failed for {url}: {last_err}")
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
