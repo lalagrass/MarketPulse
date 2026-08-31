@@ -5,12 +5,12 @@
 | 文件標題 | MarketPulse：股癌風格「族群先、輪動次、強勢股最後」之 Mac 本地 MVP |
 | 作者 | 待填 |
 | 日期 | 2026-08-30 |
-| 修訂 | 2026-08-31 r3.26（人眼加 Rank Δ5/Δ20；status 是徽章不是維度；RESEARCH VERDICT 是 PRODUCT VERDICT 的別名。識別字／公式／PR DAG 不改。另見 `docs/coding-contract.md`。） |
+| 修訂 | 2026-08-31 r3.29（公式出處表：標準概念 vs 自有聚合／組合。不改公式。拒絕 RRG 當引擎、拒絕砍 rotation_score、拒絕 position=RS percentile。另見 `docs/coding-contract.md`。） |
 | 狀態 | Design Freeze |
 | 產品名稱 | MarketPulse |
 | 目標市場 | 台股上市（TWSE）+ 上櫃（TPEx）普通股 |
 | 部署形態 | Apple Silicon Mac 單機、單使用者、盤後日頻批次 |
-| 工作區 | `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.25；本輪 r3.26 只收人眼顯示契約。規格 `docs/design-v0.1.md`；實作契約 `docs/coding-contract.md`） |
+| 工作區 | `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.28；本輪 r3.29 只收公式出處契約，不改數學。規格 `docs/design-v0.1.md`；實作契約 `docs/coding-contract.md`） |
 
 **版本切分（讀文件先看這段）：**
 
@@ -45,7 +45,9 @@ Detect / visualize rotation ≠ predict future theme returns.
 
 v0.1 **不是** Quant Research Platform。digest／campaign／H1–H4 是雷達的可重現護欄，不是產品本體。第一個 coding slice 仍然只准 Gate 0 → PR1 → PR2。
 
-兩者都不是交易系統、也不是 GUI。未出產品 MVP（Brief + Timeline）前不排 Streamlit。H1–H4 **不砍**，但不得把 MarketPulse 定義成「預測實驗室」。
+兩者都不是交易系統、也不是 GUI。未出產品 MVP（Brief + Timeline）前不排 Streamlit。H1–H4 **不砍**，但不是產品完成條件，也不得把 MarketPulse 定義成「預測實驗室」。
+
+**產品 MVP 完成（Level 2）當且僅當：** 官方 TWSE+TPEx 看板、11 個 PIT theme、不可變 as-of snapshot、Daily Brief、Rotation Timeline、mutate-future 通過，且人能只靠這些輸出回答 JTBD（D103）。H1–H4／GO = Level 3，PR 7 之後才做，不擋產品 MVP。
 
 ---
 
@@ -90,14 +92,15 @@ MarketPulse 的定位是**盤面閱讀的個人作業系統**，不是自動交�
 5. CLI：`download` / `validate` / `sync-groups` / `analyze` / `brief` / `chart` / `doctor`。盤後 Markdown 日報。Timeline 只讀凍結快照。
 6. pytest：公式、membership as-of、validate 不丟列、**Timeline 只讀凍結快照**。
 7. **歷史宇宙規則：** 交易日 T 的可交易宇宙 = 該日 dated 全市場看板（套 exclusions 之後），不是今日 `instrument` 快照。
+8. **產品誠實：** 每日不可變 snapshot + mutate-future。as-of replay 是雷達的前提（沒有它 Timeline 就是後見之明），不是實驗室功能。
 
-### Goals — v0.1 SECONDARY（研究實驗室；要做，但不是產品定義）
+### Goals — v0.1 SECONDARY（研究實驗室；要做，但不是產品定義，也不是產品 MVP 完成條件）
 
-8. **硬 as-of replay**：每個合格交易日只讀 `date <= as_of`，寫入 **不可變** snapshot。GO 存在 `campaign_id`。
-9. **族群籃子**遠期評估（H1–H4）對 TAIEX／**random_exclusive_theme**／RS-only 等，輸出 `summary.md`，結論 GO / ITERATE / NO-GO 或 APPENDIX。
-10. 官方戰役每半段 `n_H1 >= 30` 才能 GO。H1 FAIL **不得**讓 Brief／Timeline 變成「沒用」。
-11. **Canonical 時序 API：** `get_signal_context(T)`、`get_entry_date(T)`、`get_forward_horizon(T, N)`。
-12. pytest：mutate-future、replay 宇宙不得用「今日仍上市」過濾。
+9. **戰役級 replay：** 每個合格交易日只讀 `date <= as_of`，寫入 **不可變** snapshot。GO 存在 `campaign_id`。
+10. **族群籃子**遠期評估（H1–H4）對 TAIEX／**random_exclusive_theme**／RS-only 等，輸出 `summary.md`，結論 GO / ITERATE / NO-GO 或 APPENDIX。
+11. 官方戰役每半段 `n_H1 >= 30` 才能 GO。H1 FAIL **不得**讓 Brief／Timeline 變成「沒用」。
+12. **Canonical 時序 API：** `get_signal_context(T)`、`get_entry_date(T)`、`get_forward_horizon(T, N)`。
+13. pytest：mutate-future、replay 宇宙不得用「今日仍上市」過濾。
 
 ### Goals — Phase 1.5（v0.1 報告產出後）
 
@@ -115,6 +118,8 @@ MarketPulse 的定位是**盤面閱讀的個人作業系統**，不是自動交�
 - Kubernetes、AWS/GCP、Spark、Kafka、微服務、Docker。
 - 多使用者、帳號系統、遠端分享。
 - v0.1 用 LLM 產生盤勢敘事。
+- Telegram／LINE／Email／Push 通知。
+- 投資組合、部位、P&L、券商執行。
 - 試圖「複製股癌每日清單」。本系統實作可操作的決策順序與可檢驗的量價規則。
 - 以 hit_rate ≥ 55% 當通過門檻（已刪除）。
 - 互動圖、Plotly dashboard、把 Timeline 做成 Streamlit。v0.1 只有靜態 PNG。
@@ -204,7 +209,7 @@ MarketPulse 的定位是**盤面閱讀的個人作業系統**，不是自動交�
 | D76 | 兩套 rank | component `rank_pct` = pandas `rank(method="average")`。`rotation_rank` = 整數 1..n_ranked，`score DESC, theme_id ASC` | 同分不得出現 `rotation_rank=1.5`、position=95 |
 | D77 | theme 缺列 | 缺必要成員 → `signal_status=MISSING_DATA`，該 theme 不進排名。禁止用 T−1 TV 補分母／分子 | 漏大型非成員股是市場 coverage heuristic，不是改公式 |
 | D78 | A→B 分母 | `N_g = K`（classification 固定 theme 數） | 與 Timeline 固定座標一致；不改成當日 ranked count |
-| D79 | reuse | **基礎設施 reuse，domain semantics 自寫。** v0.1 不把 FinMind／twmarketdata／VectorBT／TA-Lib／Streamlit／Plotly 當核心。官方 dated JSON 主路徑。外部 repo 可當 client／UX reference，**不得**成為資料或輪動語意的 source of truth | reuse implementation ≠ outsource semantics。真正要自己寫的是題材 overlap + lag-1 成交值聚合 + PIT/as-of + relative position + A→B |
+| D79 | reuse | **MarketPulse 擁有市場語義，不擁有基礎設施。** 基礎設施 reuse（pandas／httpx／SQLite／Parquet／matplotlib）。Domain semantics 自寫。v0.1 不把 FinMind／twmarketdata／VectorBT／TA-Lib／Streamlit／Plotly 當核心。官方 dated JSON 主路徑。httpx 打 dated JSON ≠ 自寫 crawler，也不是改用 vendor SDK 的理由。外部 repo 可當 client／UX reference，**不得**成為資料或輪動語意的 source of truth | reuse implementation ≠ outsource semantics。真正要自己寫的是題材 overlap + lag-1 成交值聚合 + PIT/as-of + relative position + A→B |
 | D80 | CA 產品語義 | as-of-T UNRELIABLE **不得當正常輪動證據**（不進排名／Timeline 主線／A→B）。raw 列保留，不偷偷修正價 | 除權息假訊號會污染雷達，不只污染 H1。不導入 Adj |
 | D81 | MISSING_DATA 政策 | 任一必要成員缺列 → 整個 theme MISSING_DATA。v0.1 寧可 false-negative | 禁止 agent 自訂 missing_ratio < 0.1 仍 OK。Phase 1.5 才考慮 impact-weighted |
 | D82 | 文件優先序 | Freeze／衝突規則 > invariants > 公式 > tests／DoD > 敘事 | Overview 與公式衝突時以公式為準 |
@@ -216,9 +221,9 @@ MarketPulse 的定位是**盤面閱讀的個人作業系統**，不是自動交�
 | D88 | E_T / M_T / I_T | expected → eligible → missing → observed。缺列在 `I_T` 之前偵測 | 禁止先 `close.notnull()` 再算 missing |
 | D89 | A→B 連續日 | persist M = 最近 M 個交易日，每一天 A 與 B 都 OK。任何非 OK 打斷並重置 | 禁止跳過 MISSING 日湊滿 3 天 |
 | D90 | 四分項齊全 | 四個 component 任一必要值 NULL → INSUFFICIENT_HISTORY，不得給 score/rank/position/regime | 禁止 `mean(skipna=True)` |
-| D91 | RRG | 概念參考 = YES；實作依賴 = NO。不用 JdK RS-Ratio／RS-Momentum，不引 RRG library | Timeline 是固定 K 的 `relative_position` 軌跡 + 股癌語言。四象限名稱可對內對應 LEADING／WEAKENING／LAGGING／IMPROVING，產品不是 RRG 圖 |
+| D91 | RRG | 概念參考 = YES；實作依賴 = NO。不用 JdK RS-Ratio／RS-Momentum，不引 RRG library。`rank_momentum` 已是 rank 空間的 RS-momentum 概念，禁止再加第二條 JdK 軸 | Timeline 是固定 K 的 `relative_position` 軌跡 + 股癌語言。四象限名稱可對內對應 LEADING／WEAKENING／LAGGING／IMPROVING，產品不是 RRG 圖 |
 | D92 | 不要造平台 | `BarProvider` 是 Protocol，不是 plugin 平台。禁止自寫 Data／TA／Research／Chart framework | 棧已經是 pandas／httpx／SQLite／Parquet／matplotlib。風險是 agent 再包一層「很漂亮的 quant platform」 |
-| D93 | twmarketdata | 不當 Gate 0、不當主資料、v0.1 不進 Protocol。付費 per-ticker 商業 API；免金鑰僅 5 檔；上櫃歷史 deferred；不宣稱 full-market | 與 FinMind 同類：選配 enrichment，永遠不是 source of truth。Gate 0 要的是全市場看板列數與 TPEx dated payload，它回答不了 |
+| D93 | twmarketdata | 不當 Gate 0、不當主資料、v0.1 不進 Protocol。付費 per-ticker 商業 API；免金鑰僅 5 檔；上櫃歷史 deferred；不宣稱 full-market。SDK 有 `twmd.compat.finmind`：**call-site 相容 ≠ 全市場 dated 看板** | 與 FinMind 同類：選配 enrichment，永遠不是 source of truth。Gate 0 要的是全市場看板列數與 TPEx dated payload，它回答不了 |
 | D94 | MISSING_DATA 可視化 | conservative 政策不改。Brief 必印 expected／received／missing `stock_id`。Timeline 必須留下 data-quality 缺口標記，禁止默默少一條線 | 缺一檔就整 theme 出局是對的；使用者不能把「資料壞了」讀成「這族群今天不重要」 |
 | D95 | rotation_score 人眼禁出 | score 只存在 snapshot parquet 與研究附錄。Daily Brief／ASCII／Timeline PNG **不得出現** 82.3 這類數字 | 「主欄不要」不夠；ASCII「可附列」會把產品偷偷做成評分器 |
 | D96 | Timeline 三問 | 第一版必須一眼能答：現在誰最強、誰正在變強、誰剛轉弱。不是 RRG 圖 | 股癌 dashboard，不是漂亮的相對強度動畫 |
@@ -227,6 +232,9 @@ MarketPulse 的定位是**盤面閱讀的個人作業系統**，不是自動交�
 | D99 | Rank Δ 人眼 | Brief 必有 `rank_delta_5` / `rank_delta_20`，由凍結 snapshot 的既有 `rotation_rank` 衍生。不是新 component、不進 score、不進 ranking、不進 GO、不改 A→B | 人眼要看「誰在超車」，不是 82.3。Change detection = 顯示，不是新引擎 |
 | D100 | status 是徽章 | 人眼只印 ⚠ members a/b + missing `stock_id`。禁止 Data Quality Score / Reliability Medium。MISSING_DATA 不得顯示成 LEADING ⚠ | 缺成員時不能看起來像正常 Leading。比「Leading 加警告」更嚴：regime 已是 NULL |
 | D101 | RESEARCH VERDICT 別名 | parquet 仍 `verdict`。人類報告另印 `RESEARCH VERDICT` 作為 PRODUCT VERDICT 的別名。禁止新增 PRODUCT: PASS/FAIL。NO-GO 不拆除 Brief/Timeline | 避免 PRODUCT VERDICT 被讀成產品過關。雷達存在與否不由 H1 決定 |
+| D102 | 拒絕 v0.2 改寫 | **不寫 `design-v0.2.md`。** 不把 Gate 0 改成 Official／FinMind／TWMD bake-off。不上 DuckDB 當主儲存。不加第二套 `theme_state`、Golden Episode 先驗 YAML、`data_health` 分數、Return5／RS5／Above MA20。不引入 Postgres／Redis／ClickHouse／Kafka／Celery／WebSocket／LLM。4-gate 重切 = 縮小 PR DAG，拒絕 | r3.23 已吸收「owns semantics」。多 provider SPI = D92 Quant Platform。先驗 2026 episode YAML = 後見之明。產品 state 已是 regime + ROTATION TODAY |
+| D103 | 產品 MVP JTBD | 每天只答四問 + 資料徽章：(1) 誰強 (2) 誰變強 (3) 誰變弱 (4) 相對領先是否 A→B。資料夠不夠 = `signal_status` 徽章，不是 Coverage %。FORBIDDEN：把 Q4 寫成資金流。不能幫這四問的功能，產品 MVP 不做。H1–H4 不是產品完成條件 | 採納「最小能證明核心 idea」；拒絕 M0–M4 取代 PR DAG、100 檔 bake-off、第二套 state、先驗 episode |
+| D104 | 公式出處 | 概念可標準：個股報酬、超額 RS、漲跌家數、% above MA、Top-N。組合必須自有：lag-1 TV 權、value_share 重疊規則、value_thrust、rank-of-rank、固定 K 的 relative_position、股癌六態。FORBIDDEN：RRG 當引擎、砍 rotation_score、position=252d percentile、theme regime=MA20/MA60、CMF／HHI／Breadth Thrust、把 TV／breadth 踢出排名只當 confirmation | 不要為創新而創新 ≠ 把雷達換成未完全公開的 JdK。出處表不是改公式 |
 
 ### 五條不可破壞 invariant（給 coding agent）
 
@@ -576,6 +584,7 @@ Honest 比較（對 GPT 棧）：
 
 ```text
 REUSE implementation. OWN semantics.
+MarketPulse owns market semantics, not infrastructure.
 Do not invent a Quant Platform.
 Build a thin MarketPulse domain engine on mature libraries.
 ```
@@ -585,18 +594,22 @@ Build a thin MarketPulse domain engine on mature libraries.
 | **REUSE（已在 pyproject）** | Python 3.12+、uv、pandas、numpy、httpx+tenacity、pydantic、Typer、PyYAML、SQLite、PyArrow/Parquet、matplotlib、pytest |
 | **OPTIONAL（永不當主路徑）** | FinMind（日曆／Info）、yfinance（預設關） |
 | **REFERENCE ONLY** | RRG／StockCharts 概念；US sector-rotation screener 的 UX；**不是**依賴 |
-| **FORBIDDEN in v0.1** | TA-Lib、pandas-ta、VectorBT、backtesting.py、Polars、DuckDB、Plotly、Streamlit、**twmarketdata 當 BarProvider／Gate 0** |
+| **FORBIDDEN in v0.1** | TA-Lib、pandas-ta、VectorBT、backtesting.py、Polars、DuckDB、Plotly、Streamlit、**twmarketdata 當 BarProvider／Gate 0**、PostgreSQL、Redis、ClickHouse、Kafka、Celery、WebSocket、LLM、`design-v0.2.md`、provider bake-off |
 | **MUST OWN** | Theme YAML、membership provenance、as-of／PIT、E_T／M_T／I_T、TV 加權、breadth、value thrust、RS、relative_position、regime、A→B、snapshot identity、H1–H4 語意 |
 
-`twmarketdata`（pip `twmarketdata`，import `twmd`，站台 twmarketdata.com）**不是**官方 TWSE/TPEx dated JSON 的薄 client。它是第三方付費 REST：免金鑰只有 5 檔（2330／2317／2454／0050／2603）；查詢是 per-ticker；定價頁寫明 **TPEx daily history deferred**、**不宣稱 full-market**。Gate 0 要的是全市場看板列數與 TPEx payload shape——這個套件回答不了。v0.1 不 `pip install`、不進 Protocol。Phase 1.5 若要交叉驗證，另開 spike，不得改主路徑。
+`twmarketdata`（pip `twmarketdata`，import `twmd`，站台 twmarketdata.com）**不是**官方 TWSE/TPEx dated JSON 的薄 client。它是第三方付費 REST：免金鑰只有 5 檔（2330／2317／2454／0050／2603）；查詢是 per-ticker；定價頁寫明 **TPEx daily history deferred**、**不宣稱 full-market**。SDK 有 `twmd.compat.finmind`，那只是 call-site 相容，不是全市場 dated 看板。Gate 0 要的是全市場看板列數與 TPEx payload shape——這個套件回答不了。v0.1 不 `pip install`、不進 Protocol。Phase 1.5 若要交叉驗證，另開 spike，不得改主路徑。
 
 禁止 agent 為了「reuse」而引入：
 
 - TA-Lib／pandas-ta（v0.1 只要 return／rolling／rank，不是 RSI／MACD）
 - VectorBT／backtesting.py（那是 stock→trade→PnL；本產品是 as-of theme state→forward basket）
+- DuckDB 當主儲存（Parquet 已經是凍結 snapshot；SQLite 已經是工作快取。2.5M 列不是換庫的理由）
 - 自寫 HTTP retry 框架（已有 httpx+tenacity）
 - 自寫繪圖 primitive（用 matplotlib；v0.1 靜態 PNG）
 - plugin 式 Provider 平台（`BarProvider` 是 Protocol，實作就是 TWSE＋TPEx＋OpenAPI fallback）
+- Official／FinMind／TWMD bake-off 當 Gate 0
+- PostgreSQL／Redis／ClickHouse／Kafka／Celery／WebSocket／LLM
+- `docs/design-v0.2.md`
 
 預估：每日 download 2 HTTP + parse < 5s；單日 analyze < 30s；5 年全日 replay（~1,200 日 × 5 主題）目標 < 10 min（M 系列）。超過再 profile，而不是先換資料庫。
 
@@ -604,7 +617,7 @@ Build a thin MarketPulse domain engine on mature libraries.
 
 ### 7. 專案目錄
 
-`/Users/chenyuying/workspace/MarketPulse` 目前為空（僅 `.git`）。目標：
+`/Users/chenyuying/workspace/MarketPulse` 目前是 **docs-only** 的 `dev` freeze（r3.23–r3.29）；應用程式碼尚未開始。目標：
 
 ```
 /Users/chenyuying/workspace/MarketPulse/
@@ -1237,6 +1250,28 @@ Passive ↔ AI Server   0.18
 
 `N_g` 在 component `rank_pct` 裡 = 當日進入該次橫斷面排名的非 thin 主題數。  
 Timeline 的 `K` = classification theme 數（11-theme 永遠 11）。**兩套分母不要混。**
+
+**公式出處（凍結，D104；不改任何公式）：**
+
+```text
+STANDARD CONCEPT     OWN AGGREGATION              OWN COMPOSITION
+─────────────────    ─────────────────────────    ────────────────────────
+r_i = P_t/P_{t-1}-1  r_g = lag-1 TV-weight        rotation_score = rank-of-rank
+RS_N vs TAIEX        value_share (overlap num /   relative_position from
+                     unique den)                   rotation_rank vs fixed K
+advance / decline    value_thrust = s/SMA20(s)-1  theme regime = 股癌 6-state
+pct_above_ma20       rank_momentum = Δ rank_pct   if/elif（含落後補漲）
+concentration_top3   (RS20)−rank_pct(RS60)
+
+RRG / JdK            = REFERENCE ONLY. Not an engine.
+rotation_score       = INTERNAL ranking tool. Do not delete. Do not print.
+relative_position    ≠ 252d RS percentile, ≠ RS/range, ≠ z-score.
+theme regime         ≠ Close>MA20>MA60. That is not this field.
+market regime        = descriptive only. MUST NOT select themes.
+value_thrust gloss   MAY say "participation expansion". Identifier stays.
+FORBIDDEN in v0.1    CMF, HHI, Breadth Thrust, JdK RS-Ratio library,
+                     confirmation-only split that drops TV/breadth from ranking.
+```
 
 有效個股列 = 下面凍結的 \(I_t\)（宇宙 ∩ 流動性\(_{t-1}\) ∩ 有效價\(_t\) ∩ 非 exclusions）。**禁止**用 T 日 `trading_money` 當流動性。SMA／rolling 的 lookback **不含當日**（`sma_include_current: false`）：\(\mathrm{SMA}_N(x)_t = \mathrm{mean}(x_{t-N},\ldots,x_{t-1})\)。資料不足 → NULL。
 
@@ -3029,7 +3064,8 @@ launchd 預設 18:30 Asia/Taipei 是對 TWSE ~15:00、FinMind adj ~17:30 的合�
 | 生存者偏差 | **高** | **DoD：** `universe_member(T)` = 當日看板。禁止用今日仍上市過濾。重建戰役強制 `survivorship_warning`。不宣稱 bias-free。官方 2026 戰役在有 dated 看板時偏差較小；v2023 APPENDIX 主題名單仍是存活者。 |
 | 把掃描當交易訊號 | 高 | 無下單；免責；NO-GO 停 GUI |
 | agent 把基礎設施寫成 Quant Platform | 高 | Reuse Policy（D79/D92）：pandas／httpx／SQLite／Parquet／matplotlib；禁止自寫 Data／TA／Research／Chart framework。第一輪只准 Gate 0+PR1+PR2 |
-| 用 twmarketdata 換掉官方 dated JSON | 高 | D93：不當 Gate 0、不進 Protocol。官方全市場看板 2 HTTP／日；第三方是付費 per-ticker |
+| 用 twmarketdata 換掉官方 dated JSON | 高 | D93：不當 Gate 0、不進 Protocol。官方全市場看板 2 HTTP／日；第三方是付費 per-ticker。FinMind-compat 存在仍不當主路徑 |
+| 把 reuse 做成 v0.2（bake-off + DuckDB + 第二套 state） | 高 | D102：不寫 design-v0.2。原則句已是 D79。下一刀仍是官方 20–30 日 |
 
 ---
 
@@ -3088,7 +3124,7 @@ launchd 預設 18:30 Asia/Taipei 是對 TWSE ~15:00、FinMind adj ~17:30 的合�
 - TPEx 上櫃收盤 dated JSON：`https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_close/stk_quote_result.php?l=zh-tw&d={ROC}/MM/DD&o=json`
 - TWSE/TPEx OpenAPI：今日快照，**不是**歷史。
 - FinMind v4：<https://finmind.github.io/llms-full.txt> — `Trading_turnover` = 成交筆數；`TaiwanStockPriceAdj` 為由最近交易日向前還原。
-- 工作區：`/Users/chenyuying/workspace/MarketPulse` 仍無 commit；僅有決策備忘 `docs/design-delta-gpt-vs-grok.md`，不是實作規格。
+- 工作區：`/Users/chenyuying/workspace/MarketPulse` 在 `dev`；freeze commits r3.23–r3.29。規格 `docs/design-v0.1.md`，實作契約 `docs/coding-contract.md`，決策備忘 `docs/design-delta-gpt-vs-grok.md`。應用程式碼尚未開始。
 
 ---
 
@@ -3106,9 +3142,13 @@ Level 1.5 — Taxonomy sanity (Gate 1)
 
 Level 2 — PRODUCT MVP  ★ 輪動雷達
   Daily Brief + Rotation Timeline
-  今日：LEADING / TRANSITION / WEAKENING / LAGGING
-  歷史：relative_position 折線（固定 K=11）
+  JTBD（D103）：誰強／誰變強／誰變弱／相對領先是否 A→B
+  資料徽章：signal_status，不是 Coverage %
+  今日：ROTATION TODAY 四桶（含 Data issue）
+  歷史：relative_position 折線（固定 K=11）+ today-strip
+  誠實：as-of snapshot + mutate-future
   H1 FAIL 不能宣布這一層失敗
+  H1–H4 不是這一層的完成條件
 
 Level 3 — Research lab（次）
   H1 = persistence sanity check
@@ -3147,9 +3187,10 @@ Level 2 漂亮不能當 Level 3 GO。Level 3 GO 失敗不能宣布雷達沒用�
   9. 歷史一日與最新一日都通過 validate 必檢  
   10. **coverage semantics：** 每個 spiked session × market 記錄 `received_row_count`、`prior_complete_row_count`、`new_listing_count`、`removed_count`、`official_row_count`（無官方 expected → NULL）、`row_coverage_vs_prior_session`、`coverage_method=prior_complete_session_row_count`、`coverage_confidence=heuristic`。寫進 `docs/data-sources.md`。  
   11. **禁止**把 0.99 寫成「市場 99% 完整」。Gate 0 要觀察 IPO／下市日列數跳動，並註明 heuristic 在那些日會失效。  
-  12. **禁止**把 twmarketdata／FinMind／yfinance 當 Gate 0 替代或交叉驗證 blocker。Gate 0 只打官方 dated TWSE+TPEx。twmarketdata 是付費 per-ticker API（免金鑰僅 5 檔；上櫃歷史 deferred），不能回答「全市場看板列數／TPEx payload shape」。  
+  12. **禁止**把 twmarketdata／FinMind／yfinance 當 Gate 0 替代或交叉驗證 blocker。Gate 0 只打官方 dated TWSE+TPEx。twmarketdata 是付費 per-ticker API（免金鑰僅 5 檔；上櫃歷史 deferred；`twmd.compat.finmind` 存在仍不算全市場看板），不能回答「全市場看板列數／TPEx payload shape」。  
+  13. **禁止**把 Gate 0 改成 provider bake-off。httpx 打官方 dated JSON ≠ 自寫 crawler，也不是改用 vendor SDK 的理由。  
 
-  **不是五年回補。不是 taxonomy sanity。不是 H1。不是 twmarketdata 比較。不是 golden dataset。** 失敗 → `tpex_degraded`，上櫃只從今日累積，禁止用無日期 OpenAPI 假裝有歷史。未 PASS 不得在 PR 2 宣稱可回補。 golden 數字在 Gate 0 bars 存在之後、PR 4 才填。
+  **不是五年回補。不是 taxonomy sanity。不是 H1。不是 twmarketdata 比較。不是 golden dataset。不是 provider bake-off。** 失敗 → `tpex_degraded`，上櫃只從今日累積，禁止用無日期 OpenAPI 假裝有歷史。未 PASS 不得在 PR 2 宣稱可回補。 golden 數字在 Gate 0 bars 存在之後、PR 4 才填。FORBIDDEN：在官方 bars 存在之前寫 Golden Episode expected-state YAML（例如 `Optical: strengthening`）。
 
   Taxonomy sanity 是 **Gate 1**，不是 Gate 0。Gate 0 只有資料源。
 
@@ -3240,20 +3281,19 @@ Does GO pass?
 
 ---
 
-## Freeze（r3.26）
+## Freeze（r3.29）
 
-**核心模型不再改。不要再開 architecture redesign。不要導入 Adj、Sharpe、z-score、動態權重、ML。不要改 H1 公式、11-theme、lag-1、Timeline 數學。不要縮小 PR DAG。不要再為下一輪 GPT review 改公式。下一刀是 Gate 0。**
+**核心模型不再改。不要再開 architecture redesign。不要寫 `design-v0.2.md`。不要導入 Adj、Sharpe、z-score、動態權重、ML。不要改 H1 公式、11-theme、lag-1、Timeline 數學。不要縮小 PR DAG。不要再為下一輪 GPT review 改公式。下一刀是 Gate 0。**
 
 實作時先讀 `docs/coding-contract.md`，衝突以本設計文件公式／Freeze 為準。
 
-r3.25 人眼契約仍有效。本輪只收人眼顯示，不改訊號／評估公式：
+r3.28 產品 MVP scope 仍有效。本輪只收公式出處契約，**不改任何公式**：
 
-1. **D99：Brief 必有 Rank Δ5／Δ20。** 由既有 `rotation_rank` 衍生。兩端非 OK → `—`。禁止跳洞。不進 score／ranking／GO／A→B。  
-2. **D100：status 是徽章不是維度。** 禁止 Data Quality Score。禁止 MISSING_DATA 顯示成 LEADING ⚠。  
-3. **D101：人眼印 RESEARCH VERDICT 作為 PRODUCT VERDICT 別名。** 識別字仍 `verdict=GO`。禁止 PRODUCT: PASS 新 gate。  
-4. D95 收緊：敘事禁止「AI Server = 87.2」。  
-5. Taxonomy Audit = 既有 overlap／concentration／Gate 1，不是新模組。  
-6. Timeline 仍是線 + today-strip，不是泳道圖。  
+1. **D104：公式出處。** 個股報酬／超額 RS／漲跌家數／% above MA／Top-3 = 標準概念。lag-1 TV 權、value_share、value_thrust、rank-of-rank、固定 K position、股癌六態 = 自有。不要為創新而創新 ≠ 換成 RRG 引擎。  
+2. **D91 收緊：** `rank_momentum` 已是 rank 空間的相對動量。禁止再加 JdK RS-Ratio／RS-Momentum 軸。Timeline 不是 RRG trail。  
+3. **禁止砍 `rotation_score`。** 它是內部排序工具（D95 人眼禁出）。砍掉會拆掉 `rotation_rank`／`relative_position`／Rank Δ。  
+4. **禁止** `relative_position` = 252 日 RS percentile／z-score；禁止 theme regime = MA20/MA60；禁止把 TV／breadth 踢出排名當 confirmation-only。  
+5. **禁止 v0.1** CMF、HHI、Breadth Thrust。value_thrust 識別字不改；人眼可說 participation expansion。對外仍用股癌語言，不改成 Improving 當 Brief 主詞。  
 
 ```text
 SOURCE OF TRUTH ORDER
@@ -3281,7 +3321,17 @@ primary source.
 Do not invent a Data / TA / Research / Chart framework.
 Do not pip-install twmarketdata in v0.1.
 Do not treat Timeline as an RRG chart or use JdK RS-Ratio.
+Do not replace rank-of-rank with RRG quadrants as the engine.
+Do not delete rotation_score; it is internal ranking, not a product number.
+Do not set relative_position to a 252-day RS percentile or z-score.
+Do not replace theme regime with MA20/MA60.
+Do not add CMF, HHI, or Breadth Thrust in v0.1.
+Do not split trading-value / breadth out of ranking as confirmation-only.
 Do not treat A→B as capital flow.
+Do not make H1–H4 a product-MVP completion criterion.
+Do not replace Gate 0 with a 100-stock / three-provider spike.
+Do not add marketpulse daily; human CLI is brief / chart.
+Do not add Telegram / LINE / Email / Push or portfolio P&L.
 Do not treat UNRELIABLE as normal rotation.
 Do not filter close.notnull() before detecting M_T.
 Do not skip calendar holes when counting A→B persistence.
@@ -3303,6 +3353,15 @@ Do not ship a Timeline that is only a relative_position line.
 Do not replace Timeline with a LEADING/TRANSITION/WEAKENING swimlane chart.
 Do not add a Taxonomy Audit engine; use existing overlap + Gate 1.
 Do not invent a Quant Platform or extra GO gates.
+Do not write docs/design-v0.2.md.
+Do not turn Gate 0 into an Official / FinMind / TWMD bake-off.
+Do not add DuckDB as the storage layer.
+Do not add a second theme_state classifier; product state is regime + ROTATION TODAY.
+Do not invent Golden Episode expected-state YAML before official bars exist.
+Do not add data_health / theme_health scores.
+Do not add Return 5/60, RS 5/60, or Above MA20 as v0.1 signals.
+Do not introduce PostgreSQL, Redis, ClickHouse, Kafka, Celery, WebSocket, or an LLM.
+Do not treat httpx-to-official-JSON as a reason to switch to a vendor SDK.
 Do not invent golden numbers before Gate 0 official bars exist.
 Do not make golden / Timeline / H1 a Gate 0 blocker.
 Do not rename the H1 identifier; human label is Persistence Test (H1).

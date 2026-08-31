@@ -1,7 +1,7 @@
 # MarketPulse v0.1 coding contract
 
 THIS FILE IS AN IMPLEMENTATION CONTRACT.  
-The full design `docs/design-v0.1.md` (r3.26) is the source of truth.  
+The full design `docs/design-v0.1.md` (r3.29) is the source of truth.  
 This file is the subset a coding agent must not violate.
 
 ```text
@@ -23,8 +23,22 @@ Do not start a five-year backfill until Gate 0 passes.
 ## Product vs research
 
 PRIMARY = Daily Brief + Rotation Timeline (radar).  
-SECONDARY = H1–H4 (lab).  
-H1 FAIL ≠ radar useless. A→B = relative leadership transition, never capital flow.  
+SECONDARY = H1–H4 (lab). Not a product-MVP completion criterion.  
+H1 FAIL ≠ radar useless. A→B = relative leadership transition, never capital flow.
+
+Product MVP job-to-be-done (D103): who is strong, who is strengthening, who is weakening, is relative leadership rotating A→B. Data support = `signal_status` badge, not a Coverage %. If a feature does not help those questions, it is not product MVP.
+
+```text
+Build the smallest end-to-end system that can take official
+dated TWSE/TPEx daily boards, apply 11 point-in-time themes
+(membership T-1), compute the frozen price / trading-value /
+breadth fields, and produce a Daily Brief + Rotation Timeline
+from immutable snapshots, replayable as-of any session without
+future leakage. Do not implement stock ranking, AI,
+notifications, Streamlit, portfolio, generic TA, a vendor
+bake-off, DuckDB, or H1–H4 as product completion.
+First slice remains Gate 0 → PR1 → PR2.
+```  
 Human label for H1 = Persistence Test. Identifier stays `H1`.  
 Human GO line = `RESEARCH STATUS: CONTINUE`. Identifier stays `verdict=GO`.  
 Human alias = `RESEARCH VERDICT` (same values as PRODUCT VERDICT). Not a second gate. No `PRODUCT: PASS`.  
@@ -60,7 +74,7 @@ FORBIDDEN: filter close.notnull() first, then look for missing.
 10. A→B persist M = immediately preceding M trading sessions; A and B OK on every session. A hole resets the window.  
 11. Do not add indicators, themes, leaders, watchlist, GUI, baselines, ML, Adj, DuckDB, Polars, VectorBT-as-core, TA-Lib, FinMind-as-primary, twmarketdata-as-primary, or new GO gates.  
 12. YAML `algorithm_version` must equal package `ALGORITHM_VERSION` at startup or abort.  
-13. Reuse generic libraries (pandas, numpy, httpx, SQLite, PyArrow, matplotlib, Typer, pytest). Own domain semantics. Do not invent a Data / TA / Research / Chart framework. `BarProvider` is a Protocol, not a plugin platform.
+13. Reuse generic libraries (pandas, numpy, httpx, SQLite, PyArrow, matplotlib, Typer, pytest). Own domain semantics. MarketPulse owns market semantics, not infrastructure. Do not invent a Data / TA / Research / Chart framework. `BarProvider` is a Protocol, not a plugin platform. httpx to official dated JSON is the ingest path, not a crawler, and not a reason to switch to a vendor SDK.
 
 ## Status precedence
 
@@ -100,22 +114,40 @@ component `rank_pct`: pandas `rank(method="average")`.
 
 Gate 0 = official dated TWSE MI_INDEX + TPEx `stk_quote_result.php` only.  
 Not a twmarketdata / FinMind / yfinance comparison.  
-Not a golden-dataset / Timeline / H1 exercise. Golden numbers are PR 4/7 after official bars exist.
+Not a provider bake-off. `twmd.compat.finmind` existing does not change this.  
+Not a golden-dataset / Timeline / H1 exercise. Golden numbers are PR 4/7 after official bars exist.  
+Not a 100-stock spike. Gate 0 is the full-market board (TWSE ~900–1200, TPEx ~700–900).  
+FORBIDDEN: Golden Episode expected-state YAML (e.g. `Optical: strengthening`) before official bars exist.  
+Do not add `marketpulse daily`; human CLI is `brief` / `chart`.
 
 ## Reuse
 
 ```text
 REUSE implementation. OWN semantics.
+MarketPulse owns market semantics, not infrastructure.
 Do not invent a Quant Platform.
 ```
 
 REUSE: pandas, numpy, httpx+tenacity, pydantic, Typer, SQLite, PyArrow, matplotlib, pytest, uv.  
 OWN: theme YAML, membership, as-of, E_T/M_T/I_T, TV-weight, breadth, thrust, RS, relative_position, regime, A→B, snapshot identity, H1–H4.  
-RRG: conceptual reference only. No JdK RS-Ratio. No RRG library. Timeline is not an RRG chart.
+RRG: conceptual reference only. No JdK RS-Ratio. No RRG library. Timeline is not an RRG chart.  
+`rank_momentum` already encodes relative-momentum in rank space. Do not add a second JdK axis.
+
+Formula provenance (D104): reuse standard *concepts* (stock return, excess RS, A/D, % above MA, Top-3). Own the aggregation and composition (lag-1 TV-weight, value_share overlap rule, value_thrust, rank-of-rank, fixed-K position, 股癌 6-state). Do not replace that composition with RRG quadrants.
 
 ## Forbidden
 
 FinMind as primary source. twmarketdata as primary / Gate 0 / v0.1 Protocol.  
 VectorBT as core. TA-Lib. Streamlit/Plotly in v0.1. DuckDB. Polars.  
+PostgreSQL, Redis, ClickHouse, Kafka, Celery, WebSocket, LLM.  
+`docs/design-v0.2.md`. Official / FinMind / TWMD bake-off as Gate 0.  
+100-stock spike. `marketpulse daily` as a new command.  
+Second `theme_state` classifier. Golden Episode expected-state YAML before bars exist.  
+`data_health` / `theme_health` scores. Return 5/60, RS 5/60, Above MA20 as *new* v0.1 signals.  
+RRG / JdK as the rotation engine. Delete `rotation_score`.  
+`relative_position` = 252d RS percentile or z-score. Theme regime = MA20/MA60.  
+CMF, HHI, Breadth Thrust. Confirmation-only split that drops TV/breadth from ranking.  
+Treat A→B as capital flow. Make H1–H4 a product-MVP completion criterion.  
+Telegram / LINE / Email / Push. Portfolio / P&L / execution.  
 `h2_pass`. Newey-West / p-value / Sharpe. 11→10 themes. Equal-weight as the signal. Leaders / 52w / watchlist.  
 Print `rotation_score` in Brief/ASCII/PNG. Silently drop MISSING_DATA themes. Print MISSING_DATA as `LEADING ⚠`. Invent a Data Quality Score. Shrink the PR DAG. Invent golden numbers before Gate 0 bars. Rename GO → CONTINUE or RESEARCH_GO as an identifier. Add `PRODUCT: PASS` as a new gate. Omit ROTATION TODAY. Omit Rank Δ5/Δ20. Skip holes when computing rank_delta. Ship a Timeline that is only a relative_position line. Replace Timeline with a swimlane chart. Invent a Taxonomy Audit engine. Invent a Quant Platform.

@@ -2,10 +2,10 @@
 
 - **日期：** 2026-08-30
 - **用途：** 後續評估、改規格、或回看「為什麼不照 GPT 稿做／為什麼不照 r1 做」時用。**不是**實作規格。實作以設計文件為準。
-- **設計文件（現行 r3.26，凍結）：** `docs/design-v0.1.md`  
+- **設計文件（現行 r3.29，凍結）：** `docs/design-v0.1.md`  
 - **實作契約：** `docs/coding-contract.md`
 - **審查筆記：** `/var/folders/k3/f9js6pcj02xclk75ds1nhzl40000gn/T/grok-chenyuying/grok-design-review-cc86276c.md`
-- **工作區：** `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.25；本輪 r3.26 只收人眼顯示）
+- **工作區：** `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.28；本輪 r3.29 只收公式出處契約，不改數學）
 
 本檔記錄三份來源之間的**衝突**、r1 內部**不一致**、以及 r2／r3 **改寫了什麼**。若之後要推翻某一列，改這張表並同步設計文件，不要只改程式。
 
@@ -825,3 +825,110 @@ GitHub 頁面上「1 commit」是 reviewer 當下的瀏覽快照；本機 `dev` 
 | 現在停止加功能，開始 Gate 0 | **維持。** 不改公式、不縮小 PR DAG、不開 v0.2 |
 
 **Verdict：APPROVE 人眼顯示契約（Rank Δ、status 徽章、RESEARCH VERDICT 別名）。核心模型不動。Freeze at r3.26。下一步仍是 Gate 0 → PR1 → PR2。未說開始 Gate 0 不准動手寫 ingest。**
+
+---
+
+## 36. r3.27 所謂 v0.2 reuse refinement（拒絕改寫，只收邊界句）
+
+來源：對 `dev` 的 architecture rewrite。主張「MarketPulse 只負責市場語義；資料／storage／research 儘量 reuse」，並把這套寫成 `design-v0.2`，Gate 0 改成 Official／FinMind／TWMD bake-off，儲存改 DuckDB+Parquet，產品改 `theme_state`，再加 Golden Episode。
+
+**事實校正：** reviewer 寫「repo 還只有 docs、1 個 commit」。實際 `dev` 已有四個 freeze commit（r3.23 `a774d99` → r3.24 `afacda5` → r3.25 `c0ba091` → r3.26 `2c662d5`）。「現在適合開 v0.2」不成立。
+
+FinMind 有 `TaiwanStockInfo`／daily／Adj 與 token 600/hr、無 token 300/hr，這 freeze 早已寫。TWMD SDK 確實有 `twmd.compat.finmind`（A/B/C/D 分級）；**call-site 相容 ≠ 全市場 dated 看板**。免金鑰仍是 5 檔、查詢仍是 per-ticker。DuckDB 能 glob Parquet 也是真的；2.5M 列不是 v0.1 換庫的理由。
+
+| 點 | 處分 |
+|---|---|
+| MarketPulse owns market semantics, not infrastructure | **採納一句話進 D79。** r3.23 已是這個政策；本輪只把句子寫死 |
+| 不要自寫 crawler | **修改。** Gate 0 = httpx 打官方 dated JSON。那不是 crawler，也不是改用 vendor SDK 的理由 |
+| 不要 Postgres／Redis／ClickHouse／Kafka／Celery／WebSocket／LLM | **採納寫進 FORBIDDEN。** freeze 本來就沒這些 |
+| 不要 Pandas TA／generic TA | **維持。** 已禁止 |
+| VectorBT 只當 research extension | **維持。** v0.1 不進 core；H1–H4 用 pandas |
+| Timeline 是 primary artifact；score 不是產品 | **維持。** 已是 PRIMARY + D95。不另造 `theme_state` |
+| PIT／immutable snapshot／H1 FAIL ≠ radar useless | **維持。** 已 freeze |
+| Gate 0 改成 Official／FinMind／TWMD bake-off | **拒絕（D93/D102）。** TWMD 回答不了全市場列數與 TPEx dated payload。`compat.finmind` 不改變這點 |
+| DuckDB 當主儲存 | **拒絕。** SQLite 快取 + Parquet 快照已夠。換庫不是 Gate 0 |
+| 四家 `MarketDataProvider` SPI | **拒絕。** `BarProvider` 是 Protocol 不是 plugin 平台（D92）。這就是造 Quant Platform |
+| Canonical schema 加 `adjustment_factor` | **拒絕。** v0.1 全程 raw。Adj 是前瞻 |
+| 加 Return 5/20/60、RS 5/60、Above MA20 | **拒絕。** 四 component 已 freeze |
+| 第二套 LEADING／STRENGTHENING／WEAKENING／LAGGING（稿內又出現 IMPROVING） | **拒絕。** 產品 state = 既有 regime + ROTATION TODAY。這是 r3.26 已拒的泳道／新分類器 |
+| Timeline 改成狀態轉移表 | **拒絕。** Timeline = 線 + today-strip，不是泳道 |
+| Golden Episode 先驗 YAML（2026 春輪動 expected states） | **拒絕當 primitive。** 在官方 bars 存在之前寫 `Optical: strengthening` = 後見之明。golden 仍是 PR 4/7，Gate 0 之後才填 |
+| Provider sensitivity 當新 H-tax | **拒絕 v0.1。** 還沒有第二個主資料 |
+| `data_health`／`theme_health PARTIAL` | **拒絕新分數（D100）。** coverage heuristic + expected／received／missing `stock_id` 已夠 |
+| 4-gate 重切取代 PR DAG | **拒絕。** 與 r3.24 砍 PR 同一類。當前 slice 仍是 Gate 0→PR1→PR2 |
+| 寫 `design-v0.2.md` 然後停止設計 | **拒絕。** 凍結文件仍是 `design-v0.1.md`。v0.2 稿把已 freeze 的原則重畫成新架構，並沒有比較簡單 |
+| 先停 Gate 0 做 architecture | **拒絕。** 下一刀仍是 20–30 日官方資料 |
+
+八條原則對照：1/3/4/5/6/7 已在 freeze；2「providers are replaceable」在 v0.1 被讀成 SPI 則拒絕；8 的 Replay 已有，Golden Episode 先驗 YAML 拒絕。
+
+**Verdict：REJECT v0.2 作為新設計。APPROVE 邊界句與 FORBIDDEN 清單。Freeze at r3.27。下一步仍是 Gate 0 → PR1 → PR2。未說開始 Gate 0 不准動手寫 ingest。**
+
+---
+
+## 37. r3.28 MVP scope（JTBD 四問；H1–H4 不是產品完成條件）
+
+來源：以「最小系統證明核心 idea」重切 MVP。核心 idea 寫對：每天用量價看出誰變強／變弱。然後把 scope 畫成 M0–M4，並把 Q4 寫成資金流、Gate 0 寫成 100 檔 bake-off、H1–H4 踢出 v0.1。
+
+| 點 | 處分 |
+|---|---|
+| MVP = 最小能證明核心 idea，不是最少功能 | **採納原則（D103）。** 已是 PRIMARY vs SECONDARY |
+| 每天答：誰強／誰變強／誰變弱 | **採納。** 已是 D96 三問 |
+| Q4「資金從哪流向哪」 | **拒絕當產品句。** D83：A→B = 相對領先轉換。Brief 可印 possible leadership rotation，禁止「資金從 A 流到 B」 |
+| Q5 資料是否支持 | **採納徽章，拒絕分數。** = 既有 `signal_status` / MISSING_DATA / Data issue 桶。禁止 Coverage 98.7% / PARTIAL |
+| 不能幫這四問的功能，產品 MVP 不做 | **採納當 scope filter** |
+| 五元件 Data / Theme / Analytics / Brief / Timeline | **維持。** 已是產品路徑。不另造 Rotation Engine 模組 |
+| Replay 是產品誠實不是實驗室 | **採納定位。** 每日 snapshot + mutate-future 升 PRIMARY；戰役級 H1–H4 仍 SECONDARY |
+| H1–H4 不屬產品 MVP 完成條件 | **採納 DoD 分層。** 不砍出 v0.1。仍是 PR 6，PR 7 之後。最小 harness = 既有 mutate-future + PR4/7 golden，不是先驗 episode YAML |
+| 寧願砍 research 也不砍 Timeline | **維持。** 已是 PR7 before PR6 |
+| 11-theme 固定、不自訂、不 AI 分類 | **維持 freeze** |
+| 不做個股／TA zoo／LLM／Streamlit／通知／投組／回測 PnL | **採納補 Non-Goals。** Telegram／LINE／Email／Push、部位／P&L 寫死 |
+| 一句 coding-agent contract | **採納改寫後版本。** 官方看板、membership T−1、Brief+Timeline、禁止 bake-off／DuckDB／H1–H4 當產品完成 |
+| M0 = Official／FinMind／TWMD、100 檔 | **拒絕。** Gate 0 = 全市場官方 20–30 日。100 檔回答不了列數 heuristic |
+| 「FinMind 夠就不要寫 crawler」 | **拒絕。** 見 D79／D93／D102 |
+| 每日加 Return5/60、RS5/60、Above MA20 | **拒絕。** 四 component 已 freeze。RS5/20/60 作診斷可留，不進 composite |
+| Theme State 表當唯一輸出；Timeline 變狀態箭頭 | **拒絕。** 產品 = ROTATION TODAY + 五欄 + Rank Δ。不是第二套 LEADING 分類器，不是泳道 |
+| 先驗 episode「光通→被動→主動」當 MVP 成功標準 | **拒絕現在寫 YAML。** Gate 1 用人眼看 20–30 日；golden 在 bars 之後。先寫 expected state = 後見之明 |
+| Replay 2026-01-01→08-31 當 MVP | **拒絕當第一刀。** 2026-01 reconstructed = APPENDIX。Gate 0 是 20–30 日 |
+| 圖裡的 Theme(T) | **拒絕。** membership = G_(T−1) |
+| DuckDB 進 MVP 圖 | **拒絕（D102）** |
+| `marketpulse daily` 新指令 | **拒絕。** 人眼 CLI = `brief` / `chart` |
+| M0–M4 取代 PR DAG | **拒絕。** 那是對 Gate 0→PR7 的閱讀，不是新計畫 |
+| MVP／v1.0／v1.5／v2.0 分期 | **修改對齊既有。** 產品 MVP = Level 2 雷達；v0.1 仍含 Level 3 實驗室；leaders = Phase 1.5；「投資研究系統」不是本產品 |
+
+**Verdict：APPROVE JTBD scope filter 與產品／研究 DoD 分層。拒絕資金流 Q4、100 檔 bake-off、第二套 state、先驗 episode、砍 H1–H4。Freeze at r3.28。下一步仍是 Gate 0 → PR1 → PR2。未說開始 Gate 0 不准動手寫 ingest。**
+
+---
+
+## 38. r3.29 公式／RRG reuse（出處表；不改數學）
+
+來源：主張 60–70% 計算可沿用市場定義，真正自寫的是組合成 Theme State；並把 RRG 當理論基礎、砍 rotation_score、position 改 252d percentile、regime 改 MA20/MA60、Timeline 改 RRG trail。
+
+**公式對照（reviewer 誤讀 vs 凍結）：**
+
+| 他們以為 | 實際凍結 |
+|---|---|
+| RS20 = Theme Close 20D − Market Close 20D | \(RS_{g,N}=r_g(N)-r_{\text{TAIEX}}(N)\)；\(r_g\) = **lag-1 成交值加權**日報酬連乘。窗內任一 NULL → RS NULL。沒有單一 theme Close |
+| rotation_score = 0.4 RS + 0.3 Vol + 0.2 Breadth + 0.1 Regime | rank-of-rank：RS20 / value_thrust / pct_above_ma20 / rank_momentum，權重 0.30/0.25/0.20/0.25。內部排序，人眼禁出 |
+| relative_position = RS／過去 range | `100*(K-rotation_rank)/(K-1)`，K 固定。不是 252 日 percentile |
+| regime = BULL/NEUTRAL/BEAR（MA） | 股癌六態 if/elif。大盤 MA 體制是另一欄，且 **不得**選題 |
+| RRG 四象限 = 產品 state | 對內可對 LEADING／IMPROVING／WEAKENING／LAGGING；對外股癌語言；**多一個落後補漲** |
+| Strengthening 應改 Improving | ROTATION TODAY 的 Strengthening = 剛轉強。對內已有 IMPROVING |
+
+| 點 | 處分 |
+|---|---|
+| 不要為創新而創新；概念沿用報酬／超額 RS／漲跌家數／% above MA／Top-N | **採納出處表（D104）。** 不改公式 |
+| Value Share 是聚合不是 indicator | **維持。** overlap 分子／unique 分母已 freeze |
+| Top-3 當產品、HHI 當研究 | **維持 Top-3。** HHI 不進 v0.1 |
+| CMF 不取代 theme TV | **採納禁止 CMF。** |
+| Breadth Thrust 非 MVP | **維持不做** |
+| value_thrust 可叫 participation expansion | **採納人眼 gloss。** 識別字與公式 `s/SMA20(s)-1` 不改。不是改成 5D/20D 均比值 |
+| RRG 當理論基礎／引擎；JdK 未完全公開仍 approximate | **拒絕當引擎（D91）。** 概念參考 YES。`rank_momentum` 已是 rank 空間相對動量。不引 library、不畫 RRG trail |
+| Core State = RS+momentum；TV／breadth 只當 confirmation | **拒絕。** 「錢在哪」是訊號不是附註。踢出排名會讓無量 RS 看起來像主流 |
+| 砍 rotation_score | **拒絕。** 人眼本來就不印（D95）。刪掉會拆 `rotation_rank`／position／Rank Δ |
+| position = 252d RS percentile / z-score | **拒絕。** Timeline 是 11 theme 橫斷面地圖，不是一年分位 |
+| theme regime = Close>MA20>MA60 | **拒絕。** 與既有 market_regime 欄衝突，也不是股癌六態 |
+| 對外改 Improving 取代 剛轉強／Strengthening | **拒絕。** 對內枚舉已有 IMPROVING |
+| 公式逐條標標準／修改／自有，然後砍不必要公式 | **採納標出處。** 拒絕「cleanup 砍公式」當又一輪 design |
+| 開 v0.2 數學 | **拒絕（D102）** |
+
+**Verdict：APPROVE 公式出處表。拒絕 RRG 引擎與一切公式改寫。Freeze at r3.29。下一步仍是 Gate 0 → PR1 → PR2。未說開始 Gate 0 不准動手寫 ingest。**
