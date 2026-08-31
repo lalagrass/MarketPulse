@@ -2,10 +2,10 @@
 
 - **日期：** 2026-08-30
 - **用途：** 後續評估、改規格、或回看「為什麼不照 GPT 稿做／為什麼不照 r1 做」時用。**不是**實作規格。實作以設計文件為準。
-- **設計文件（現行 r3.25，凍結）：** `docs/design-v0.1.md`  
+- **設計文件（現行 r3.26，凍結）：** `docs/design-v0.1.md`  
 - **實作契約：** `docs/coding-contract.md`
 - **審查筆記：** `/var/folders/k3/f9js6pcj02xclk75ds1nhzl40000gn/T/grok-chenyuying/grok-design-review-cc86276c.md`
-- **工作區：** `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.24；本輪 r3.25 只收人眼顯示）
+- **工作區：** `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.25；本輪 r3.26 只收人眼顯示）
 
 本檔記錄三份來源之間的**衝突**、r1 內部**不一致**、以及 r2／r3 **改寫了什麼**。若之後要推翻某一列，改這張表並同步設計文件，不要只改程式。
 
@@ -800,3 +800,28 @@ GitHub 頁面上「1 commit」是 reviewer 當下的瀏覽快照；本機 `dev` 
 | 再做一次 architecture／改 RS 權重 | **拒絕** |
 
 **Verdict：APPROVE 人眼顯示契約。核心模型不動。Freeze at r3.25。下一步仍是 Gate 0 → PR1 → PR2。未說開始 Gate 0 不准動手寫 ingest。**
+
+---
+
+## 35. r3.26 GitHub freeze 再評（產品雷達 vs 研究框架；批准 freeze，開始 Gate 0）
+
+來源：對 `dev` 上 r3.25 規格的完整再讀。評語：**8.5/10**。方向對準「看族群輪動，不是量化預測器」。不要再大改 design；建議直接進 Gate 0。另會做 coding-agent readiness review。
+
+| 點 | 處分 |
+|---|---|
+| PRIMARY = Brief + Timeline；score 不是產品；H1 FAIL ≠ radar useless | **維持** |
+| 11-theme、禁止 15–20 條線、CLI-first、Streamlit 延後、pandas/SQLite/Parquet 夠用 | **維持 freeze** |
+| as-of / mutate-future / immutable snapshot / daily_run_id ≠ campaign_id | **維持。即使不做 H1 也值得留** |
+| 不要讓使用者感覺有隱藏總分 | **採納敘事收緊（D95）。** 禁止「AI Server = 87.2」。允許「AI Server — 主流延續；RS20 ↑」 |
+| Rank Δ5 / Δ20 | **採納顯示（D99）。** 由既有 `rotation_rank` 衍生。兩端非 OK → `—`。禁止跳洞。不進 score／ranking／GO／A→B |
+| Timeline 改成 LEADING/TRANSITION/WEAKENING 泳道 | **拒絕當 v0.1 圖種。** 已有 ROTATION TODAY + today-strip。線圖數學不改 |
+| Theme Taxonomy Audit 新模組 | **拒絕新引擎。** = 既有 overlap matrix + `concentration_top3` + `n_members` + Gate 1 |
+| status 做成分析維度 / Data Quality Score | **拒絕新分數（D100）。** 徽章：⚠ members 7/8 missing: ids |
+| 缺重要成員仍顯示 LEADING ⚠ | **拒絕。** D81：整 theme MISSING_DATA，regime NULL，進 Data issue。這比「Leading 加警告」更嚴，也更符合「不能看起來像正常 Leading」 |
+| GO 改名 RESEARCH_GO；PRODUCT: PASS / RESEARCH: GO | **拒絕改識別字。** 採納人眼別名 D101：`RESEARCH VERDICT` = PRODUCT VERDICT。禁止新 PRODUCT: PASS gate |
+| H1–H4 瘦成四個白話問題 | **採納 headline 一句話。** p25/p50 仍留 report，不改公式、不砍假設 |
+| CA 研究複雜度隔離 | **維持。** `H1_ex_*` 只在 `eval/`，不改 primary signal |
+| 同名 GitHub MarketPulse 專案 | **不改產品。** 那些是行情／個股 scoring／news；本產品是台股 theme rotation |
+| 現在停止加功能，開始 Gate 0 | **維持。** 不改公式、不縮小 PR DAG、不開 v0.2 |
+
+**Verdict：APPROVE 人眼顯示契約（Rank Δ、status 徽章、RESEARCH VERDICT 別名）。核心模型不動。Freeze at r3.26。下一步仍是 Gate 0 → PR1 → PR2。未說開始 Gate 0 不准動手寫 ingest。**

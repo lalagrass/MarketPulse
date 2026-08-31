@@ -1,7 +1,7 @@
 # MarketPulse v0.1 coding contract
 
 THIS FILE IS AN IMPLEMENTATION CONTRACT.  
-The full design `docs/design-v0.1.md` (r3.25) is the source of truth.  
+The full design `docs/design-v0.1.md` (r3.26) is the source of truth.  
 This file is the subset a coding agent must not violate.
 
 ```text
@@ -27,8 +27,12 @@ SECONDARY = H1–H4 (lab).
 H1 FAIL ≠ radar useless. A→B = relative leadership transition, never capital flow.  
 Human label for H1 = Persistence Test. Identifier stays `H1`.  
 Human GO line = `RESEARCH STATUS: CONTINUE`. Identifier stays `verdict=GO`.  
+Human alias = `RESEARCH VERDICT` (same values as PRODUCT VERDICT). Not a second gate. No `PRODUCT: PASS`.  
 Daily Brief (PR7, not this slice) MUST open with ROTATION TODAY: Strengthening / Leading / Weakening / Data issue, derived from existing regime + `signal_status`. Not a new classifier.  
-Timeline is a Rotation Map, not a Strength Chart. The five fields (relative_position, RS20, value_thrust, breadth, regime) MUST appear together. Do not ship a position-only line.
+Then THEME ROTATION table with Pos / Δ5D / Δ20D / RS20 / Thrust / Breadth / State. Δ is display of existing `rotation_rank`, not a new signal.  
+Timeline is a Rotation Map, not a Strength Chart. The five fields (relative_position, RS20, value_thrust, breadth, regime) MUST appear together. Do not ship a position-only line. Do not replace it with a swimlane chart.  
+`signal_status` is a badge, not an analysis dimension. MISSING_DATA MUST NOT print as `LEADING ⚠`.  
+CA extras (`H1_ex_jump`, `H1_ex_future_ca`) live in `eval/` only; they MUST NOT change the primary signal.
 
 MarketPulse v0.1 is a daily Taiwan stock theme-rotation radar, not a Quant Research Platform. digest / campaign / H1–H4 are reproducibility guards, not the product.
 
@@ -52,7 +56,7 @@ FORBIDDEN: filter close.notnull() first, then look for missing.
 6. Any incomplete required component → no `rotation_score`. No `skipna`.  
 7. Only `signal_status=OK` participates in ranking.  
 8. `relative_position` uses fixed K of the classification.  
-9. Timeline / brief / chart read frozen snapshots only. Daily Brief / ASCII / Timeline PNG MUST NOT print `rotation_score`. Timeline v1 must answer: who is strong, who is strengthening, who is weakening. Brief MUST include ROTATION TODAY. Timeline PNG MUST include a today-strip of the five fields, not a position-only line. When `verdict=GO`, human report MUST print `RESEARCH STATUS: CONTINUE`; do not rename the identifier.  
+9. Timeline / brief / chart read frozen snapshots only. Daily Brief / ASCII / Timeline PNG MUST NOT print `rotation_score`. Timeline v1 must answer: who is strong, who is strengthening, who is weakening. Brief MUST include ROTATION TODAY and Rank Δ5/Δ20. Timeline PNG MUST include a today-strip of the five fields, not a position-only line. When `verdict=GO`, human report MUST print `RESEARCH VERDICT: GO` and `RESEARCH STATUS: CONTINUE`; do not rename the identifier. MISSING_DATA MUST NOT appear as Leading.  
 10. A→B persist M = immediately preceding M trading sessions; A and B OK on every session. A hole resets the window.  
 11. Do not add indicators, themes, leaders, watchlist, GUI, baselines, ML, Adj, DuckDB, Polars, VectorBT-as-core, TA-Lib, FinMind-as-primary, twmarketdata-as-primary, or new GO gates.  
 12. YAML `algorithm_version` must equal package `ALGORITHM_VERSION` at startup or abort.  
@@ -114,4 +118,4 @@ RRG: conceptual reference only. No JdK RS-Ratio. No RRG library. Timeline is not
 FinMind as primary source. twmarketdata as primary / Gate 0 / v0.1 Protocol.  
 VectorBT as core. TA-Lib. Streamlit/Plotly in v0.1. DuckDB. Polars.  
 `h2_pass`. Newey-West / p-value / Sharpe. 11→10 themes. Equal-weight as the signal. Leaders / 52w / watchlist.  
-Print `rotation_score` in Brief/ASCII/PNG. Silently drop MISSING_DATA themes. Shrink the PR DAG. Invent golden numbers before Gate 0 bars. Rename GO → CONTINUE as an identifier. Omit ROTATION TODAY. Ship a Timeline that is only a relative_position line. Invent a Quant Platform.
+Print `rotation_score` in Brief/ASCII/PNG. Silently drop MISSING_DATA themes. Print MISSING_DATA as `LEADING ⚠`. Invent a Data Quality Score. Shrink the PR DAG. Invent golden numbers before Gate 0 bars. Rename GO → CONTINUE or RESEARCH_GO as an identifier. Add `PRODUCT: PASS` as a new gate. Omit ROTATION TODAY. Omit Rank Δ5/Δ20. Skip holes when computing rank_delta. Ship a Timeline that is only a relative_position line. Replace Timeline with a swimlane chart. Invent a Taxonomy Audit engine. Invent a Quant Platform.

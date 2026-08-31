@@ -5,12 +5,12 @@
 | 文件標題 | MarketPulse：股癌風格「族群先、輪動次、強勢股最後」之 Mac 本地 MVP |
 | 作者 | 待填 |
 | 日期 | 2026-08-30 |
-| 修訂 | 2026-08-31 r3.25（人眼 GO 顯示 RESEARCH STATUS: CONTINUE；Brief 必有 ROTATION TODAY。識別字／公式／PR DAG 不改。另見 `docs/coding-contract.md`。） |
+| 修訂 | 2026-08-31 r3.26（人眼加 Rank Δ5/Δ20；status 是徽章不是維度；RESEARCH VERDICT 是 PRODUCT VERDICT 的別名。識別字／公式／PR DAG 不改。另見 `docs/coding-contract.md`。） |
 | 狀態 | Design Freeze |
 | 產品名稱 | MarketPulse |
 | 目標市場 | 台股上市（TWSE）+ 上櫃（TPEx）普通股 |
 | 部署形態 | Apple Silicon Mac 單機、單使用者、盤後日頻批次 |
-| 工作區 | `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.24；本輪 r3.25 只收人眼顯示契約。規格 `docs/design-v0.1.md`；實作契約 `docs/coding-contract.md`） |
+| 工作區 | `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.25；本輪 r3.26 只收人眼顯示契約。規格 `docs/design-v0.1.md`；實作契約 `docs/coding-contract.md`） |
 
 **版本切分（讀文件先看這段）：**
 
@@ -86,7 +86,7 @@ MarketPulse 的定位是**盤面閱讀的個人作業系統**，不是自動交�
 1. 本機 TWSE + TPEx **普通股**日 K、成交金額、加權指數；可離線讀既有資料、有網才更新。
 2. 手維護主題 YAML。**主引擎 11 個 2026 輪動籃子**（見 Taxonomy）；**另外凍結一份 5-theme baseline** 做對照。Theme =「資金可以獨立進出的交易籃子」，不是證交所產業。禁止 15–20 條線把 Timeline 畫糊。上限就是這 11 條。
 3. 族群 lag-1 成交值加權報酬、相對加權指數的 RS（5/20/60）、成交值佔比、value_thrust、breadth、輪動體制標籤（主流延續／剛轉強／落後補漲／過熱轉弱／落後持續）。
-4. **人眼輸出：** Daily Brief + Rotation Timeline（靜態 PNG）。主欄 = `relative_position`、RS20、value_thrust、breadth、regime。**不是** 0–100 `rotation_score`。Y 軸固定 K=11。
+4. **人眼輸出：** Daily Brief + Rotation Timeline（靜態 PNG）。主欄 = `relative_position`、RS20、value_thrust、breadth、regime。Brief 另有 Rank Δ5／Δ20（顯示，不是新訊號）。**不是** 0–100 `rotation_score`。Y 軸固定 K=11。
 5. CLI：`download` / `validate` / `sync-groups` / `analyze` / `brief` / `chart` / `doctor`。盤後 Markdown 日報。Timeline 只讀凍結快照。
 6. pytest：公式、membership as-of、validate 不丟列、**Timeline 只讀凍結快照**。
 7. **歷史宇宙規則：** 交易日 T 的可交易宇宙 = 該日 dated 全市場看板（套 exclusions 之後），不是今日 `instrument` 快照。
@@ -180,7 +180,7 @@ MarketPulse 的定位是**盤面閱讀的個人作業系統**，不是自動交�
 | D52 | taxonomy_frozen_at | 2026-08-30 = **這一世代**凍結 | 成員進出 ≠ 新世代；加/刪 theme 或改語意才升 version |
 | D53 | H1 語意 | H1 = **Persistence Test**（識別字仍 `H1`），不是 strategy validation，不是 alpha | 主流延續由 RS20／rank_momentum／thrust／breadth 定義，與 score 共用同一組 component。H1 PASS 只表示這套閱讀標籤有遠期延續，不令人意外 |
 | D54 | GO 語意 | GO = **值得進入下一階段研究**。不是「framework 已驗證成功」，不是統計證明，不是交易獲利。識別字仍 GO；人眼加印 `RESEARCH STATUS: CONTINUE`（D97） | `n_H1>=30` 是 overlapping 門檻。不增加更多 GO gate。真正「有沒有比簡單 momentum 好」看 H2 |
-| D55 | CA | as-of T 的 jump 才決定 PRIMARY UNRELIABLE。**禁止看 T+1..T+N** | 未來 CA 只進 `H1_ex_future_ca` sensitivity，不得改 n_H1／GO |
+| D55 | CA | as-of T 的 jump 才決定 PRIMARY UNRELIABLE。**禁止看 T+1..T+N** | 未來 CA 只進 `H1_ex_future_ca` sensitivity，不得改 n_H1／GO。PRIMARY = raw + CA status + visual warning；`H1_ex_*` 只在 `eval/` |
 | D56 | v0.1 pipeline | S0–S8 → S10–S13。**沒有 S9 Leaders** | `leaders.py` / `leader_pick.parquet` = Phase 1.5 |
 | D57 | watchlist schema | 表可預留；**v0.1 禁止 read/write** | 看到 schema 不得順手做 watchlist |
 | D58 | overlap 分母 | 分子可 overlap；宇宙 TV 分母每檔只算一次 | 典型 multi-theme bug |
@@ -224,6 +224,9 @@ MarketPulse 的定位是**盤面閱讀的個人作業系統**，不是自動交�
 | D96 | Timeline 三問 | 第一版必須一眼能答：現在誰最強、誰正在變強、誰剛轉弱。不是 RRG 圖 | 股癌 dashboard，不是漂亮的相對強度動畫 |
 | D97 | GO 人眼顯示 | 識別字仍 `verdict=GO`。人類報告另印 `RESEARCH STATUS: CONTINUE`。不改 gate | 避免看到 GO 就以為模型成功。CONTINUE = 值得下一階段研究 |
 | D98 | ROTATION TODAY | Daily Brief 開頭必有 Strengthening / Leading / Weakening / Data issue 四桶。由既有 regime + `signal_status` 衍生，不是新分類器 | 比 #1 #2 #3 更接近股癌閱讀。不改 ranking |
+| D99 | Rank Δ 人眼 | Brief 必有 `rank_delta_5` / `rank_delta_20`，由凍結 snapshot 的既有 `rotation_rank` 衍生。不是新 component、不進 score、不進 ranking、不進 GO、不改 A→B | 人眼要看「誰在超車」，不是 82.3。Change detection = 顯示，不是新引擎 |
+| D100 | status 是徽章 | 人眼只印 ⚠ members a/b + missing `stock_id`。禁止 Data Quality Score / Reliability Medium。MISSING_DATA 不得顯示成 LEADING ⚠ | 缺成員時不能看起來像正常 Leading。比「Leading 加警告」更嚴：regime 已是 NULL |
+| D101 | RESEARCH VERDICT 別名 | parquet 仍 `verdict`。人類報告另印 `RESEARCH VERDICT` 作為 PRODUCT VERDICT 的別名。禁止新增 PRODUCT: PASS/FAIL。NO-GO 不拆除 Brief/Timeline | 避免 PRODUCT VERDICT 被讀成產品過關。雷達存在與否不由 H1 決定 |
 
 ### 五條不可破壞 invariant（給 coding agent）
 
@@ -231,7 +234,7 @@ MarketPulse 的定位是**盤面閱讀的個人作業系統**，不是自動交�
 2. **Same eligibility universe：** 所有策略共用同一套 eligibility 規則（universe(T)、liquidity_{T-1}、valid_price_T、exclusions）。**不是**所有 baseline 同一批股票。每個 theme 的 \(I_T(g)=G_{g,T-1}\cap\) eligibility。  
 3. **Immutable snapshot：** 同一 `daily_run_id` 永不 UPDATE。  
 4. **Classification honesty：** contemporaneous ≠ reconstructed；後者 APPENDIX only。  
-5. **Human output：** RS20、value_thrust、breadth、relative_position、regime——不是 82.4 分。Daily Brief／ASCII／Timeline PNG 不得印 `rotation_score`。MISSING_DATA 不得從人眼輸出消失。Brief 必有 ROTATION TODAY。人類 GO 顯示 `RESEARCH STATUS: CONTINUE`，識別字仍 GO。
+5. **Human output：** RS20、value_thrust、breadth、relative_position、regime——不是 82.4 分。Daily Brief／ASCII／Timeline PNG 不得印 `rotation_score`。MISSING_DATA 不得從人眼輸出消失，也不得顯示成 LEADING ⚠。Brief 必有 ROTATION TODAY 與 Rank Δ5/Δ20。人類 GO 顯示 `RESEARCH STATUS: CONTINUE`；另印 `RESEARCH VERDICT` 作為 PRODUCT VERDICT 別名。識別字仍 GO。
 
 **停止增加 indicator。** H2 會告訴哪些因子沒用。v0.1 不建 `leaders.py` / `watchlist.py`。
 
@@ -1174,6 +1177,10 @@ overlap_ids         # 如 3037, 8046, 2313
 concentration_top3  # 已有
 ```
 
+Taxonomy Audit（v0.1，不是新模組）：= 既有 `n_members` + `concentration_top3` + overlap 表 + `theme_overlap_matrix` + Gate 1。
+FORBIDDEN：新自動分類、新引擎、用 overlap 決定 ranking、Daily Brief 另做一份「avg daily value」新指標。
+Gate 1 問的是人能不能看懂 11 條線；summary.md 的 overlap 是給人看這 11 桶是不是獨立交易籃子。
+
 `summary.md` 印 overlap 表 **以及** `theme_overlap_matrix`（主題兩兩共用成員數，report-only）：
 
 ```text
@@ -1412,7 +1419,12 @@ v0.1 conservative policy（凍結，不是 threshold）:
   Phase 1.5 may add impact-weighted coverage diagnostics.
   Do not invent a threshold now.
 
-MISSING_DATA 可視化（凍結，D94；不改政策）:
+MISSING_DATA 可視化（凍結，D94／D100；不改政策）:
+  signal_status 是資料品質徽章，不是第二套分析維度。
+  FORBIDDEN: Data Quality Score / Reliability: Medium / 把 status 做成 0–100。
+  FORBIDDEN: Optical LEADING ⚠ 8/10 members
+    （缺必要成員 → regime NULL → Data issue 桶，不是 Leading 加警告）
+  Print: ⚠ members 7/8 missing: 8046
   Daily Brief MUST print, for every MISSING_DATA theme:
     theme_id / name
     signal_status = MISSING_DATA
@@ -1535,7 +1547,7 @@ regime             = 產品輸出（LEADING / TRANSITION / …）
 
 `rotation_score` 是 machine-readable ordinal ranking。人類主欄固定為：`relative_position`、`RS20`、`value_thrust`、`breadth`、`regime`。score 只放 snapshot parquet 與研究附錄。
 
-**人眼禁出（凍結，D95）：** Daily Brief Markdown、`analyze` ASCII、Timeline PNG **不得出現** `rotation_score` 數字（82.3 / 78.6 這類）。FORBIDDEN：ASCII「score 可附列」。parquet 欄可留（機器讀）。
+**人眼禁出（凍結，D95）：** Daily Brief Markdown、`analyze` ASCII、Timeline PNG **不得出現** `rotation_score` 數字（82.3 / 78.6 這類）。FORBIDDEN：ASCII「score 可附列」。FORBIDDEN：敘事寫「AI Server = 87.2」。允許：「AI Server — 主流延續；RS20 ↑；Value Share ↑；Breadth 72%」。parquet 欄可留（機器讀）。v0.1 不要讓使用者感覺有一個隱藏總分。
 
 **v0.1 維持這套「rank of rank」，不要改成原始距離。** 要測的是可解釋的橫斷面框架，不是最精的 score。必須在 methodology 與 brief 腳註寫死：
 
@@ -1568,7 +1580,25 @@ relative_position = 100 * (K - rotation_rank) / (K - 1)   # K=1 → 100
 
 英文 caption 必須同時出現：`Timeline = rotation map, not strength chart, not market strength meter. Higher = stronger cross-sectional rank, not how strong the market is. Not economic score distance.` PNG 註解與 brief Rotation 段都要。`100 → 90` **不是**「只差 10%」。
 
-**五欄一起看（凍結，D36；不改公式）：** Timeline PNG 不得只有 `relative_position` 線。必須附當日表或 today-strip，列出每個 theme 的 `relative_position`、`RS20`、`value_thrust`、`breadth`、`regime`。ASCII 熱力同這五欄。FORBIDDEN：把 Timeline 做成只剩一條名次線的「強度圖」。
+**五欄一起看（凍結，D36；不改公式）：** Timeline PNG 不得只有 `relative_position` 線。必須附當日表或 today-strip，列出每個 theme 的 `relative_position`、`RS20`、`value_thrust`、`breadth`、`regime`。ASCII 熱力同這五欄。FORBIDDEN：把 Timeline 做成只剩一條名次線的「強度圖」。Rank Δ5/Δ20 是 Brief 附加欄，不是第六個 ranking 欄，不得取代這五欄。
+
+**Rank Δ（凍結，D99；顯示，不是新訊號）：** Daily Brief 的 THEME ROTATION 表必須有 `rank_delta_5` 與 `rank_delta_20`。由 brief／chart 從凍結 snapshot 的既有 `rotation_rank` 計算，不寫進 `rotation_score`。
+
+```text
+rank_delta_N(g, T) = rotation_rank(g, T-N) - rotation_rank(g, T)
+  T-N = N trading sessions before T, same MATCH snapshots
+  N ∈ {5, 20} only
+  Both endpoints MUST be signal_status=OK and rotation_rank non-NULL
+  If T-N snapshot missing OR either endpoint not OK → NULL, print "—"
+  FORBIDDEN: skip a hole and use T-N-k
+  FORBIDDEN: interpolate
+  FORBIDDEN: treat NULL as 0
+  Sign: positive = improved (rank number decreased; 8→3 = +5)
+  Display-only. Not a rotation_score component. Not ranking input.
+  Not GO. Not A→B. Not a new classifier.
+```
+
+MAY persist `rank_delta_5` / `rank_delta_20` on `rotation_timeline.parquet`（report artifact）。FORBIDDEN：寫進 `group_bar` 當訊號欄、拿去重算 score、當 H1 選題。
 
 每個交易日 snapshot／brief／summary 必印當日排名母體（不進 GO、不改 K）：
 
@@ -2445,9 +2475,12 @@ predictive power, and it does NOT prove MarketPulse has alpha.
 
 H1 = Persistence Test (sanity check)
 H2 = incremental value beyond simple momentum   # the real research question
+H3 = is that persistence consistent across market regimes?   # partition report only
+H4 = does random exclusive / negative control look like a selection artifact?
 
 H1 selection is based on regime label only.
 H1 must not use rotation_score magnitude to pick or rank the H1 basket.
+p25/p50/p75/corr 可留在 report 本體，不得當 headline。
 
 WHAT H2 PROVES
 --------------
@@ -2461,6 +2494,9 @@ component_redundancy Spearman must appear next to H2.
 If RS20 ↔ rotation_score is extremely high, treat H2 as suspect.
 
 PRODUCT VERDICT      : GO | ITERATE | NO-GO | APPENDIX
+  # 這是研究戰役 gate，不是「產品過關」。parquet 欄仍是 verdict。
+RESEARCH VERDICT     : GO | ITERATE | NO-GO | APPENDIX   # 人眼別名（D101）
+  Same values as PRODUCT VERDICT. Not a second gate.
 RESEARCH STATUS      : CONTINUE | ITERATE | STOP | APPENDIX   # 人眼（D97）
   Mapping (凍結；識別字與 parquet 欄仍是 verdict=GO|ITERATE|NO-GO|APPENDIX):
     GO      → CONTINUE
@@ -2468,8 +2504,11 @@ RESEARCH STATUS      : CONTINUE | ITERATE | STOP | APPENDIX   # 人眼（D97）
     NO-GO   → STOP
     APPENDIX → APPENDIX
   When PRODUCT VERDICT = GO, the human line MUST print:
+    RESEARCH VERDICT: GO
     RESEARCH STATUS: CONTINUE
-  FORBIDDEN: rename the identifier, YAML key, or parquet field to CONTINUE.
+  FORBIDDEN: rename the identifier, YAML key, or parquet field to CONTINUE or RESEARCH_GO.
+  FORBIDDEN: add PRODUCT: PASS/FAIL as a new gate.
+  Radar (Brief + Timeline) exists even if RESEARCH VERDICT = NO-GO.
   Interpretation (必須印在 GO 旁邊，不是附註):
     The predefined persistence behavior survived the MVP gates.
     This is NOT evidence of alpha or trading profitability.
@@ -2700,9 +2739,11 @@ daily_run_id / campaign_id / created_at / git_sha MAY differ.
 27. `tests/test_missing_data_visible.py`（PR 7）：MISSING_DATA theme 必須出現在 Daily Brief DATA QUALITY 段，含 `theme_missing_members` 的 `stock_id`；Timeline 該日必須有 gap/× 標記，禁止整條 theme 從圖例消失。
 28. `tests/test_brief_hides_rotation_score.py`（PR 7）：Daily Brief Markdown 與 analyze ASCII **不得**含 `rotation_score` 或 0–100 分數欄。snapshot parquet 可以有該欄。
 29. `tests/test_brief_rotation_today.py`（PR 7）：Daily Brief 必須有 `## ROTATION TODAY`，且含 Strengthening / Leading / Weakening / Data issue 四桶標題。Data issue 桶必須列出 MISSING_DATA／UNRELIABLE theme。FORBIDDEN：另寫一套分類器。
-30. `tests/test_summary_research_status.py`（PR 6）：`verdict=GO` 的 summary.md 必須同時出現 `RESEARCH STATUS: CONTINUE`；parquet／JSON 欄仍是 `GO`。FORBIDDEN：把 identifier 改成 CONTINUE。
+30. `tests/test_summary_research_status.py`（PR 6）：`verdict=GO` 的 summary.md 必須同時出現 `RESEARCH VERDICT: GO` 與 `RESEARCH STATUS: CONTINUE`；parquet／JSON 欄仍是 `GO`。FORBIDDEN：把 identifier 改成 CONTINUE 或 RESEARCH_GO。FORBIDDEN：出現 `PRODUCT: PASS` 當新 gate。
 31. `tests/test_timeline_five_fields.py`（PR 7）：Timeline PNG 輸入／註解或 today-strip 必須含 relative_position、RS20、value_thrust、breadth、regime。禁止只輸出 position 線。
 32. `tests/fixtures/golden/`（PR 4 起，**不是 Gate 0**）：Gate 0 真實 session 裡挑一個 as_of，人工核對 3 個 theme（`ai_server`、`optical_cpo`、`heavy_electric`）的 RS20／value_share／value_thrust／breadth／regime／relative_position／signal_status。FORBIDDEN：在官方 bars 存在之前發明 golden 數字。FORBIDDEN：把 golden 當 Gate 0 blocker。
+33. `tests/test_brief_rank_delta.py`（PR 7）：Daily Brief THEME ROTATION 表必須有 Δ5D／Δ20D 欄。fixture：rank 8→3 over 5 sessions, both OK → `+5`；T-5 MISSING_DATA → `—` 不是 0。FORBIDDEN：跳過中間洞去抓更早的 OK 日。FORBIDDEN：把 delta 寫進 rotation_score。
+34. `tests/test_missing_not_shown_as_leading.py`（PR 7）：MISSING_DATA theme 不得出現在 ROTATION TODAY 的 Leading／Strengthening／Weakening 桶，也不得印 `LEADING ⚠`。必須在 Data issue 桶，含 missing `stock_id`。
 
 `tests/test_eval_same_universe.py`：H1 / rs_only / thrust_only / random_exclusive / composite **同一日**使用完全相同的 eligibility 規則（universe(T)、liquidity_{T-1}、valid_price_T、exclusions）。各策略 theme 成員集合**可以不同**。assert 每個籃子 ⊆ eligible_market_universe。**禁止** assert 各策略股票集合相等。
 
@@ -2752,6 +2793,17 @@ Cross-sectional sample: THIN     # 顯示 only；不改 ranking、不進 GO
 ⚠ Data issue
   Thermal  MISSING_DATA  members 7/8  missing: 8046
 
+## THEME ROTATION
+# 必有（D99）。Pos = rotation_rank。Δ = rank_delta_N。
+# State = 既有 regime；非 OK 則印 signal_status，不得印 LEADING ⚠。
+# rotation_score 不得出現。
+Theme        Pos   Δ5D  Δ20D  RS20  Thrust  Breadth  State
+AI Server     1     0    +1   +3.2    ↑       72%    主流延續
+Optical       2    +4    +6   +2.8    ↑       68%    剛轉強
+PCB           5    +3    +2   +1.1    ↑       61%    剛轉強
+Memory        9    -4    -5   -1.8    ↓       34%    過熱轉弱
+Thermal       —     —     —      —    —        —     MISSING_DATA  7/8 missing: 8046
+
 ## 主流延續
 - AI伺服器  pos 100  RS20 +6.1% vs 大盤  佔比 8.4%  thrust +0.12  breadth 71%
   overlap 3/12（3037,8046,2313） concentration_top3 68%   # 必留；foundry 尤其要看 2330
@@ -2798,6 +2850,7 @@ v0.1 brief 不得列出個股、52w、rel_vol、leader_score、watchlist。
 ```
 
 這是股癌 dashboard，不是 RRG 圖。FORBIDDEN：為了「看起來像 RRG」改座標或引入 JdK。
+FORBIDDEN：把 v0.1 Timeline 改成 LEADING / TRANSITION / WEAKENING 泳道圖。今日狀態在 Daily Brief（ROTATION TODAY + THEME ROTATION 表）；歷史位移才用 `relative_position` 線 + today-strip。
 
 **v0.1 Timeline default = 11-theme（`themes/v1.yaml`）。** 5-theme Timeline 僅作 H-tax appendix／comparison；`chart` 不帶 `--classification` 時**禁止**走到 `v1-five.yaml`。pytest：`chart` 預設分類檔 theme 數 = 11。
 
@@ -2968,6 +3021,9 @@ launchd 預設 18:30 Asia/Taipei 是對 TWSE ~15:00、FinMind adj ~17:30 的合�
 | `rotation_score` 被人當 0–100 評分器 | 高 | D95：Brief／ASCII／PNG 不得印分數 |
 | 看到 GO 以為模型成功 | 中 | D97：人眼印 RESEARCH STATUS: CONTINUE；識別字仍 GO |
 | Timeline 只剩一條名次線 | 中 | D36／D98：五欄一起看；Brief 開頭 ROTATION TODAY |
+| 人眼看不出誰在超車 | 中 | D99：Brief THEME ROTATION 表必有 Rank Δ5／Δ20 |
+| MISSING_DATA 被畫成 Leading ⚠ | 高 | D100：regime NULL；進 Data issue 桶，禁止 LEADING ⚠ |
+| PRODUCT VERDICT 被讀成產品過關 | 中 | D101：人眼另印 RESEARCH VERDICT；禁止 PRODUCT: PASS gate |
 | Timeline 默認畫 5-theme | 中 | `chart` default = `v1.yaml`；pytest theme 數 = 11 |
 | 過度擬合 | 高 | 固定權重；GO/NO-GO 不搜門檻；禁止為案例改 leader 權重 |
 | 生存者偏差 | **高** | **DoD：** `universe_member(T)` = 當日看板。禁止用今日仍上市過濾。重建戰役強制 `survivorship_warning`。不宣稱 bias-free。官方 2026 戰役在有 dated 看板時偏差較小；v2023 APPENDIX 主題名單仍是存活者。 |
@@ -3159,16 +3215,16 @@ Does GO pass?
 ### PR 7 — Markdown 日報與 Rotation Timeline（**產品 MVP**）
 
 - **標題：** `feat: daily brief and static rotation timeline`
-- **影響：** `output/{brief,chart}.py`, `tests/test_timeline_from_snapshots.py`, `tests/test_chart_default_eleven.py`, `tests/test_missing_data_visible.py`, `tests/test_brief_hides_rotation_score.py`, `tests/test_brief_rotation_today.py`, `tests/test_timeline_five_fields.py`
+- **影響：** `output/{brief,chart}.py`, `tests/test_timeline_from_snapshots.py`, `tests/test_chart_default_eleven.py`, `tests/test_missing_data_visible.py`, `tests/test_brief_hides_rotation_score.py`, `tests/test_brief_rotation_today.py`, `tests/test_timeline_five_fields.py`, `tests/test_brief_rank_delta.py`, `tests/test_missing_not_shown_as_leading.py`
 - **依賴：** PR 5 **與 Gate 1 通過**
-- **內容：** 這是 v0.1 **產品主畫面**，不是研究附屬輸出。日報開頭必有 **ROTATION TODAY**（Strengthening / Leading / Weakening / Data issue；D98）。日報主欄（RS20／thrust／breadth／position／regime／signal_status；`value_share` 與 `value_thrust` 並排；**必留 `concentration_top3`**）。**不得**印觀察清單、52w、rel_vol、leader、個股、任何 `rotation_score` 數字。DATA QUALITY 段必印 MISSING_DATA 的 missing `stock_id`。A→B 標「相對領先轉換」，不是資金流。`ranked_theme_count < 4` → `Cross-sectional sample: THIN`。Timeline PNG（固定 K；副標永遠 `Ranked: n / K themes`；一眼答三問：誰最強／誰變強／誰轉弱；**today-strip 五欄一起**，不得只有 position 線；MISSING_DATA = gap+×，不得默默少線）。chart 只讀 snapshot。**無 watchlist、無 leader。** pytest：chart 預設 theme 數 = 11；`test_ab_arrow_conditions.py`；`test_chart_snapshot_only.py`；`test_missing_data_visible.py`；`test_brief_hides_rotation_score.py`；`test_brief_rotation_today.py`；`test_timeline_five_fields.py`；brief fixture 不含「觀察清單」。H1 尚未跑、或之後 FAIL，**不得**讓本 PR 被當成失敗。
+- **內容：** 這是 v0.1 **產品主畫面**，不是研究附屬輸出。日報開頭必有 **ROTATION TODAY**（Strengthening / Leading / Weakening / Data issue；D98）。接著 **THEME ROTATION** 表：Pos／Δ5D／Δ20D／RS20／Thrust／Breadth／State（D99）。日報主欄（RS20／thrust／breadth／position／regime／signal_status；`value_share` 與 `value_thrust` 並排；**必留 `concentration_top3`**）。**不得**印觀察清單、52w、rel_vol、leader、個股、任何 `rotation_score` 數字。DATA QUALITY 段必印 MISSING_DATA 的 missing `stock_id`。MISSING_DATA 不得印成 LEADING ⚠（D100）。A→B 標「相對領先轉換」，不是資金流。`ranked_theme_count < 4` → `Cross-sectional sample: THIN`。Timeline PNG（固定 K；副標永遠 `Ranked: n / K themes`；一眼答三問：誰最強／誰變強／誰轉弱；**today-strip 五欄一起**，不得只有 position 線；MISSING_DATA = gap+×，不得默默少線）。**v0.1 Timeline 仍是 relative_position 線 + today-strip，不是 LEADING/TRANSITION/WEAKENING 泳道圖。** chart 只讀 snapshot。**無 watchlist、無 leader。** pytest：chart 預設 theme 數 = 11；`test_ab_arrow_conditions.py`；`test_chart_snapshot_only.py`；`test_missing_data_visible.py`；`test_brief_hides_rotation_score.py`；`test_brief_rotation_today.py`；`test_timeline_five_fields.py`；`test_brief_rank_delta.py`；`test_missing_not_shown_as_leading.py`；brief fixture 不含「觀察清單」。H1 尚未跑、或之後 FAIL，**不得**讓本 PR 被當成失敗。
 
 ### PR 6 — 評估器、基準、H1–H4、GO/ITERATE/NO-GO（**研究實驗室**；H5 = Phase 1.5）
 
 - **標題：** `feat: basket evaluator vs TAIEX/random/RS-only and verdict report`
 - **影響：** `eval/{baselines,hypotheses,report}.py`, `replay_run` 表, `reports/`, `tests/test_eval_baskets.py`
 - **依賴：** PR 5 **與 Gate 1 通過**（建議在 PR 7 產品 MVP 之後合併，不要讓 eval 先於 Timeline）
-- **內容：** 研究實驗室，**不是**產品定義。籃子評估。**same eligibility universe，不是 same stock set**。H1 選題只看 regime label。進場只走 `get_entry_date`，禁止讀 `entry_lag_sessions`。PRIMARY CA 只看 <=T；`H1_ex_future_ca` 不得改 GO。market regime 只 partition 報告。`excluded_due_to_ca` + PRIMARY DATA SELECTION WARNING。campaign `classification_digests[]`。headline：Persistence Test (H1) / H2 incremental Δ。H2 **禁止 boolean**。random 旁印 NEGATIVE CONTROL RESULT。`verdict=GO` 時人眼必印 `RESEARCH STATUS: CONTINUE`（識別字仍 GO）。pytest：`test_h2_is_not_boolean.py`、`test_replay_determinism.py` 戰役半段、`test_summary_research_status.py`。**H1–H4 only。無 H5。無 leaders。不增加 baseline。不增加 GO gate。H1 FAIL 不得刪 Brief／Timeline。**
+- **內容：** 研究實驗室，**不是**產品定義。籃子評估。**same eligibility universe，不是 same stock set**。H1 選題只看 regime label。進場只走 `get_entry_date`，禁止讀 `entry_lag_sessions`。PRIMARY CA 只看 <=T；`H1_ex_future_ca` 不得改 GO。market regime 只 partition 報告。`excluded_due_to_ca` + PRIMARY DATA SELECTION WARNING。campaign `classification_digests[]`。headline：Persistence Test (H1) / H2 incremental Δ。H2 **禁止 boolean**。random 旁印 NEGATIVE CONTROL RESULT。`verdict=GO` 時人眼必印 `RESEARCH VERDICT: GO` 與 `RESEARCH STATUS: CONTINUE`（識別字仍 GO）。pytest：`test_h2_is_not_boolean.py`、`test_replay_determinism.py` 戰役半段、`test_summary_research_status.py`。**H1–H4 only。無 H5。無 leaders。不增加 baseline。不增加 GO gate。H1 FAIL 不得刪 Brief／Timeline。** CA 研究欄（`H1_ex_jump` / `H1_ex_future_ca`）只存在 `eval/`，不得改 primary signal。
 
 ### PR 8 — Streamlit Phase 1.5（可選，replay 非 NO-GO 後）
 
@@ -3184,18 +3240,20 @@ Does GO pass?
 
 ---
 
-## Freeze（r3.25）
+## Freeze（r3.26）
 
 **核心模型不再改。不要再開 architecture redesign。不要導入 Adj、Sharpe、z-score、動態權重、ML。不要改 H1 公式、11-theme、lag-1、Timeline 數學。不要縮小 PR DAG。不要再為下一輪 GPT review 改公式。下一刀是 Gate 0。**
 
 實作時先讀 `docs/coding-contract.md`，衝突以本設計文件公式／Freeze 為準。
 
-r3.24 產品契約仍有效。本輪只收人眼顯示，不改訊號／評估公式：
+r3.25 人眼契約仍有效。本輪只收人眼顯示，不改訊號／評估公式：
 
-1. **D97：GO 人眼顯示 RESEARCH STATUS: CONTINUE。** 識別字／parquet 仍 `verdict=GO`。不改 gate。  
-2. **D98：Daily Brief 必有 ROTATION TODAY**（Strengthening / Leading / Weakening / Data issue）。由既有 regime + `signal_status` 衍生。  
-3. **D36 收緊：五欄必須一起呈現。** Timeline 不得只有 position 線。  
-4. 一句話定位：rotation radar，不是 Quant Platform。  
+1. **D99：Brief 必有 Rank Δ5／Δ20。** 由既有 `rotation_rank` 衍生。兩端非 OK → `—`。禁止跳洞。不進 score／ranking／GO／A→B。  
+2. **D100：status 是徽章不是維度。** 禁止 Data Quality Score。禁止 MISSING_DATA 顯示成 LEADING ⚠。  
+3. **D101：人眼印 RESEARCH VERDICT 作為 PRODUCT VERDICT 別名。** 識別字仍 `verdict=GO`。禁止 PRODUCT: PASS 新 gate。  
+4. D95 收緊：敘事禁止「AI Server = 87.2」。  
+5. Taxonomy Audit = 既有 overlap／concentration／Gate 1，不是新模組。  
+6. Timeline 仍是線 + today-strip，不是泳道圖。  
 
 ```text
 SOURCE OF TRUTH ORDER
@@ -3234,8 +3292,16 @@ Do not silently drop MISSING_DATA themes from Brief or Timeline.
 Do not print rotation_score in Daily Brief / ASCII / Timeline PNG.
 Do not treat Timeline as an RRG-like pretty chart; answer the three questions.
 Do not rename the GO identifier; human line is RESEARCH STATUS: CONTINUE.
+Do not rename GO to RESEARCH_GO; human alias is RESEARCH VERDICT.
+Do not add PRODUCT: PASS/FAIL as a new gate.
 Do not omit ROTATION TODAY from Daily Brief.
+Do not omit Rank Δ5/Δ20 from the Brief THEME ROTATION table.
+Do not skip holes when computing rank_delta.
+Do not print MISSING_DATA as LEADING ⚠.
+Do not invent a Data Quality Score.
 Do not ship a Timeline that is only a relative_position line.
+Do not replace Timeline with a LEADING/TRANSITION/WEAKENING swimlane chart.
+Do not add a Taxonomy Audit engine; use existing overlap + Gate 1.
 Do not invent a Quant Platform or extra GO gates.
 Do not invent golden numbers before Gate 0 official bars exist.
 Do not make golden / Timeline / H1 a Gate 0 blocker.
