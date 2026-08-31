@@ -1,0 +1,882 @@
+# MarketPulse MVP Design v0.2
+
+> **STATUS: REPLACEMENT SPECIFICATION**
+>
+> This document intentionally replaces the previous `docs/design-v0.1.md`.
+> Do not incrementally preserve the previous architecture.
+> If a previous design conflicts with this document, this document wins.
+
+## 0. Product Definition
+
+MarketPulse is a **local, daily Taiwan stock theme-rotation radar**.
+
+Its only MVP job is:
+
+> Make relative leadership changes between a small set of Taiwan market themes visible and reproducible from daily price, trading value, and breadth data.
+
+The product is **not** a prediction engine, trading system, quant research platform, technical-analysis library, or generic financial framework.
+
+### MVP output
+
+1. Daily Theme Brief
+2. Theme Rank / Rotation Timeline
+3. Historical replay for validation of the visualization
+4. Basic data-quality / future-leakage tests
+
+### MVP deployment
+
+- Apple Silicon Mac
+- Single user
+- Local execution
+- Daily/end-of-day data
+- No server
+- No GUI requirement
+- No real-time data
+
+---
+
+# 1. Non-Negotiable Principles
+
+## 1.1 Reuse before implementation
+
+Before implementing any generic financial indicator, charting method, or backtesting capability:
+
+1. Check whether a mature open-source implementation exists.
+2. Prefer reuse over reimplementation.
+3. Do not invent a new formula unless it is genuinely MarketPulse-specific domain logic.
+4. Do not optimize arbitrary weights or thresholds in MVP.
+
+Preferred reuse:
+
+- `pandas` for rolling calculations, aggregation, ranking and tabular processing.
+- `pandas-ta-classic` or another selected mature TA package for standard technical indicators when needed.
+- Existing RRG implementation such as RRG-Lite for optional RRG visualization.
+- `matplotlib` for the MVP static Timeline if the RRG package does not provide the desired chart.
+
+`pandas-ta-classic` is a community-maintained Python TA library with 200+ indicators and an MIT license; use it instead of writing standard indicators from scratch. See: https://github.com/xgboosted/pandas-ta-classic
+`pandas-ta` is an alternative mature implementation with 130+ indicators. See: https://github.com/JameRawlings/pandas-ta
+
+**Do not add a dependency merely because it has many features. Use the smallest useful surface.**
+
+## 1.2 MarketPulse owns semantics, not generic mathematics
+
+MarketPulse owns:
+
+- Taiwan market data adapters
+- Theme taxonomy
+- Theme membership
+- Stock → Theme aggregation
+- Point-in-time/as-of rules
+- Theme ranking semantics
+- Rotation Timeline
+- Historical replay semantics
+
+MarketPulse does NOT own:
+
+- SMA implementation
+- generic ROC implementation
+- generic momentum indicators
+- RRG mathematics
+- generic backtesting framework
+- generic charting framework
+
+## 1.3 No composite score in MVP
+
+There is **no `rotation_score` in the MVP product path**.
+
+Do not implement:
+
+- weighted rank-of-rank score
+- score weights
+- score optimization
+- custom factor score
+- custom normalized composite
+
+Theme strength is simply ranked by **RS20**.
+
+---
+
+# 2. MVP Architecture
+
+```text
+                 TWSE / TPEx official EOD data
+                              |
+                              v
+                    +-------------------+
+                    | Data Normalizer   |
+                    +---------+---------+
+                              |
+                              v
+                    +-------------------+
+                    | Theme YAML        |
+                    | 11 fixed themes   |
+                    +---------+---------+
+                              |
+                              v
+                    +-------------------+
+                    | Theme Aggregation |
+                    +---------+---------+
+                              |
+             +----------------+----------------+
+             |                |                |
+             v                v                v
+        Theme Return       Breadth         Value Share
+             |                |                |
+             +----------------+----------------+
+                              |
+                              v
+                    +-------------------+
+                    | Existing Methods  |
+                    | RS / SMA / rank   |
+                    +---------+---------+
+                              |
+                              v
+                    +-------------------+
+                    | Theme Rank (RS20) |
+                    +---------+---------+
+                              |
+                  +-----------+-----------+
+                  |                       |
+                  v                       v
+             Daily Brief             Rank Timeline
+                                          |
+                                          v
+                                    Optional RRG
+```
+
+---
+
+# 3. Data Scope
+
+## 3.1 Universe
+
+MVP covers:
+
+- TWSE listed common stocks
+- TPEx listed common stocks
+
+Exclude:
+
+- ETFs
+- ETNs
+- TDRs
+- warrants
+- preferred shares
+- other non-common instruments
+- emerging-market instruments unless explicitly added later
+
+## 3.2 Required daily fields
+
+```text
+date
+market
+symbol
+open
+high
+low
+close
+volume
+trading_value
+```
+
+TAIEX benchmark:
+
+```text
+date
+close
+```
+
+## 3.3 Data source
+
+Canonical source:
+
+- TWSE official dated end-of-day data
+- TPEx official dated end-of-day data
+
+MVP should first prove that the required historical range can be obtained from the public official sources.
+
+Do not introduce a paid data vendor until the official-source spike demonstrates a real blocker.
+
+Do not use yfinance or third-party sources as the canonical Taiwan data source.
+
+---
+
+# 4. Storage
+
+Keep storage simple.
+
+Preferred:
+
+```text
+raw/
+normalized/
+snapshots/
+```
+
+Use Parquet for immutable analytical data.
+
+SQLite may be used as a small local working cache if implementation benefits from it.
+
+Do not introduce:
+
+- PostgreSQL
+- Redis
+- DuckDB as a mandatory service
+- Kafka
+- object storage
+- cloud infrastructure
+
+The system is a local daily batch tool.
+
+---
+
+# 5. Theme Taxonomy
+
+MarketPulse's primary proprietary/domain artifact is the Theme taxonomy.
+
+Use one frozen MVP file:
+
+```text
+themes/v1.yaml
+```
+
+It contains exactly 11 themes.
+
+Example:
+
+```yaml
+themes:
+  optical:
+    name: 光通訊
+    members:
+      - "3081"
+      - "3363"
+
+  pcb:
+    name: PCB
+    members:
+      - "XXXX"
+```
+
+The actual membership list is maintained separately from the calculation engine.
+
+## 5.1 Important
+
+Theme membership is an analytical classification, not an official exchange classification.
+
+Theme overlap is allowed.
+
+A stock may belong to multiple themes.
+
+---
+
+# 6. Point-in-Time Rule
+
+The MVP needs PIT protection only for **market data**, not historical reconstruction of today's taxonomy.
+
+For signal date `T`:
+
+```text
+price/volume data <= T
+```
+
+Theme membership used for `T`:
+
+```text
+membership known by T-1
+```
+
+This prevents a newly added stock from contributing to the signal on the same day it was added.
+
+## 6.1 Historical taxonomy disclosure
+
+MVP replay uses the current frozen `themes/v1.yaml` against historical data.
+
+This is:
+
+> historical visualization replay
+
+It is NOT:
+
+> proof that the theme list was known at the historical date.
+
+Every replay report must say so.
+
+Do not build a historical taxonomy/event system in MVP.
+
+---
+
+# 7. Theme Calculations
+
+## 7.1 Constituent return
+
+For each member:
+
+```text
+return_N = close[T] / close[T-N] - 1
+```
+
+Use an existing standard return implementation where practical.
+
+## 7.2 Theme return
+
+MVP uses **equal-weight constituent return**.
+
+```text
+theme_return_N = mean(valid member return_N)
+```
+
+Why:
+
+- simple
+- transparent
+- no additional market-cap dataset
+- no custom weighting methodology
+- easy to validate
+
+Do not build value-weighted theme return in MVP.
+
+Trading value is a separate signal.
+
+---
+
+# 8. Relative Strength
+
+Primary strength metric:
+
+```text
+RS20 = theme_return_20 - TAIEX_return_20
+```
+
+Optional supporting metric:
+
+```text
+RS60 = theme_return_60 - TAIEX_return_60
+```
+
+RS20 is the **only primary ranking metric**.
+
+No composite score.
+
+---
+
+# 9. Theme Rank
+
+For each trading day:
+
+```text
+rank themes by RS20 descending
+```
+
+Example:
+
+```text
+Theme        RS20       Rank
+Optical      +18.2%       1
+CCL          +13.7%       2
+PCB          +11.1%       3
+Passive       +7.8%       4
+Thermal       +6.2%       5
+AI Server     +3.1%       6
+```
+
+Rank is ordinal.
+
+Rank is not a magnitude.
+
+Do not imply that rank #1 is "twice as strong" as rank #2.
+
+---
+
+# 10. Rank Movement
+
+Display-only derived fields:
+
+```text
+rank_delta_5
+rank_delta_20
+```
+
+Interpretation:
+
+```text
+positive = moved upward
+negative = moved downward
+```
+
+These are not additional prediction signals in MVP.
+
+---
+
+# 11. Trading Value Share
+
+For each theme:
+
+```text
+theme_value_share =
+    sum(member trading_value)
+    /
+    sum(unique market stock trading_value)
+```
+
+A stock belonging to multiple themes is counted fully in each theme numerator.
+
+The market denominator counts each stock once.
+
+Therefore theme shares may sum to more than 100%.
+
+This is intentional because the themes represent overlapping narratives.
+
+---
+
+# 12. Value Thrust
+
+Optional supporting display:
+
+```text
+value_thrust =
+    value_share[T] / SMA20(value_share) - 1
+```
+
+Use standard rolling mean functionality.
+
+Value thrust does NOT influence the primary rank.
+
+If implementation complexity becomes material, omit it from the first executable slice.
+
+---
+
+# 13. Breadth
+
+Primary breadth definition:
+
+```text
+breadth =
+    count(Close > SMA20(Close))
+    /
+    count(valid members)
+```
+
+This answers:
+
+> Is the theme move broad, or driven by only a few stocks?
+
+Use a standard SMA implementation.
+
+Do not invent additional breadth formulas in MVP.
+
+---
+
+# 14. MVP Theme Snapshot
+
+The minimum daily record is:
+
+```text
+date
+theme_id
+
+return_20
+rs20
+rank
+
+rank_delta_5
+rank_delta_20
+
+value_share
+breadth
+```
+
+Optional:
+
+```text
+return_60
+rs60
+value_thrust
+member_count
+```
+
+Do NOT include:
+
+```text
+rotation_score
+rank_momentum
+market_regime
+theme_regime
+leader_score
+alpha_score
+confidence_score
+```
+
+---
+
+# 15. Rotation Timeline
+
+This is the primary product visualization.
+
+X-axis:
+
+```text
+date
+```
+
+Y-axis:
+
+```text
+theme rank
+```
+
+Use fixed 11-theme ordering/scale.
+
+Example:
+
+```text
+Rank
+ 1 |                         Optical
+ 2 |                    _____/
+ 3 |               PCB _/
+ 4 |          CCL __/
+ 5 |
+ 6 | AI Server  \________
+ 7 |
+   +--------------------------------
+      May       Jun       Jul   Aug
+```
+
+The Timeline means:
+
+> relative leadership changed over time.
+
+It does NOT prove:
+
+> capital literally flowed from theme A into theme B.
+
+The chart should make this distinction clear in accompanying text.
+
+---
+
+# 16. Optional RRG
+
+RRG is an optional visualization, not the MarketPulse core algorithm.
+
+If included:
+
+```text
+MarketPulse theme data
+        |
+        +--> RS
+        |
+        +--> RS momentum
+                 |
+                 v
+          Existing RRG implementation
+```
+
+Prefer an existing implementation such as RRG-Lite rather than implementing RRG from scratch.
+
+RRG-Lite:
+https://github.com/BennyThadikaran/RRG-Lite
+
+If integration is awkward or adds significant dependency complexity, skip RRG for MVP.
+
+The Rank Timeline is sufficient for MVP completion.
+
+---
+
+# 17. Daily Brief
+
+Minimum output:
+
+```text
+MarketPulse — YYYY-MM-DD
+
+Theme Rotation
+
+Theme       Rank   Δ5   RS20    Value%   Breadth
+---------------------------------------------------
+Optical       1    +4   +18.2%    9.4%      78%
+CCL           2    +2   +13.7%    7.2%      71%
+PCB           3    +3   +11.1%    8.1%      67%
+Passive       4    +5    +7.8%    5.4%      62%
+...
+```
+
+This table should be understandable without knowing the implementation.
+
+---
+
+# 18. CLI
+
+Minimum CLI:
+
+```text
+marketpulse download
+marketpulse validate
+marketpulse analyze
+marketpulse brief
+marketpulse chart
+marketpulse replay
+```
+
+Do not build:
+
+```text
+doctor
+sync-groups
+campaign
+research
+backtest
+```
+
+unless implementation proves they are genuinely necessary.
+
+A small CLI is preferred.
+
+---
+
+# 19. Replay
+
+Replay is required for MVP validation.
+
+```text
+marketpulse replay \
+  --start YYYY-MM-DD \
+  --end YYYY-MM-DD
+```
+
+For each historical day `T`:
+
+```text
+data <= T
+membership <= T-1
+calculate theme metrics
+rank by RS20
+save result
+```
+
+Replay must never read future bars.
+
+---
+
+# 20. Future-Leakage Tests
+
+Only a few tests are mandatory.
+
+## Test 1: Future bar mutation
+
+Modify T+1 price/volume.
+
+Expected:
+
+```text
+signal(T) unchanged
+```
+
+## Test 2: Membership mutation
+
+A stock added after T must not contribute to theme T.
+
+## Test 3: Historical replay
+
+Replay result at T must use only allowed data.
+
+## Test 4: Indicator sanity
+
+Compare standard indicators against the selected OSS implementation / known reference values.
+
+Do not create a new statistical validation framework.
+
+---
+
+# 21. Data Quality
+
+MVP statuses:
+
+```text
+OK
+MISSING_DATA
+INSUFFICIENT_HISTORY
+THIN
+```
+
+Do not build a large data-quality state machine.
+
+Failures must be visible.
+
+Never silently drop invalid rows.
+
+---
+
+# 22. Dependencies
+
+Preferred minimum:
+
+```text
+python >= 3.12
+uv
+pandas
+numpy
+pyyaml
+pyarrow
+matplotlib
+pytest
+```
+
+For standard TA:
+
+```text
+pandas-ta-classic
+```
+
+Only add it if the required indicators are actually used.
+
+For RRG:
+
+```text
+RRG-Lite or another selected mature implementation
+```
+
+Do not add VectorBT, Backtrader, OpenBB, TA-Lib, or other large frameworks merely "for future use".
+
+---
+
+# 23. Open-Source Reuse Matrix
+
+| Capability | MVP ownership | Preferred implementation |
+|---|---|---|
+| DataFrame operations | reuse | pandas |
+| SMA | reuse | pandas-ta-classic / pandas |
+| Standard return | reuse | pandas / pandas-ta-classic |
+| Momentum | reuse | pandas-ta-classic |
+| Cross-sectional rank | reuse | pandas |
+| RRG | reuse | RRG-Lite / established implementation |
+| Static chart | reuse | matplotlib |
+| Theme taxonomy | MarketPulse | YAML |
+| Stock → Theme aggregation | MarketPulse | small custom module |
+| RS20 definition | MarketPulse | one-line domain formula |
+| Rank Timeline | MarketPulse | small custom chart |
+| PIT/as-of | MarketPulse | small custom logic |
+| Replay | MarketPulse | small custom logic |
+
+### Rule
+
+If an OSS package only saves a few lines but introduces a large dependency or unclear maintenance risk, use the simpler native implementation.
+
+Reuse is a means to reduce risk, not a goal by itself.
+
+---
+
+# 24. Explicitly Forbidden in MVP
+
+The following are forbidden unless this specification is intentionally revised:
+
+```text
+rotation_score
+weighted signal score
+rank-of-rank composite
+custom factor
+ML
+prediction model
+portfolio optimization
+market regime classifier
+six-state theme regime
+5-theme production baseline
+leader detection
+52-week high filter
+watchlist
+stock recommendations
+real-time data
+broker API
+Streamlit
+web dashboard
+cloud deployment
+database server
+historical taxonomy reconstruction
+automatic scheduling
+notification
+backtest framework
+custom TA indicator implementations
+custom RRG implementation
+```
+
+---
+
+# 25. Research / Phase 2
+
+Only after the first useful Timeline exists:
+
+```text
+H1/H2/H3/H4
+5-theme comparison
+historical taxonomy
+theme regime labels
+market regime
+leader overlay
+forward-return analysis
+sensitivity analysis
+RRG enhancement
+```
+
+Research must not silently modify the MVP signal.
+
+---
+
+# 26. Definition of Done
+
+MVP is complete when all are true:
+
+1. Official TWSE + TPEx daily data can be acquired for the required test period.
+2. Data is normalized and stored locally.
+3. 11-theme YAML loads successfully.
+4. Theme returns calculate successfully.
+5. RS20 calculates successfully.
+6. Themes rank by RS20.
+7. Value share calculates correctly with overlapping themes.
+8. Breadth calculates correctly.
+9. Daily Brief is generated.
+10. Rotation Timeline PNG is generated.
+11. Historical replay generates the same result deterministically.
+12. Future-bar mutation does not alter earlier signals.
+13. A human can look at the Timeline and answer:
+   - Which themes are strong?
+   - Which themes are improving?
+   - Which themes are weakening?
+   - Which themes have moved in rank?
+14. No custom composite score is required.
+
+**At this point, stop. Do not add features before using the product.**
+
+---
+
+# 27. Success Criterion
+
+The MVP is not successful because it has many metrics.
+
+It is successful if a user can open the output and immediately see something like:
+
+```text
+May
+AI Server
+   ↓
+June
+Optical / CPO
+   ↓
+July
+PCB / CCL
+   ↓
+August
+Passive / Thermal
+```
+
+and then drill into the underlying:
+
+```text
+RS20
+Value Share
+Breadth
+Rank movement
+```
+
+to understand why the visual changed.
+
+That is MarketPulse.
+
