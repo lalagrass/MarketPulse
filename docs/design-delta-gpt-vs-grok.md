@@ -2,10 +2,10 @@
 
 - **日期：** 2026-08-30
 - **用途：** 後續評估、改規格、或回看「為什麼不照 GPT 稿做／為什麼不照 r1 做」時用。**不是**實作規格。實作以設計文件為準。
-- **設計文件（現行 r3.29，凍結）：** `docs/design-v0.1.md`  
+- **設計文件（現行 r3.30，凍結）：** `docs/design-v0.1.md`  
 - **實作契約：** `docs/coding-contract.md`
 - **審查筆記：** `/var/folders/k3/f9js6pcj02xclk75ds1nhzl40000gn/T/grok-chenyuying/grok-design-review-cc86276c.md`
-- **工作區：** `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.28；本輪 r3.29 只收公式出處契約，不改數學）
+- **工作區：** `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.29；本輪 r3.30 只收視覺化回放／taxonomy 後見之明契約，不改數學）
 
 本檔記錄三份來源之間的**衝突**、r1 內部**不一致**、以及 r2／r3 **改寫了什麼**。若之後要推翻某一列，改這張表並同步設計文件，不要只改程式。
 
@@ -932,3 +932,30 @@ FinMind 有 `TaiwanStockInfo`／daily／Adj 與 token 600/hr、無 token 300/hr�
 | 開 v0.2 數學 | **拒絕（D102）** |
 
 **Verdict：APPROVE 公式出處表。拒絕 RRG 引擎與一切公式改寫。Freeze at r3.29。下一步仍是 Gate 0 → PR1 → PR2。未說開始 Gate 0 不准動手寫 ingest。**
+
+---
+
+## 39. r3.30 過度設計／兩種 leakage（視覺化回放；PIT taxonomy 不是產品 MVP）
+
+來源：GitHub freeze 再評主張砍 20–30% 複雜度；H3／H4／random_exclusive／digest／provenance／A→B 數學過重。使用者同意：MarketPulse 不是回測交易策略；第一問是 4–6 月輪動能不能被一張圖呈現。並主張砍掉 classification PIT，改用現行 YAML 看全部歷史。
+
+事實校正：GitHub `dev` 不是 1 commit。截至本輪前是 `a774d99` … `6d166c5` 五個 freeze commit。行數也不是 2871。
+
+| 點 | 處分 |
+|---|---|
+| 核心方向對；PRIMARY = 誰強／誰變強／誰變弱／A→B | **維持（D103）** |
+| 不做 Streamlit；CLI + Markdown + PNG | **維持** |
+| 11 theme 不砍 | **維持** |
+| rotation_score 內部排序、人眼禁出 | **維持（D95）** |
+| Replay 價量 as-of + mutate-future | **維持。** 這是正確性，不是過度設計 |
+| 兩種 leakage：今天的 theme 定義拿去看歷史 = 允許；價量看未來 = 禁止 | **採納（D105）。** 產品回放 = historical visualization replay。report 必印限制句 |
+| 砍 PIT taxonomy／valid_from／contemporaneous vs reconstructed 當產品 MVP | **採納為產品路徑。** 第一張 Timeline 之前不准實作 provenance 狀態機。D10／D24 留 Phase 2／Level 3，不從規格刪除 |
+| Replay 2026-04→08 用現行 11-theme | **採納為產品問題。** 仍不是第一個 coding slice。Gate 0 仍是 20–30 日官方看板。FORBIDDEN：把這張圖當成「4 月就預測到光通訊」 |
+| 砍 H3／H4／random_exclusive／economic materiality 出 v0.1 | **拒絕從規格刪除。** 採納硬限制：第一張 Timeline 之前不准實作。H1／H2 仍 SECONDARY、PR 6、不擋產品 MVP |
+| 簡化 version／digest 成 4 個欄 | **採納第一條產品路徑。** `run_id` / `as_of` / `algorithm_version` / `classification_version`。MATCH 留 snapshot metadata，不是先做的 subsystem |
+| 簡化 A→B，刪 X=1/(K-1) | **拒絕改公式。** 採納人眼 gloss。FORBIDDEN：另做一套更鬆的口語 detector |
+| Validation 不阻塞產品 MVP | **已是 r3.28。** 再寫進 coding-contract 硬限制 |
+| GitHub 1 commit、現在是收斂 scope 最好時機 | **拒絕當「repo 幾乎空白所以重開架構」的理由。** 五個 freeze commit。收斂的是產品路徑，不是重寫 design |
+| 再加 RS5 當訊號 | **拒絕當新 ranking component。** RS5/20/60 診斷窗已 freeze |
+
+**Verdict：APPROVE 兩種 leakage 與視覺化回放。拒絕把 H3／H4／A→B 數學／MATCH 從規格刪掉。Freeze at r3.30。下一步仍是 Gate 0 → PR1 → PR2。未說開始 Gate 0 不准動手寫 ingest。**

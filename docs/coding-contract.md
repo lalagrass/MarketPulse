@@ -1,7 +1,7 @@
 # MarketPulse v0.1 coding contract
 
 THIS FILE IS AN IMPLEMENTATION CONTRACT.  
-The full design `docs/design-v0.1.md` (r3.29) is the source of truth.  
+The full design `docs/design-v0.1.md` (r3.30) is the source of truth.  
 This file is the subset a coding agent must not violate.
 
 ```text
@@ -20,6 +20,12 @@ If ambiguous: STOP and report. Do not invent behavior.
 Do not write `signals/`, `eval/`, `rotation.py`, `replay.py`, `chart.py`, Streamlit, leaders, or watchlist in this slice.  
 Do not start a five-year backfill until Gate 0 passes.
 
+### Before the first useful Timeline, DO NOT build
+
+Streamlit, DuckDB, Polars, TA-Lib, VectorBT, FinMind abstraction, provider framework, generic indicator framework, portfolio, leader scoring, watchlist, alert, LLM, H3, H4, random_exclusive, economic materiality, sophisticated statistical significance, five-year backfill, PIT taxonomy / `valid_from` membership history, reconstructed snapshot YAML, campaign machinery, a second theme_state.
+
+H1 persistence and the RS20 baseline stay SECONDARY after PR7. They are not product-MVP completion.
+
 ## Product vs research
 
 PRIMARY = Daily Brief + Rotation Timeline (radar).  
@@ -28,15 +34,19 @@ H1 FAIL ≠ radar useless. A→B = relative leadership transition, never capital
 
 Product MVP job-to-be-done (D103): who is strong, who is strengthening, who is weakening, is relative leadership rotating A→B. Data support = `signal_status` badge, not a Coverage %. If a feature does not help those questions, it is not product MVP.
 
+Two leakages (D105). Price / volume / universe / liquidity looking ahead = a correctness bug. Using the current theme YAML on historical dates = a research-interpretation limit. Product replay = historical visualization replay. Report MUST print that limitation. Do not claim the April chart means we would have known Optical in April.
+
 ```text
 Build the smallest end-to-end system that can take official
-dated TWSE/TPEx daily boards, apply 11 point-in-time themes
-(membership T-1), compute the frozen price / trading-value /
-breadth fields, and produce a Daily Brief + Rotation Timeline
-from immutable snapshots, replayable as-of any session without
-future leakage. Do not implement stock ranking, AI,
-notifications, Streamlit, portfolio, generic TA, a vendor
-bake-off, DuckDB, or H1–H4 as product completion.
+dated TWSE/TPEx daily boards, apply 11 frozen themes from the
+current YAML, compute the frozen price / trading-value /
+breadth fields with windows ≤ T, and produce a Daily Brief +
+Rotation Timeline from immutable snapshots. Historical replay
+uses the current taxonomy to visualize rotation; it does not
+simulate what theme definitions were known at that time.
+Do not implement stock ranking, AI, notifications, Streamlit,
+portfolio, generic TA, a vendor bake-off, DuckDB, PIT taxonomy,
+H3/H4, random_exclusive, or H1–H4 as product completion.
 First slice remains Gate 0 → PR1 → PR2.
 ```  
 Human label for H1 = Persistence Test. Identifier stays `H1`.  
@@ -52,19 +62,20 @@ MarketPulse v0.1 is a daily Taiwan stock theme-rotation radar, not a Quant Resea
 
 ## Invariants
 
-1. Never use future data. Mutating T+1 must not change T's snapshot.  
-2. Membership for signal/eval = G_(T-1).  
+1. Never use future **prices or volume**. Mutating T+1 bars must not change T's snapshot.  
+2. Product-MVP membership = frozen YAML members. No `valid_from`/`valid_to` history before the first Timeline.  
 3. Liquidity = TV_(T-1).  
 4. Universe = universe_member(T).  
 5. Detect missing **before** building I_T:
 
 ```text
-G_T = membership_asof(T-1)
+G_T = frozen YAML members of the classification
 E_T = G_T ∩ universe(T) ∩ liquidity_(T-1)
 M_T = E_T members missing close_T or TV_T
 I_T = E_T - M_T
 M_T non-empty → MISSING_DATA (not a partial ranked signal)
 FORBIDDEN: filter close.notnull() first, then look for missing.
+FORBIDDEN: implement membership_asof history before the first Timeline.
 ```
 
 6. Any incomplete required component → no `rotation_score`. No `skipna`.  
@@ -94,11 +105,13 @@ Entry = next session close. No `entry_lag_sessions`.
 
 ## Snapshot
 
+First product path only needs: `run_id`, `as_of`, `algorithm_version`, `classification_version`.  
 `daily_run_id` ≠ `campaign_id`.  
-MATCH = (algorithm_version, config_version, classification_version, classification_digest, schema_version, price_mode).  
+MATCH = (algorithm_version, config_version, classification_version, classification_digest, schema_version, price_mode) is snapshot metadata at PR5, not a first-slice subsystem.  
 Parquet is immutable. SQLite is a working cache.  
 `content_digest` = data-bearing columns only.  
-campaign data identity = dates + versions + ordered `content_digest[]`. Do not hash `daily_run_id`.
+campaign data identity = dates + versions + ordered `content_digest[]`. Do not hash `daily_run_id`.  
+Do not build campaign / digest / provenance machinery before the first Timeline.
 
 `canonical_json`: UTF-8, `sort_keys=True`, `ensure_ascii=False`, `separators=(',', ':')`, `stock_id` always string.
 
@@ -129,7 +142,7 @@ Do not invent a Quant Platform.
 ```
 
 REUSE: pandas, numpy, httpx+tenacity, pydantic, Typer, SQLite, PyArrow, matplotlib, pytest, uv.  
-OWN: theme YAML, membership, as-of, E_T/M_T/I_T, TV-weight, breadth, thrust, RS, relative_position, regime, A→B, snapshot identity, H1–H4.  
+OWN: frozen theme YAML, price/volume as-of, E_T/M_T/I_T, TV-weight, breadth, thrust, RS, relative_position, regime, A→B, snapshot identity. Membership provenance and H1–H4 stay in the spec; do not implement provenance or H3/H4 before the first Timeline.  
 RRG: conceptual reference only. No JdK RS-Ratio. No RRG library. Timeline is not an RRG chart.  
 `rank_momentum` already encodes relative-momentum in rank space. Do not add a second JdK axis.
 
@@ -148,6 +161,12 @@ RRG / JdK as the rotation engine. Delete `rotation_score`.
 `relative_position` = 252d RS percentile or z-score. Theme regime = MA20/MA60.  
 CMF, HHI, Breadth Thrust. Confirmation-only split that drops TV/breadth from ranking.  
 Treat A→B as capital flow. Make H1–H4 a product-MVP completion criterion.  
+Implement PIT taxonomy / valid_from membership history / reconstructed snapshot YAML before the first Timeline.  
+Claim visualization replay means contemporaneous knowledge.  
+Implement a looser informal A→B detector.  
+Implement H3, H4, random_exclusive, or economic materiality before the first Timeline.  
+Delete H3/H4 from the v0.1 spec.  
+Treat MATCH digest layers as a first-slice subsystem.  
 Telegram / LINE / Email / Push. Portfolio / P&L / execution.  
 `h2_pass`. Newey-West / p-value / Sharpe. 11→10 themes. Equal-weight as the signal. Leaders / 52w / watchlist.  
 Print `rotation_score` in Brief/ASCII/PNG. Silently drop MISSING_DATA themes. Print MISSING_DATA as `LEADING ⚠`. Invent a Data Quality Score. Shrink the PR DAG. Invent golden numbers before Gate 0 bars. Rename GO → CONTINUE or RESEARCH_GO as an identifier. Add `PRODUCT: PASS` as a new gate. Omit ROTATION TODAY. Omit Rank Δ5/Δ20. Skip holes when computing rank_delta. Ship a Timeline that is only a relative_position line. Replace Timeline with a swimlane chart. Invent a Taxonomy Audit engine. Invent a Quant Platform.

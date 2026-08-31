@@ -5,12 +5,12 @@
 | 文件標題 | MarketPulse：股癌風格「族群先、輪動次、強勢股最後」之 Mac 本地 MVP |
 | 作者 | 待填 |
 | 日期 | 2026-08-30 |
-| 修訂 | 2026-08-31 r3.29（公式出處表：標準概念 vs 自有聚合／組合。不改公式。拒絕 RRG 當引擎、拒絕砍 rotation_score、拒絕 position=RS percentile。另見 `docs/coding-contract.md`。） |
+| 修訂 | 2026-08-31 r3.30（兩種 leakage：價量禁止看未來；現行 taxonomy 套歷史 = 視覺化回放，允許且必須揭露。不改公式、不砍 H3/H4 出 v0.1、不縮小 PR DAG。另見 `docs/coding-contract.md`。） |
 | 狀態 | Design Freeze |
 | 產品名稱 | MarketPulse |
 | 目標市場 | 台股上市（TWSE）+ 上櫃（TPEx）普通股 |
 | 部署形態 | Apple Silicon Mac 單機、單使用者、盤後日頻批次 |
-| 工作區 | `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.28；本輪 r3.29 只收公式出處契約，不改數學。規格 `docs/design-v0.1.md`；實作契約 `docs/coding-contract.md`） |
+| 工作區 | `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.29；本輪 r3.30 只收視覺化回放／taxonomy 後見之明契約，不改數學。規格 `docs/design-v0.1.md`；實作契約 `docs/coding-contract.md`） |
 
 **版本切分（讀文件先看這段）：**
 
@@ -27,6 +27,9 @@ PRIMARY — Rotation Visualization
   position moves over time, using price / volume / breadth.
   Output: Daily Brief + Rotation Timeline (static PNG).
   rotation_score is an internal ranking tool, not the product.
+  Replay = historical visualization with the current YAML.
+  Price/volume windows ≤ T. Taxonomy hindsight is allowed
+  and must be disclosed (D105).
 
 SECONDARY — Framework Validation
   Test whether those signals contain useful forward information
@@ -41,13 +44,13 @@ Detect / visualize rotation ≠ predict future theme returns.
 
 > MarketPulse v0.1 is a daily Taiwan stock theme-rotation radar. Its job is to make relative leadership transitions visible and reproducible from price, trading value, and breadth. Research validation exists only to test whether this reading framework deserves further development.
 
-中文：MarketPulse 是台股盤後族群輪動雷達。第一任務不是預測，而是把「今天哪些族群強、哪些正在轉強、哪些正在退潮，以及相對領先如何隨時間轉移」畫清楚。Replay / H1–H4 只驗證這種閱讀值不值得繼續研究，不是把系統做成量化交易平台。
+中文：MarketPulse 是台股盤後族群輪動雷達。第一任務不是預測，而是把「今天哪些族群強、哪些正在轉強、哪些正在退潮，以及相對領先如何隨時間轉移」畫清楚。產品回放是 **historical visualization replay**：用現行分類看歷史輪動能不能被畫清楚，不是模擬「當時的人是否已知這份名單」。H1–H4 只驗證這種閱讀值不值得繼續研究，不是把系統做成量化交易平台。
 
-v0.1 **不是** Quant Research Platform。digest／campaign／H1–H4 是雷達的可重現護欄，不是產品本體。第一個 coding slice 仍然只准 Gate 0 → PR1 → PR2。
+v0.1 **不是** Quant Research Platform。digest／campaign／H1–H4 是雷達的可重現護欄，不是產品本體。第一個 coding slice 仍然只准 Gate 0 → PR1 → PR2。第一張有用的 Timeline 之前，禁止實作 H3／H4、random_exclusive、economic materiality、classification provenance 狀態機。
 
-兩者都不是交易系統、也不是 GUI。未出產品 MVP（Brief + Timeline）前不排 Streamlit。H1–H4 **不砍**，但不是產品完成條件，也不得把 MarketPulse 定義成「預測實驗室」。
+兩者都不是交易系統、也不是 GUI。未出產品 MVP（Brief + Timeline）前不排 Streamlit。H1–H4 **不從 v0.1 規格刪除**，但不是產品完成條件，也不得把 MarketPulse 定義成「預測實驗室」。
 
-**產品 MVP 完成（Level 2）當且僅當：** 官方 TWSE+TPEx 看板、11 個 PIT theme、不可變 as-of snapshot、Daily Brief、Rotation Timeline、mutate-future 通過，且人能只靠這些輸出回答 JTBD（D103）。H1–H4／GO = Level 3，PR 7 之後才做，不擋產品 MVP。
+**產品 MVP 完成（Level 2）當且僅當：** 官方 TWSE+TPEx 看板、11 個凍結 theme（現行 `themes/v1.yaml`）、不可變價量 snapshot、Daily Brief、Rotation Timeline、mutate-future（改 T+1 價量不得改 T）通過，且人能只靠這些輸出回答 JTBD（D103）。產品回放 = 現行分類看歷史。H1–H4／GO = Level 3，PR 7 之後才做，不擋產品 MVP。
 
 ---
 
@@ -90,9 +93,10 @@ MarketPulse 的定位是**盤面閱讀的個人作業系統**，不是自動交�
 3. 族群 lag-1 成交值加權報酬、相對加權指數的 RS（5/20/60）、成交值佔比、value_thrust、breadth、輪動體制標籤（主流延續／剛轉強／落後補漲／過熱轉弱／落後持續）。
 4. **人眼輸出：** Daily Brief + Rotation Timeline（靜態 PNG）。主欄 = `relative_position`、RS20、value_thrust、breadth、regime。Brief 另有 Rank Δ5／Δ20（顯示，不是新訊號）。**不是** 0–100 `rotation_score`。Y 軸固定 K=11。
 5. CLI：`download` / `validate` / `sync-groups` / `analyze` / `brief` / `chart` / `doctor`。盤後 Markdown 日報。Timeline 只讀凍結快照。
-6. pytest：公式、membership as-of、validate 不丟列、**Timeline 只讀凍結快照**。
-7. **歷史宇宙規則：** 交易日 T 的可交易宇宙 = 該日 dated 全市場看板（套 exclusions 之後），不是今日 `instrument` 快照。
-8. **產品誠實：** 每日不可變 snapshot + mutate-future。as-of replay 是雷達的前提（沒有它 Timeline 就是後見之明），不是實驗室功能。
+6. pytest：公式、凍結 YAML 成員、validate 不丟列、**Timeline 只讀凍結快照**、mutate-future 價量。
+7. **歷史宇宙規則：** 交易日 T 的可交易宇宙 = 該日 dated 全市場看板（套 exclusions 之後），不是今日 `instrument` 快照。流動性 = TV_(T-1)。價與量的視窗 ≤ T。
+8. **產品誠實（價量，D105）：** 每日不可變 snapshot + mutate-future。訊號在 T 只能用 ≤T 的價與量。沒有價量 as-of，Timeline 就是把明天的 K 線畫進今天。
+   **分類誠實（D105）：** 產品 MVP 用一份凍結的現行 `themes/v1.yaml` 看所有回放日期。這是視覺化，不是「當時已知的族群定義」。report／Brief 必印限制句。禁止把 2026/4–8 的圖解讀成「4 月就預測到光通訊」。PIT taxonomy／valid_from 歷史不是產品 MVP。
 
 ### Goals — v0.1 SECONDARY（研究實驗室；要做，但不是產品定義，也不是產品 MVP 完成條件）
 
@@ -124,6 +128,8 @@ MarketPulse 的定位是**盤面閱讀的個人作業系統**，不是自動交�
 - 以 hit_rate ≥ 55% 當通過門檻（已刪除）。
 - 互動圖、Plotly dashboard、把 Timeline 做成 Streamlit。v0.1 只有靜態 PNG。
 - 在凍結的 11-theme 之外再加主題（IC 設計／AI 軟體／生技／光學／被動當「新主題」）。**v0.1 Timeline default = 11-theme**（`themes/v1.yaml`）。5-theme Timeline **僅** H-tax appendix／對照，禁止 `chart` 默認 `v1-five.yaml`。
+- 把 visualization replay 宣稱成「當時已知的族群定義」或「4 月就預測到光通訊」。
+- 第一張 Timeline 之前實作 PIT taxonomy／`valid_from` membership 歷史／reconstructed snapshot YAML／H3／H4／random_exclusive。
 
 ---
 
@@ -235,13 +241,14 @@ MarketPulse 的定位是**盤面閱讀的個人作業系統**，不是自動交�
 | D102 | 拒絕 v0.2 改寫 | **不寫 `design-v0.2.md`。** 不把 Gate 0 改成 Official／FinMind／TWMD bake-off。不上 DuckDB 當主儲存。不加第二套 `theme_state`、Golden Episode 先驗 YAML、`data_health` 分數、Return5／RS5／Above MA20。不引入 Postgres／Redis／ClickHouse／Kafka／Celery／WebSocket／LLM。4-gate 重切 = 縮小 PR DAG，拒絕 | r3.23 已吸收「owns semantics」。多 provider SPI = D92 Quant Platform。先驗 2026 episode YAML = 後見之明。產品 state 已是 regime + ROTATION TODAY |
 | D103 | 產品 MVP JTBD | 每天只答四問 + 資料徽章：(1) 誰強 (2) 誰變強 (3) 誰變弱 (4) 相對領先是否 A→B。資料夠不夠 = `signal_status` 徽章，不是 Coverage %。FORBIDDEN：把 Q4 寫成資金流。不能幫這四問的功能，產品 MVP 不做。H1–H4 不是產品完成條件 | 採納「最小能證明核心 idea」；拒絕 M0–M4 取代 PR DAG、100 檔 bake-off、第二套 state、先驗 episode |
 | D104 | 公式出處 | 概念可標準：個股報酬、超額 RS、漲跌家數、% above MA、Top-N。組合必須自有：lag-1 TV 權、value_share 重疊規則、value_thrust、rank-of-rank、固定 K 的 relative_position、股癌六態。FORBIDDEN：RRG 當引擎、砍 rotation_score、position=252d percentile、theme regime=MA20/MA60、CMF／HHI／Breadth Thrust、把 TV／breadth 踢出排名只當 confirmation | 不要為創新而創新 ≠ 把雷達換成未完全公開的 JdK。出處表不是改公式 |
+| D105 | 兩種 leakage | **價量／宇宙／流動性看未來 = 正確性 bug，禁止。** 現行 theme YAML 套到歷史日期 = 研究解讀限制，產品 MVP **允許**，且必須揭露。產品回放名稱 = historical visualization replay。第一條產品路徑：一份 `themes/v1.yaml` + 價量 as-of。FORBIDDEN：把 PIT taxonomy／`valid_from` membership 歷史／reconstructed snapshot YAML 當產品 MVP 實作。Level 3 GO 仍不得宣稱「當時已知」。A→B 公式不改成口語版。MATCH 留在 snapshot metadata；第一條產品路徑只需要 `run_id` / `as_of` / `algorithm_version` / `classification_version`。H3／H4／random_exclusive／economic materiality 第一張 Timeline 之前不准實作，但不從 v0.1 規格刪除 | MarketPulse 不是回測交易策略。第一問是 4–6 月輪動能不能被一張圖呈現。為第二個問題（當時是否已知）解第一版 = 過度設計 |
 
 ### 五條不可破壞 invariant（給 coding agent）
 
-1. **No future：** 改 T+1 不得改 T 的 snapshot。  
-2. **Same eligibility universe：** 所有策略共用同一套 eligibility 規則（universe(T)、liquidity_{T-1}、valid_price_T、exclusions）。**不是**所有 baseline 同一批股票。每個 theme 的 \(I_T(g)=G_{g,T-1}\cap\) eligibility。  
-3. **Immutable snapshot：** 同一 `daily_run_id` 永不 UPDATE。  
-4. **Classification honesty：** contemporaneous ≠ reconstructed；後者 APPENDIX only。  
+1. **No future prices/volume：** 改 T+1 的價或量不得改 T 的 snapshot。訊號視窗 ≤ T。  
+2. **Same eligibility universe：** 所有策略共用同一套 eligibility 規則（universe(T)、liquidity_{T-1}、valid_price_T、exclusions）。**不是**所有 baseline 同一批股票。產品 MVP：\(G_T\) = 凍結 YAML 成員（無 membership 歷史）。\(I_T(g)=G_g\cap\) eligibility。  
+3. **Immutable snapshot：** 同一 `daily_run_id` 永不 UPDATE。之後改 YAML = 新 `classification_version` + 新 snapshot，不得回寫舊 parquet。  
+4. **Classification honesty：** 產品 MVP 用現行凍結 YAML 看歷史（visualization replay），report 必印限制句。不是 dual provenance 檔。Level 3 GO 不得把 visualization replay 當成 contemporaneous 預測證據。價量／宇宙／流動性仍嚴格 as-of。D10／D24 的 reconstructed 檔是 Phase 2，第一張 Timeline 之前不准實作。  
 5. **Human output：** RS20、value_thrust、breadth、relative_position、regime——不是 82.4 分。Daily Brief／ASCII／Timeline PNG 不得印 `rotation_score`。MISSING_DATA 不得從人眼輸出消失，也不得顯示成 LEADING ⚠。Brief 必有 ROTATION TODAY 與 Rank Δ5/Δ20。人類 GO 顯示 `RESEARCH STATUS: CONTINUE`；另印 `RESEARCH VERDICT` 作為 PRODUCT VERDICT 別名。識別字仍 GO。
 
 **停止增加 indicator。** H2 會告訴哪些因子沒用。v0.1 不建 `leaders.py` / `watchlist.py`。
@@ -508,7 +515,8 @@ class BarProvider(Protocol):
 **成員與權數同一時點 t−1，再對有成交的交集重新正規化：**
 
 ```text
-G_T = membership_asof(T-1)                 # 不含 t 當日才加入的名字
+G_T = frozen YAML members of the classification    # D105 product MVP: no valid_from history
+# Phase 2 may restore membership_asof(T-1); do not implement that before first Timeline
 TV 權數原始：對 i ∈ G_T，w̃_i = TV_{i,T-1}
 liq_i = (TV_{i,T-1} >= min_value of i's market)
 
@@ -595,7 +603,7 @@ Build a thin MarketPulse domain engine on mature libraries.
 | **OPTIONAL（永不當主路徑）** | FinMind（日曆／Info）、yfinance（預設關） |
 | **REFERENCE ONLY** | RRG／StockCharts 概念；US sector-rotation screener 的 UX；**不是**依賴 |
 | **FORBIDDEN in v0.1** | TA-Lib、pandas-ta、VectorBT、backtesting.py、Polars、DuckDB、Plotly、Streamlit、**twmarketdata 當 BarProvider／Gate 0**、PostgreSQL、Redis、ClickHouse、Kafka、Celery、WebSocket、LLM、`design-v0.2.md`、provider bake-off |
-| **MUST OWN** | Theme YAML、membership provenance、as-of／PIT、E_T／M_T／I_T、TV 加權、breadth、value thrust、RS、relative_position、regime、A→B、snapshot identity、H1–H4 語意 |
+| **MUST OWN** | 凍結 Theme YAML、價量 as-of、E_T／M_T／I_T、TV 加權、breadth、value thrust、RS、relative_position、regime、A→B、snapshot identity。membership provenance / H1–H4 語意仍屬規格，第一張 Timeline 之前不准實作 provenance 狀態機或 H3／H4 |
 
 `twmarketdata`（pip `twmarketdata`，import `twmd`，站台 twmarketdata.com）**不是**官方 TWSE/TPEx dated JSON 的薄 client。它是第三方付費 REST：免金鑰只有 5 檔（2330／2317／2454／0050／2603）；查詢是 per-ticker；定價頁寫明 **TPEx daily history deferred**、**不宣稱 full-market**。SDK 有 `twmd.compat.finmind`，那只是 call-site 相容，不是全市場 dated 看板。Gate 0 要的是全市場看板列數與 TPEx payload shape——這個套件回答不了。v0.1 不 `pip install`、不進 Protocol。Phase 1.5 若要交叉驗證，另開 spike，不得改主路徑。
 
@@ -617,7 +625,7 @@ Build a thin MarketPulse domain engine on mature libraries.
 
 ### 7. 專案目錄
 
-`/Users/chenyuying/workspace/MarketPulse` 目前是 **docs-only** 的 `dev` freeze（r3.23–r3.29）；應用程式碼尚未開始。目標：
+`/Users/chenyuying/workspace/MarketPulse` 目前是 **docs-only** 的 `dev` freeze（r3.23–r3.30）；應用程式碼尚未開始。目標：
 
 ```
 /Users/chenyuying/workspace/MarketPulse/
@@ -1042,7 +1050,17 @@ Phase 1.5 才擴軍工、生技、綠能、網通、IC 設計；且必須手填 
 
 編輯：改 YAML → `sync-groups`。禁止在 SQLite 當 source of truth。
 
-**分類檔分兩種（P0，r3.4 凍結）：**
+**產品 MVP 路徑（D105，凍結）：** 只載入現行 `themes/v1.yaml`（11 theme）與對照用 `v1-five.yaml`。同一份 member 名單套到所有回放日期。coding agent 在第一張 Timeline 之前 **禁止** 實作 `valid_from`/`valid_to` membership 歷史、`themes/snapshots/*` reconstructed 檔、provenance 狀態機。下面 dual-file／D10／D24 模型是 Phase 2 / Level 3 研究防護，不是產品 MVP 的實作範圍。report／Brief 必印：
+
+```text
+Historical replay uses the current theme taxonomy.
+It is intended to visualize historical rotation,
+not to simulate what theme definitions were known at that time.
+```
+
+中文：「歷史回放使用現行族群定義，用來把過去的輪動畫清楚，不代表當時已知這份名單。」
+
+**分類檔分兩種（Phase 2 / Level 3；產品 MVP 不實作）：**
 
 | 檔 | provenance | 第一次 sync 的 `valid_from` | 戰役 |
 |---|---|---|---|
@@ -2934,6 +2952,8 @@ NOT "capital actually flowed from A to B"
 NOT a strength-meter move
 ```
 
+人眼說法（不是另一套 detector）：A 名次變差、B 名次變好、雙方 regime 往預期方向、連續 3 個交易日。YAML 門檻（M、X=1/(K-1)、每天都 OK）仍是實作契約。FORBIDDEN：實作一套更鬆的口語 detector。
+
 ```text
 A → B 只在同時成立時畫箭頭／印一行（預設，全在 YAML）:
   persist_sessions M = 3
@@ -3124,7 +3144,7 @@ launchd 預設 18:30 Asia/Taipei 是對 TWSE ~15:00、FinMind adj ~17:30 的合�
 - TPEx 上櫃收盤 dated JSON：`https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_close/stk_quote_result.php?l=zh-tw&d={ROC}/MM/DD&o=json`
 - TWSE/TPEx OpenAPI：今日快照，**不是**歷史。
 - FinMind v4：<https://finmind.github.io/llms-full.txt> — `Trading_turnover` = 成交筆數；`TaiwanStockPriceAdj` 為由最近交易日向前還原。
-- 工作區：`/Users/chenyuying/workspace/MarketPulse` 在 `dev`；freeze commits r3.23–r3.29。規格 `docs/design-v0.1.md`，實作契約 `docs/coding-contract.md`，決策備忘 `docs/design-delta-gpt-vs-grok.md`。應用程式碼尚未開始。
+- 工作區：`/Users/chenyuying/workspace/MarketPulse` 在 `dev`；freeze commits r3.23–r3.30。規格 `docs/design-v0.1.md`，實作契約 `docs/coding-contract.md`，決策備忘 `docs/design-delta-gpt-vs-grok.md`。應用程式碼尚未開始。
 
 ---
 
@@ -3146,7 +3166,7 @@ Level 2 — PRODUCT MVP  ★ 輪動雷達
   資料徽章：signal_status，不是 Coverage %
   今日：ROTATION TODAY 四桶（含 Data issue）
   歷史：relative_position 折線（固定 K=11）+ today-strip
-  誠實：as-of snapshot + mutate-future
+  誠實：價量 as-of snapshot + mutate-future；taxonomy = 現行 YAML 視覺化回放（D105）
   H1 FAIL 不能宣布這一層失敗
   H1–H4 不是這一層的完成條件
 
@@ -3281,19 +3301,21 @@ Does GO pass?
 
 ---
 
-## Freeze（r3.29）
+## Freeze（r3.30）
 
-**核心模型不再改。不要再開 architecture redesign。不要寫 `design-v0.2.md`。不要導入 Adj、Sharpe、z-score、動態權重、ML。不要改 H1 公式、11-theme、lag-1、Timeline 數學。不要縮小 PR DAG。不要再為下一輪 GPT review 改公式。下一刀是 Gate 0。**
+**核心模型不再改。不要再開 architecture redesign。不要寫 `design-v0.2.md`。不要導入 Adj、Sharpe、z-score、動態權重、ML。不要改 H1 公式、11-theme、lag-1、Timeline 數學、A→B 門檻。不要縮小 PR DAG。不要從 v0.1 規格刪 H3／H4。不要再為下一輪 GPT review 改公式。下一刀是 Gate 0。**
 
 實作時先讀 `docs/coding-contract.md`，衝突以本設計文件公式／Freeze 為準。
 
-r3.28 產品 MVP scope 仍有效。本輪只收公式出處契約，**不改任何公式**：
+r3.28 產品 MVP scope 與 r3.29 公式出處仍有效。本輪只收兩種 leakage 契約，**不改任何公式**：
 
-1. **D104：公式出處。** 個股報酬／超額 RS／漲跌家數／% above MA／Top-3 = 標準概念。lag-1 TV 權、value_share、value_thrust、rank-of-rank、固定 K position、股癌六態 = 自有。不要為創新而創新 ≠ 換成 RRG 引擎。  
-2. **D91 收緊：** `rank_momentum` 已是 rank 空間的相對動量。禁止再加 JdK RS-Ratio／RS-Momentum 軸。Timeline 不是 RRG trail。  
-3. **禁止砍 `rotation_score`。** 它是內部排序工具（D95 人眼禁出）。砍掉會拆掉 `rotation_rank`／`relative_position`／Rank Δ。  
-4. **禁止** `relative_position` = 252 日 RS percentile／z-score；禁止 theme regime = MA20/MA60；禁止把 TV／breadth 踢出排名當 confirmation-only。  
-5. **禁止 v0.1** CMF、HHI、Breadth Thrust。value_thrust 識別字不改；人眼可說 participation expansion。對外仍用股癌語言，不改成 Improving 當 Brief 主詞。  
+1. **D105：兩種 leakage。** 價量／宇宙／流動性看未來 = bug，禁止。現行 YAML 套歷史 = visualization replay，允許且必須揭露。PIT taxonomy 不是產品 MVP。  
+2. **D104：公式出處。** 個股報酬／超額 RS／漲跌家數／% above MA／Top-3 = 標準概念。lag-1 TV 權、value_share、value_thrust、rank-of-rank、固定 K position、股癌六態 = 自有。不要為創新而創新 ≠ 換成 RRG 引擎。  
+3. **D91 收緊：** `rank_momentum` 已是 rank 空間的相對動量。禁止再加 JdK RS-Ratio／RS-Momentum 軸。Timeline 不是 RRG trail。  
+4. **禁止砍 `rotation_score`。** 它是內部排序工具（D95 人眼禁出）。砍掉會拆掉 `rotation_rank`／`relative_position`／Rank Δ。  
+5. **禁止** `relative_position` = 252 日 RS percentile／z-score；禁止 theme regime = MA20/MA60；禁止把 TV／breadth 踢出排名當 confirmation-only。  
+6. **禁止 v0.1** CMF、HHI、Breadth Thrust。value_thrust 識別字不改；人眼可說 participation expansion。對外仍用股癌語言，不改成 Improving 當 Brief 主詞。  
+7. **禁止** 第一張 Timeline 之前實作 H3／H4、random_exclusive、economic materiality、classification provenance 狀態機、reconstructed snapshot YAML。H3／H4 仍留在 v0.1 SECONDARY（PR 6），不是刪除。  
 
 ```text
 SOURCE OF TRUTH ORDER
@@ -3329,6 +3351,12 @@ Do not add CMF, HHI, or Breadth Thrust in v0.1.
 Do not split trading-value / breadth out of ranking as confirmation-only.
 Do not treat A→B as capital flow.
 Do not make H1–H4 a product-MVP completion criterion.
+Do not implement PIT taxonomy / valid_from membership history / reconstructed snapshot YAML before the first Timeline.
+Do not claim visualization replay means "we would have known in April".
+Do not implement a looser informal A→B detector; YAML thresholds stay.
+Do not implement H3, H4, random_exclusive, or economic materiality before the first Timeline.
+Do not delete H3/H4 from the v0.1 spec.
+Do not treat MATCH digest layers as a first-slice subsystem; product path needs run_id, as_of, algorithm_version, classification_version.
 Do not replace Gate 0 with a 100-stock / three-provider spike.
 Do not add marketpulse daily; human CLI is brief / chart.
 Do not add Telegram / LINE / Email / Push or portfolio P&L.
