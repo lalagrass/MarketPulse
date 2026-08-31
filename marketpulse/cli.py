@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+import json
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -19,7 +20,7 @@ from marketpulse.data import (
     validate_normalized,
     write_normalized,
 )
-from marketpulse.product import render_brief, render_timeline
+from marketpulse.product import effective_rank_period, render_brief, render_timeline
 from marketpulse.themes import load_themes
 
 app = typer.Typer(no_args_is_help=True, help="MarketPulse: Taiwan theme-rotation radar")
@@ -45,10 +46,34 @@ def _load_snapshot(data_dir: Path) -> pd.DataFrame:
     return frame
 
 
-def _write_snapshot(data_dir: Path, snapshot: pd.DataFrame) -> Path:
+def _write_snapshot_meta(
+    parquet_path: Path,
+    *,
+    classification_version: str,
+    rows: int,
+) -> Path:
+    """Tiny provenance next to the parquet. Not an immutable ledger."""
+    meta_path = parquet_path.with_name(parquet_path.stem + ".meta.json")
+    payload = {
+        "classification_version": classification_version,
+        "algorithm_version": __version__,
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "rows": rows,
+    }
+    meta_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return meta_path
+
+
+def _write_snapshot(
+    data_dir: Path,
+    snapshot: pd.DataFrame,
+    *,
+    classification_version: str,
+) -> Path:
     path = data_dir / "snapshots" / "theme_daily.parquet"
     path.parent.mkdir(parents=True, exist_ok=True)
     snapshot.to_parquet(path, index=False)
+    _write_snapshot_meta(path, classification_version=classification_version, rows=len(snapshot))
     return path
 
 
@@ -90,7 +115,11 @@ def analyze(
     themes = load_themes(themes_path)
     bars, index = read_normalized(data_dir)
     snapshot = compute_snapshots(bars, index, themes)
-    path = _write_snapshot(data_dir, snapshot)
+    path = _write_snapshot(
+        data_dir,
+        snapshot,
+        classification_version=themes.classification_version,
+    )
     typer.echo(
         f"wrote {path}  rows={len(snapshot)}  "
         f"themes={snapshot['theme_id'].nunique()}  "
@@ -120,9 +149,15 @@ def chart(
     lo = _parse_date(start) if start else min(snapshot["date"])
     hi = _parse_date(end) if end else max(snapshot["date"])
     window = snapshot[(snapshot["date"] >= lo) & (snapshot["date"] <= hi)]
-    dest = output or DEFAULT_REPORTS / f"rotation_{lo.isoformat()}_{hi.isoformat()}.png"
+    try:
+        eff_lo, eff_hi = effective_rank_period(window)
+    except ValueError:
+        typer.echo("no ranked rows in this window (RS20 needs 20 trading days)")
+        raise typer.Exit(code=1)
+    dest = output or DEFAULT_REPORTS / f"rotation_{eff_lo.isoformat()}_{eff_hi.isoformat()}.png"
     render_timeline(window, dest)
     typer.echo(str(dest))
+    typer.echo(f"effective RS20 period: {eff_lo.isoformat()} → {eff_hi.isoformat()}")
     typer.echo(REPLAY_DISCLOSURE)
     typer.echo(RANK_DISCLOSURE)
 
@@ -143,6 +178,11 @@ def replay(
     dest = data_dir / "snapshots" / f"replay_{lo.isoformat()}_{hi.isoformat()}.parquet"
     dest.parent.mkdir(parents=True, exist_ok=True)
     first.to_parquet(dest, index=False)
+    _write_snapshot_meta(
+        dest,
+        classification_version=themes.classification_version,
+        rows=len(first),
+    )
     typer.echo(REPLAY_DISCLOSURE)
     typer.echo(RANK_DISCLOSURE)
     typer.echo(f"wrote {dest}  rows={len(first)}")

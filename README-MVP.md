@@ -51,6 +51,10 @@ uv run marketpulse replay --start 2026-07-20 --end 2026-08-31
 uv run pytest
 ```
 
+The Rank Timeline is a **step plot** of daily RS20 rank (rank 1 at the top). The title shows the **effective** RS20 window (after the 20-session lookback), not the raw download start. The last session is labeled `theme + RS20 + Δ5` so you do not have to match colors in a legend.
+
+`MISSING_DATA` still computes RS20 from valid members, but Brief prefixes `*` and Timeline uses a hollow marker. Treat those rows as incomplete, not a full-theme signal.
+
 Raw official JSON is stored locally under `data/raw/` and is not redistributed.
 
 ## Important
