@@ -18,5 +18,6 @@ data/snapshots/*
 !data/snapshots/.gitkeep
 reports/*
 !reports/.gitkeep
+!reports/*.png
 
 .DS_Store
