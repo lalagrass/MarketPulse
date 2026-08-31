@@ -2,10 +2,10 @@
 
 - **日期：** 2026-08-30
 - **用途：** 後續評估、改規格、或回看「為什麼不照 GPT 稿做／為什麼不照 r1 做」時用。**不是**實作規格。實作以設計文件為準。
-- **設計文件（現行 r3.23，凍結）：** `docs/design-v0.1.md`  
+- **設計文件（現行 r3.24，凍結）：** `docs/design-v0.1.md`  
 - **實作契約：** `docs/coding-contract.md`
 - **審查筆記：** `/var/folders/k3/f9js6pcj02xclk75ds1nhzl40000gn/T/grok-chenyuying/grok-design-review-cc86276c.md`
-- **工作區：** `/Users/chenyuying/workspace/MarketPulse`（無 commit；僅有本決策備忘）
+- **工作區：** `/Users/chenyuying/workspace/MarketPulse`（`dev` 已有 r3.23 freeze commit）
 
 本檔記錄三份來源之間的**衝突**、r1 內部**不一致**、以及 r2／r3 **改寫了什麼**。若之後要推翻某一列，改這張表並同步設計文件，不要只改程式。
 
@@ -749,3 +749,26 @@ rotation_score → hypothesis → negative control → walk-forward → GO
 | 先停 Gate 0 做 architecture comparison | **拒絕。** 下一個資訊仍是 20–30 日官方資料 |
 
 **Verdict：APPROVE reuse policy wording。拒絕 twmarketdata 進 Gate 0。Freeze at r3.23。下一步仍是 Gate 0 → PR1 → PR2。**
+
+---
+
+## 33. r3.24 GitHub `dev` freeze review（可以開工，再守幾個產品契約）
+
+來源：對 `dev` 上 r3.23 規格的開工審查。**8.5/10，可以開始 coding，但要先守住幾個 P0/P1。不要再開 architecture。**
+
+| 點 | 處分 |
+|---|---|
+| 產品 vs 研究已分開；H1 FAIL ≠ radar useless | **維持** |
+| Timeline 固定 K、11-theme、overlap 全額計入、PIT、reuse implementation own semantics | **維持 freeze** |
+| Gate 0 先於任何 analysis | **維持。** 這本來就是下一刀 |
+| 再做一次「減法」、把 PR 收成 PR1–PR5 | **拒絕。** 當前 slice 已經是 Gate 0→PR1→PR2。真正要自寫的 theme engine 就是產品。不縮小 PR DAG |
+| MISSING_DATA 整 theme 出局太粗 | **維持 conservative 政策（D81）。** 不發明 missing_ratio 門檻 |
+| MISSING_DATA 默默少一條線 | **採納 P1 可視化（D94）。** Brief 必印 expected/received/missing `stock_id`；Timeline gap+×，禁止從圖例消失 |
+| `rotation_score` 不要進人類 UI | **採納收緊（D95）。** Brief／ASCII／PNG 不得印 82.3。parquet 可留。刪掉「ASCII score 可附列」 |
+| Timeline 要回答三個問題，不要做成 RRG | **採納 UX（D96）。** 不改 Y 軸數學 |
+| Golden Dataset 當開工 P0 | **拒絕當 Gate 0。** 官方 bars 還沒有，不能發明 expected RS20。改成 PR 4/7 `tests/fixtures/golden/`，Gate 0 之後才填 |
+| mutate membership after T | **採納加測。** 既有 mutate-future 加 6b：改 T 之後的 YAML 不得改 snapshot(T) digest |
+| H1 改名 Persistence Test | **採納人眼標籤。** 識別字仍 `H1`，不改公式 |
+| 繼續大改 2800 行 spec | **拒絕。** 本輪只修產品契約 |
+
+**Verdict：APPROVE 產品契約收緊。拒絕砍 PR、拒絕 golden 當 Gate 0。Freeze at r3.24。下一步仍是 Gate 0 → PR1 → PR2。**

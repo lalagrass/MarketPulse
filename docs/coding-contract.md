@@ -1,7 +1,7 @@
 # MarketPulse v0.1 coding contract
 
 THIS FILE IS AN IMPLEMENTATION CONTRACT.  
-The full design `docs/design-v0.1.md` (r3.23) is the source of truth.  
+The full design `docs/design-v0.1.md` (r3.24) is the source of truth.  
 This file is the subset a coding agent must not violate.
 
 ```text
@@ -24,7 +24,8 @@ Do not start a five-year backfill until Gate 0 passes.
 
 PRIMARY = Daily Brief + Rotation Timeline (radar).  
 SECONDARY = H1–H4 (lab).  
-H1 FAIL ≠ radar useless. A→B = relative leadership transition, never capital flow.
+H1 FAIL ≠ radar useless. A→B = relative leadership transition, never capital flow.  
+Human label for H1 = Persistence Test. Identifier stays `H1`.
 
 ## Invariants
 
@@ -46,7 +47,7 @@ FORBIDDEN: filter close.notnull() first, then look for missing.
 6. Any incomplete required component → no `rotation_score`. No `skipna`.  
 7. Only `signal_status=OK` participates in ranking.  
 8. `relative_position` uses fixed K of the classification.  
-9. Timeline / brief / chart read frozen snapshots only.  
+9. Timeline / brief / chart read frozen snapshots only. Daily Brief / ASCII / Timeline PNG MUST NOT print `rotation_score`. Timeline v1 must answer: who is strong, who is strengthening, who is weakening.  
 10. A→B persist M = immediately preceding M trading sessions; A and B OK on every session. A hole resets the window.  
 11. Do not add indicators, themes, leaders, watchlist, GUI, baselines, ML, Adj, DuckDB, Polars, VectorBT-as-core, TA-Lib, FinMind-as-primary, twmarketdata-as-primary, or new GO gates.  
 12. YAML `algorithm_version` must equal package `ALGORITHM_VERSION` at startup or abort.  
@@ -60,7 +61,8 @@ MISSING_DATA > UNRELIABLE > INSUFFICIENT_HISTORY > THIN > OK
 
 UNRELIABLE (as-of-T CA, frac ≥ 0.25) is product data-quality: not ranked, not Timeline main line, not A→B. Raw row kept. No Adj.
 
-MISSING_DATA: diagnostic fields MAY stay; `rotation_score`, `rotation_rank`, `relative_position`, `regime` = NULL. Not eval, not A→B.
+MISSING_DATA: diagnostic fields MAY stay; `rotation_score`, `rotation_rank`, `relative_position`, `regime` = NULL. Not eval, not A→B.  
+Brief MUST print expected/received/missing `stock_id`. Timeline MUST keep a gap+× marker. FORBIDDEN: silently drop the theme.
 
 ## Canonical time APIs
 
@@ -88,7 +90,8 @@ component `rank_pct`: pandas `rank(method="average")`.
 `chart` later: snapshot-only; never download/analyze/replay.
 
 Gate 0 = official dated TWSE MI_INDEX + TPEx `stk_quote_result.php` only.  
-Not a twmarketdata / FinMind / yfinance comparison.
+Not a twmarketdata / FinMind / yfinance comparison.  
+Not a golden-dataset / Timeline / H1 exercise. Golden numbers are PR 4/7 after official bars exist.
 
 ## Reuse
 
@@ -105,4 +108,5 @@ RRG: conceptual reference only. No JdK RS-Ratio. No RRG library. Timeline is not
 
 FinMind as primary source. twmarketdata as primary / Gate 0 / v0.1 Protocol.  
 VectorBT as core. TA-Lib. Streamlit/Plotly in v0.1. DuckDB. Polars.  
-`h2_pass`. Newey-West / p-value / Sharpe. 11→10 themes. Equal-weight as the signal. Leaders / 52w / watchlist.
+`h2_pass`. Newey-West / p-value / Sharpe. 11→10 themes. Equal-weight as the signal. Leaders / 52w / watchlist.  
+Print `rotation_score` in Brief/ASCII/PNG. Silently drop MISSING_DATA themes. Shrink the PR DAG. Invent golden numbers before Gate 0 bars.
