@@ -5,12 +5,12 @@
 | 文件標題 | MarketPulse：股癌風格「族群先、輪動次、強勢股最後」之 Mac 本地 MVP |
 | 作者 | 待填 |
 | 日期 | 2026-08-30 |
-| 修訂 | 2026-08-31 r3.31（拒絕 RS20-only ranking／砍 rotation_score／砍六態／砍大盤標籤出 MVP。公式政策 = D104，不是刪掉組合。另見 `docs/coding-contract.md`。） |
+| 修訂 | 2026-08-31 r3.32（拒絕再寫 v0.2：RS20-only／等權訊號／PIT membership／`marketpulse daily` 已禁止。只收公開盤後頁 ≠ 資料商店授權商品。另見 `docs/coding-contract.md`。） |
 | 狀態 | Design Freeze |
 | 產品名稱 | MarketPulse |
 | 目標市場 | 台股上市（TWSE）+ 上櫃（TPEx）普通股 |
 | 部署形態 | Apple Silicon Mac 單機、單使用者、盤後日頻批次 |
-| 工作區 | `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.30；本輪 r3.31 只收「不要發明因子」契約重述，不改數學。規格 `docs/design-v0.1.md`；實作契約 `docs/coding-contract.md`） |
+| 工作區 | `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.31；本輪 r3.32 只收資料授權區分，不改數學。規格 `docs/design-v0.1.md`；實作契約 `docs/coding-contract.md`） |
 
 **版本切分（讀文件先看這段）：**
 
@@ -243,6 +243,7 @@ MarketPulse 的定位是**盤面閱讀的個人作業系統**，不是自動交�
 | D104 | 公式出處 | 概念可標準：個股報酬、超額 RS、漲跌家數、% above MA、Top-N。組合必須自有：lag-1 TV 權、value_share 重疊規則、value_thrust、rank-of-rank、固定 K 的 relative_position、股癌六態。FORBIDDEN：RRG 當引擎、砍 rotation_score、position=252d percentile、theme regime=MA20/MA60、CMF／HHI／Breadth Thrust、把 TV／breadth 踢出排名只當 confirmation | 不要為創新而創新 ≠ 把雷達換成未完全公開的 JdK。出處表不是改公式 |
 | D105 | 兩種 leakage | **價量／宇宙／流動性看未來 = 正確性 bug，禁止。** 現行 theme YAML 套到歷史日期 = 研究解讀限制，產品 MVP **允許**，且必須揭露。產品回放名稱 = historical visualization replay。第一條產品路徑：一份 `themes/v1.yaml` + 價量 as-of。FORBIDDEN：把 PIT taxonomy／`valid_from` membership 歷史／reconstructed snapshot YAML 當產品 MVP 實作。Level 3 GO 仍不得宣稱「當時已知」。A→B 公式不改成口語版。MATCH 留在 snapshot metadata；第一條產品路徑只需要 `run_id` / `as_of` / `algorithm_version` / `classification_version`。H3／H4／random_exclusive／economic materiality 第一張 Timeline 之前不准實作，但不從 v0.1 規格刪除 | MarketPulse 不是回測交易策略。第一問是 4–6 月輪動能不能被一張圖呈現。為第二個問題（當時是否已知）解第一版 = 過度設計 |
 | D106 | 不要發明因子 ≠ 刪掉組合 | 人眼看 RS20／value_share／breadth／Rank Δ 並列，**對**。Timeline 排名仍由四成分 rank-of-rank 產生，**不是** `rank(RS20)`。六態 = 四成分上的 presentation heuristic（含落後補漲），不是要回測的新模型。market_regime = Brief 大盤描述（partition-not-select），不是產品分類器，也不是從規格刪除。5-theme = H-tax，不是產品 MVP DoD。FORBIDDEN：RS20-only ranking、砍 `rotation_score`、把六態縮成四個英文態當產品主詞、砍 market_regime 出 v0.1、加 `classification_mode` CONTEMPORANEOUS／RECONSTRUCTED、把 \(G_T\)=membership_asof 當產品 MVP 要求、把 `value_thrust` 改名 TVAttention | 「不要自己發明 scoring system 再驗證」= 不要優化權重、不要印 87.3。已經做到（D95）。刪掉組合會把 TV／breadth 踢出排名，那才是新因子實驗 |
+| D107 | 公開盤後頁 ≠ 資料商店 | Gate 0 打公開網站 dated JSON：TWSE rwd `MI_INDEX?date=` 與 TPEx `stk_quote_result.php?d={ROC}`。這不是證交所網路資訊商店 Daily Quotes（Internal NT$1,000／External NT$1,500／月），也不是櫃買交易資訊商店「盤後資料 API」（頁面標外部使用 NT$0／月）。部署 = Mac 本機個人研究，不重發原始行情、不做對外資料服務。FORBIDDEN：Gate 0 前訂閱資料商店；因商店商品收費改走 FinMind／Yahoo／twmarketdata；因 TPEx 商店標 NT$0 改打 e-shop API；把「一定要依賴某個免費 API」寫成架構 | 能查／能下 ≠ 授權長期當程式資料源再對外提供。MVP 不需要即時。歷史夠不夠由 Gate 0 的公開頁回答，不是先買 feed |
 
 ### 五條不可破壞 invariant（給 coding agent）
 
@@ -459,6 +460,8 @@ uv run marketpulse replay --from 2023-01-01 --to 2025-12-31 \
 
 **選定：** `provider.primary = twse_tpex_dated`；`enrichment.finmind = optional`；`fallback.yfinance = false`。
 
+**不是資料商店商品（D107）。** 上表是公開網站 dated JSON（免金鑰、無購物車）。Gate 0 **不**打、也 **不**訂閱：TWSE Data E-Shop Daily Quotes、TPEx 交易資訊商店「盤後資料 API」。公開頁能不能回 20–30 個全市場交易日，才是 Gate 0 要回答的；商店價目不是 Gate 0 blocker。FORBIDDEN：因 TWSE 商店收費改走第三方；因 TPEx 商店標 NT$0 換 endpoint。
+
 #### TWSE 解析規格（依表名，不依序號）
 
 `MI_INDEX` JSON 的 `tables[]` 以 **title／name 子字串**匹配：
@@ -626,7 +629,7 @@ Build a thin MarketPulse domain engine on mature libraries.
 
 ### 7. 專案目錄
 
-`/Users/chenyuying/workspace/MarketPulse` 目前是 **docs-only** 的 `dev` freeze（r3.23–r3.31）；應用程式碼尚未開始。目標：
+`/Users/chenyuying/workspace/MarketPulse` 目前是 **docs-only** 的 `dev` freeze（r3.23–r3.32）；應用程式碼尚未開始。目標：
 
 ```
 /Users/chenyuying/workspace/MarketPulse/
@@ -3015,7 +3018,7 @@ Case 6  OK, OK, MISSING, OK, OK, OK          → NO ARROW
 | Token | `.env` gitignore；log 禁止印 token |
 | 無券商憑證 | |
 | 網路 | 僅 outbound HTTPS；Streamlit 127.0.0.1（Phase 1.5） |
-| 授權 | 官方開放資料本機分析；不重發完整行情庫 |
+| 授權 | 公開盤後頁、本機個人研究（D107）；不重發原始行情；不做 SaaS／對外資料服務。資料商店付費商品不是 Gate 0 |
 | 免責 | 「非投資建議、非代客操作」固定在 brief 頁尾 |
 | 威脅 | 本機損毀與 token 外洩。快照可複製；WAL checkpoint 後再備份 db |
 
@@ -3088,6 +3091,7 @@ launchd 預設 18:30 Asia/Taipei 是對 TWSE ~15:00、FinMind adj ~17:30 的合�
 | agent 把基礎設施寫成 Quant Platform | 高 | Reuse Policy（D79/D92）：pandas／httpx／SQLite／Parquet／matplotlib；禁止自寫 Data／TA／Research／Chart framework。第一輪只准 Gate 0+PR1+PR2 |
 | 用 twmarketdata 換掉官方 dated JSON | 高 | D93：不當 Gate 0、不進 Protocol。官方全市場看板 2 HTTP／日；第三方是付費 per-ticker。FinMind-compat 存在仍不當主路徑 |
 | 把 reuse 做成 v0.2（bake-off + DuckDB + 第二套 state） | 高 | D102：不寫 design-v0.2。原則句已是 D79。下一刀仍是官方 20–30 日 |
+| 把資料商店商品當成 Gate 0，或因商店收費改走第三方 | 高 | D107：公開 dated JSON ≠ e-shop 授權 feed。不訂閱、不換 endpoint、不重發原始行情 |
 
 ---
 
@@ -3095,7 +3099,7 @@ launchd 預設 18:30 Asia/Taipei 是對 TWSE ~15:00、FinMind adj ~17:30 的合�
 
 ### A1. 資料層
 
-只用 FinMind（免費按檔、402、全市場單日要付費）、只用官方、TEJ/FinLab（成本）、用 twmarketdata 當主路徑（付費 per-ticker、免金鑰 5 檔、上櫃歷史 deferred、不宣稱 full-market）。**選官方 dated JSON 主路徑 + FinMind 選配。twmarketdata 不當 Gate 0、不進 v0.1 Protocol。**
+只用 FinMind（免費按檔、402、全市場單日要付費）、只用官方、TEJ/FinLab（成本）、用 twmarketdata 當主路徑（付費 per-ticker、免金鑰 5 檔、上櫃歷史 deferred、不宣稱 full-market）、訂閱 TWSE/TPEx 資料商店 Daily Quotes／盤後 API。**選公開網站 dated JSON 主路徑 + FinMind 選配。twmarketdata 不當 Gate 0、不進 v0.1 Protocol。資料商店商品不是 Gate 0（D107）。**
 
 ### A2. 聚合
 
@@ -3146,7 +3150,8 @@ launchd 預設 18:30 Asia/Taipei 是對 TWSE ~15:00、FinMind adj ~17:30 的合�
 - TPEx 上櫃收盤 dated JSON：`https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_close/stk_quote_result.php?l=zh-tw&d={ROC}/MM/DD&o=json`
 - TWSE/TPEx OpenAPI：今日快照，**不是**歷史。
 - FinMind v4：<https://finmind.github.io/llms-full.txt> — `Trading_turnover` = 成交筆數；`TaiwanStockPriceAdj` 為由最近交易日向前還原。
-- 工作區：`/Users/chenyuying/workspace/MarketPulse` 在 `dev`；freeze commits r3.23–r3.31。規格 `docs/design-v0.1.md`，實作契約 `docs/coding-contract.md`，決策備忘 `docs/design-delta-gpt-vs-grok.md`。應用程式碼尚未開始。
+- 工作區：`/Users/chenyuying/workspace/MarketPulse` 在 `dev`；freeze commits r3.23–r3.32。規格 `docs/design-v0.1.md`，實作契約 `docs/coding-contract.md`，決策備忘 `docs/design-delta-gpt-vs-grok.md`。應用程式碼尚未開始。
+- TWSE / TPEx **公開** dated 盤後頁（Gate 0）：上列 MI_INDEX 與 `stk_quote_result.php`。**不是**資料商店商品：<https://eshop.twse.com.tw/en/product/detail/ef7b7785e2cb4793baca3644c8a74d4e> （Daily Quotes，Internal NT$1,000 / External NT$1,500／月）、<https://eshop.tpex.org.tw/zh/product/detail/2c92e01394fcf4c7019518bbf65f000a> （盤後資料 API，頁面標外部使用 NT$0／月）。見 D107。
 
 ---
 
@@ -3211,6 +3216,7 @@ Level 2 漂亮不能當 Level 3 GO。Level 3 GO 失敗不能宣布雷達沒用�
   11. **禁止**把 0.99 寫成「市場 99% 完整」。Gate 0 要觀察 IPO／下市日列數跳動，並註明 heuristic 在那些日會失效。  
   12. **禁止**把 twmarketdata／FinMind／yfinance 當 Gate 0 替代或交叉驗證 blocker。Gate 0 只打官方 dated TWSE+TPEx。twmarketdata 是付費 per-ticker API（免金鑰僅 5 檔；上櫃歷史 deferred；`twmd.compat.finmind` 存在仍不算全市場看板），不能回答「全市場看板列數／TPEx payload shape」。  
   13. **禁止**把 Gate 0 改成 provider bake-off。httpx 打官方 dated JSON ≠ 自寫 crawler，也不是改用 vendor SDK 的理由。  
+  14. **公開頁 ≠ 資料商店（D107）。** Gate 0 只打上表公開 dated JSON。禁止訂閱 TWSE Data E-Shop Daily Quotes。禁止因 TPEx 商店「盤後資料 API」標 NT$0 改打 e-shop。禁止因商店商品收費改走 FinMind／Yahoo／twmarketdata。歷史 2025–2026 夠不夠，等公開頁 20–30 日通過後才談，不是第一刀拉全年。  
 
   **不是五年回補。不是 taxonomy sanity。不是 H1。不是 twmarketdata 比較。不是 golden dataset。不是 provider bake-off。** 失敗 → `tpex_degraded`，上櫃只從今日累積，禁止用無日期 OpenAPI 假裝有歷史。未 PASS 不得在 PR 2 宣稱可回補。 golden 數字在 Gate 0 bars 存在之後、PR 4 才填。FORBIDDEN：在官方 bars 存在之前寫 Golden Episode expected-state YAML（例如 `Optical: strengthening`）。
 
@@ -3303,13 +3309,13 @@ Does GO pass?
 
 ---
 
-## Freeze（r3.31）
+## Freeze（r3.32）
 
 **核心模型不再改。不要再開 architecture redesign。不要寫 `design-v0.2.md`。不要導入 Adj、Sharpe、z-score、動態權重、ML。不要改 H1 公式、11-theme、lag-1、Timeline 數學、A→B 門檻。不要縮小 PR DAG。不要從 v0.1 規格刪 H3／H4。不要再為下一輪 GPT review 改公式。下一刀是 Gate 0。**
 
 實作時先讀 `docs/coding-contract.md`，衝突以本設計文件公式／Freeze 為準。
 
-r3.28–r3.30 仍有效。本輪只收「不要發明因子」契約重述（D106），**不改任何公式**：
+r3.28–r3.31 仍有效。本輪只收「公開盤後頁 ≠ 資料商店」（D107），**不改任何公式**：
 
 1. **D106：並列顯示 ≠ RS20-only ranking。** Brief 本來就並列 RS20／Thrust／Breadth／Rank Δ，不印 score。Timeline 排名仍由四成分 rank-of-rank 產生。`rank(RS20)` 當唯一排序 = 把 TV／breadth 踢出排名，已禁止（D104 confirmation-only）。Rank 位移本身就是人眼輪動（D99），不需要另造 `rank_momentum` 以外的訊號。  
 2. **D105：兩種 leakage。** 價量／宇宙／流動性看未來 = bug，禁止。現行 YAML 套歷史 = visualization replay，允許且必須揭露。PIT taxonomy 不是產品 MVP。禁止把 `classification_mode` CONTEMPORANEOUS／RECONSTRUCTED 或 \(G_T\)=membership_asof 加回產品路徑。  
@@ -3319,6 +3325,7 @@ r3.28–r3.30 仍有效。本輪只收「不要發明因子」契約重述（D10
 6. **5-theme = H-tax，不是產品 MVP DoD。** 產品路徑 = 11-theme Brief + Timeline。`v1-five.yaml` 留 SECONDARY；禁止當 `chart` 預設。H1–H4 不擋產品 MVP（已是 D103）。  
 7. **禁止** `relative_position` = 252 日 RS percentile／z-score；禁止 theme regime = MA20/MA60；禁止 v0.1 CMF、HHI、Breadth Thrust。  
 8. **禁止** 第一張 Timeline 之前實作 H3／H4、random_exclusive、economic materiality、classification provenance 狀態機、reconstructed snapshot YAML。H3／H4 仍留在 v0.1 SECONDARY（PR 6），不是刪除。  
+9. **D107：公開盤後頁 ≠ 資料商店。** Gate 0 維持 TWSE rwd `MI_INDEX` + TPEx `stk_quote_result.php`。商店 Daily Quotes 收費、TPEx e-shop API 標 NT$0，都不改 endpoint、也不改成先買 feed。部署 = 本機個人研究，不重發原始行情。  
 
 ```text
 SOURCE OF TRUTH ORDER
@@ -3386,6 +3393,12 @@ Do not add a Taxonomy Audit engine; use existing overlap + Gate 1.
 Do not invent a Quant Platform or extra GO gates.
 Do not write docs/design-v0.2.md.
 Do not turn Gate 0 into an Official / FinMind / TWMD bake-off.
+Do not rank Timeline by RS20 only; do not switch the signal to equal-weight mean return.
+Do not add ThemeMembership effective_from as product MVP; G_T stays frozen YAML.
+Do not subscribe to TWSE/TPEx data-shop products before Gate 0.
+Do not switch Gate 0 endpoints to e-shop APIs because a shop page lists NT$0.
+Do not treat "TWSE shop Daily Quotes is paid" as a reason to use FinMind, Yahoo, or twmarketdata.
+Do not redistribute raw market data or turn this Mac MVP into a data SaaS.
 Do not add DuckDB as the storage layer.
 Do not add a second theme_state classifier; product state is regime + ROTATION TODAY.
 Do not invent Golden Episode expected-state YAML before official bars exist.

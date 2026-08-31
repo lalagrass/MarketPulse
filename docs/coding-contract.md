@@ -1,7 +1,7 @@
 # MarketPulse v0.1 coding contract
 
 THIS FILE IS AN IMPLEMENTATION CONTRACT.  
-The full design `docs/design-v0.1.md` (r3.31) is the source of truth.  
+The full design `docs/design-v0.1.md` (r3.32) is the source of truth.  
 This file is the subset a coding agent must not violate.
 
 ```text
@@ -125,13 +125,15 @@ component `rank_pct`: pandas `rank(method="average")`.
 `download` / `validate` / `doctor` (+ skeleton `--help`).  
 `chart` later: snapshot-only; never download/analyze/replay.
 
-Gate 0 = official dated TWSE MI_INDEX + TPEx `stk_quote_result.php` only.  
+Gate 0 = official **public** dated TWSE MI_INDEX + TPEx `stk_quote_result.php` only (D107).  
+Not a TWSE/TPEx data-shop subscription. Not the e-shop Daily Quotes product. Not the TPEx e-shop 「盤後資料 API」 even if that page lists NT$0.  
 Not a twmarketdata / FinMind / yfinance comparison.  
 Not a provider bake-off. `twmd.compat.finmind` existing does not change this.  
 Not a golden-dataset / Timeline / H1 exercise. Golden numbers are PR 4/7 after official bars exist.  
 Not a 100-stock spike. Gate 0 is the full-market board (TWSE ~900–1200, TPEx ~700–900).  
 FORBIDDEN: Golden Episode expected-state YAML (e.g. `Optical: strengthening`) before official bars exist.  
-Do not add `marketpulse daily`; human CLI is `brief` / `chart`.
+Do not add `marketpulse daily`; human CLI is `brief` / `chart`.  
+Do not buy a data feed before Gate 0. Do not pull 2025-01-01→2026-08-31 as the first spike.
 
 ## Reuse
 
@@ -155,6 +157,7 @@ VectorBT as core. TA-Lib. Streamlit/Plotly in v0.1. DuckDB. Polars.
 PostgreSQL, Redis, ClickHouse, Kafka, Celery, WebSocket, LLM.  
 `docs/design-v0.2.md`. Official / FinMind / TWMD bake-off as Gate 0.  
 100-stock spike. `marketpulse daily` as a new command.  
+Subscribe to TWSE/TPEx data-shop products before Gate 0. Switch Gate 0 to e-shop APIs because a shop page lists NT$0. Treat “TWSE shop is paid” as a reason to use FinMind, Yahoo, or twmarketdata. Redistribute raw market data. Data SaaS.  
 Second `theme_state` classifier. Golden Episode expected-state YAML before bars exist.  
 `data_health` / `theme_health` scores. Return 5/60, RS 5/60, Above MA20 as *new* v0.1 signals.  
 RRG / JdK as the rotation engine. Delete `rotation_score`.  

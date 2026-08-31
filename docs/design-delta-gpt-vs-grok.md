@@ -2,10 +2,10 @@
 
 - **日期：** 2026-08-30
 - **用途：** 後續評估、改規格、或回看「為什麼不照 GPT 稿做／為什麼不照 r1 做」時用。**不是**實作規格。實作以設計文件為準。
-- **設計文件（現行 r3.31，凍結）：** `docs/design-v0.1.md`  
+- **設計文件（現行 r3.32，凍結）：** `docs/design-v0.1.md`  
 - **實作契約：** `docs/coding-contract.md`
 - **審查筆記：** `/var/folders/k3/f9js6pcj02xclk75ds1nhzl40000gn/T/grok-chenyuying/grok-design-review-cc86276c.md`
-- **工作區：** `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.30；本輪 r3.31 只收「不要發明因子」契約重述，不改數學）
+- **工作區：** `/Users/chenyuying/workspace/MarketPulse`（`dev` freeze r3.31；本輪 r3.32 只收公開盤後頁 ≠ 資料商店，不改數學）
 
 本檔記錄三份來源之間的**衝突**、r1 內部**不一致**、以及 r2／r3 **改寫了什麼**。若之後要推翻某一列，改這張表並同步設計文件，不要只改程式。
 
@@ -988,3 +988,30 @@ FinMind 有 `TaiwanStockInfo`／daily／Adj 與 token 600/hr、無 token 300/hr�
 | 不要再設計，開始實作 | **維持。** 下一刀仍是 Gate 0 → PR1 → PR2 |
 
 **Verdict：APPROVE「不要發明因子、不要優化權重、人眼並列標準欄」。拒絕 RS20-only ranking、砍 score、砍六態／大盤標籤、把 PIT taxonomy 用 classification_mode 加回來。Freeze at r3.31。下一步仍是 Gate 0 → PR1 → PR2。未說開始 Gate 0 不准動手寫 ingest。**
+
+---
+
+## 41. r3.32 v0.2 再寫（RS20 ranking + 資料商店授權）
+
+來源：把產品縮成「Theme Aggregation + Existing Indicators + Rotation Visualization」，再開 `design-v0.2.md`；訊號改等權、排名改 `rank(RS20)`、membership 改 T−1 `ThemeMembership.effective_from`、CLI 改 `marketpulse daily`、可選 RRG library／pandas-ta、砍 SQLite／六態／market_regime。另附 TWSE/TPEx 資料商店價目：TWSE Daily Quotes Internal NT$1,000 / External NT$1,500／月；TPEx 盤後 API 頁面標外部使用 NT$0／月。主張 Gate 0 先驗證公開來源、本機個人使用不重發原始行情。
+
+| 點 | 處分 |
+|---|---|
+| 產品 = 題材 YAML + 族群聚合 + 輪動視覺化；不是選股／預測／自動交易／新 TA library | **維持（D79/D92/D104）** |
+| 能用標準公式就不要發明 | **已是 D104。** 概念可標準；lag-1 TV 權與 rank-of-rank 是自有組合，不是刪掉 |
+| 訊號改等權 mean return | **拒絕（D7/D34）。** 訊號維持 lag-1 成交值加權；等權只給評估籃子與 `ret_equal` |
+| Timeline／日表改 `rank(RS20)`；砍 `rotation_score` | **拒絕（D106）。** 同一輪 r3.29/r3.31 改寫 |
+| membership(T)=known as of T−1；`ThemeMembership.effective_from` | **拒絕當產品 MVP（D105）。** 產品路徑 = 凍結 YAML。價量仍 as-of |
+| 砍六態／`market_regime`；Phase 2 才做 LEADING 四態 | **拒絕從規格刪（D106）** |
+| `marketpulse daily` | **拒絕。** 人眼 CLI = `brief` / `chart` |
+| pandas-ta、RRG library 當 optional view | **拒絕引入（D91）。** 概念參考 YES；v0.1 不裝 TA-Lib／pandas-ta／RRG |
+| 砍 SQLite，只留 Parquet；縮目錄成 `marketpulse/` | **拒絕。** SQLite 工作快取 + Parquet 快照已定。不縮小 PR DAG |
+| 開 `design-v0.2.md`、H1–H4 改 Phase 3 | **拒絕（D102/D103）。** H1–H4 不擋產品 MVP，但不從 v0.1 刪 |
+| `MarketDataProvider` SPI 多 adapter | **拒絕當平台（D92）。** `BarProvider` 已是 Protocol；實作就是 TWSE＋TPEx dated |
+| 公開網站 dated JSON ≠ 資料商店授權商品 | **採納（D107）。** Gate 0 維持公開 `MI_INDEX` + `stk_quote_result.php` |
+| 先不要花錢買資料；本機個人研究、不重發原始行情、不做即時 | **採納契約。** Security 表已有本機／不重發；本輪寫明商店商品不是 Gate 0 |
+| 因 TWSE 商店收費改走第三方，或因 TPEx 商店標 NT$0 改打 e-shop API | **拒絕。** 那會把 Gate 0 換成另一個未 spike 的契約 |
+| 第一刀拉 2025-01-01～2026-08-31 | **拒絕當 Gate 0。** 仍是 20–30 個公開 dated session |
+| 不要再設計，開始實作 | **維持。** 下一刀仍是 Gate 0 → PR1 → PR2 |
+
+**Verdict：REJECT v0.2 作為新設計（與 D102 同類）。APPROVE 公開頁 ≠ 資料商店（D107）。Freeze at r3.32。下一步仍是 Gate 0 → PR1 → PR2。未說開始 Gate 0 不准動手寫 ingest。**
