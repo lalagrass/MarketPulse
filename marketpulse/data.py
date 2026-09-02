@@ -267,44 +267,175 @@ def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def download_session(session: date, data_dir: Path, *, force: bool = False) -> dict[str, str]:
+def twse_payload_usable(payload: dict[str, Any]) -> bool:
+    try:
+        bars, index = parse_twse_payload(payload)
+    except (KeyError, ValueError, TypeError):
+        return False
+    return not bars.empty or not index.empty
+
+
+def tpex_payload_usable(payload: dict[str, Any], session: date) -> bool:
+    try:
+        bars = parse_tpex_payload(payload, session=session)
+    except (KeyError, ValueError, TypeError):
+        return False
+    return not bars.empty
+
+
+def raw_file_usable(path: Path, market: str, session: date) -> bool:
+    if not path.exists():
+        return False
+    try:
+        payload = load_json(path)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    if market == "twse":
+        return twse_payload_usable(payload)
+    return tpex_payload_usable(payload, session)
+
+
+def last_complete_session(data_dir: Path) -> date | None:
+    bars_path = data_dir / "normalized" / "bars.parquet"
+    index_path = data_dir / "normalized" / "index.parquet"
+    if not bars_path.exists() or not index_path.exists():
+        return None
+    bars, index = read_normalized(data_dir)
+    if bars.empty or index.empty:
+        return None
+    twse = set(bars.loc[bars["market"] == "TWSE", "date"])
+    tpex = set(bars.loc[bars["market"] == "TPEx", "date"])
+    taiex = set(index["date"])
+    sessions = twse & tpex & taiex
+    return max(sessions) if sessions else None
+
+
+def should_fetch(
+    path: Path,
+    *,
+    market: str,
+    session: date,
+    last_complete: date | None,
+    today: date,
+    force: bool = False,
+) -> bool:
+    if force or not path.exists():
+        return True
+    if raw_file_usable(path, market, session):
+        return False
+    if last_complete is None:
+        return True
+    return session >= today or session > last_complete
+
+
+def _twse_fetch_label(payload: dict[str, Any]) -> str:
+    if twse_payload_usable(payload):
+        return "ok"
+    stat = str(payload.get("stat") or "")
+    return f"empty:{stat}" if stat else "empty"
+
+
+def _tpex_fetch_label(payload: dict[str, Any], session: date) -> str:
+    quoted = payload.get("date")
+    if quoted:
+        try:
+            if parse_yyyymmdd(str(quoted)) != session:
+                return f"date-mismatch:{quoted}"
+        except ValueError:
+            return f"date-mismatch:{quoted}"
+    if tpex_payload_usable(payload, session):
+        return "ok"
+    return "empty"
+
+
+def cached_label(path: Path, market: str, session: date) -> str:
+    if raw_file_usable(path, market, session):
+        return "cached"
+    return "holiday"
+
+
+def last_raw_attempt(data_dir: Path) -> dict[str, Any] | None:
+    dates = iter_raw_dates(data_dir)
+    if not dates:
+        return None
+    session = dates[-1]
+    twse_path, tpex_path = raw_paths(data_dir, session)
+    twse_ok = raw_file_usable(twse_path, "twse", session)
+    tpex_ok = raw_file_usable(tpex_path, "tpex", session)
+    return {
+        "date": session,
+        "twse": "ok" if twse_ok else "empty",
+        "tpex": "ok" if tpex_ok else "empty",
+        "usable": twse_ok and tpex_ok,
+    }
+
+
+def download_session(
+    session: date,
+    data_dir: Path,
+    *,
+    force: bool = False,
+    last_complete: date | None = None,
+    today: date | None = None,
+) -> dict[str, str]:
+    today = today or date.today()
     twse_path, tpex_path = raw_paths(data_dir, session)
     status = {"date": session.isoformat(), "twse": "skip", "tpex": "skip"}
 
-    if force or not twse_path.exists():
+    if should_fetch(
+        twse_path,
+        market="twse",
+        session=session,
+        last_complete=last_complete,
+        today=today,
+        force=force,
+    ):
         payload = fetch_json(twse_url(session))
         save_json(twse_path, payload)
-        stat = str(payload.get("stat") or "")
-        status["twse"] = "ok" if stat.upper() == "OK" else f"empty:{stat}"
+        status["twse"] = _twse_fetch_label(payload)
         time.sleep(TWSE_SLEEP_SEC)
     else:
-        status["twse"] = "cached"
+        status["twse"] = cached_label(twse_path, "twse", session)
 
-    if force or not tpex_path.exists():
+    if should_fetch(
+        tpex_path,
+        market="tpex",
+        session=session,
+        last_complete=last_complete,
+        today=today,
+        force=force,
+    ):
         payload = fetch_json(tpex_url(session))
         save_json(tpex_path, payload)
-        n = 0
-        tables = payload.get("tables") or []
-        if tables:
-            n = len(tables[0].get("data") or [])
-        quoted = payload.get("date")
-        if quoted and parse_yyyymmdd(str(quoted)) != session:
-            status["tpex"] = f"date-mismatch:{quoted}"
-        elif n == 0:
-            status["tpex"] = "empty"
-        else:
-            status["tpex"] = "ok"
+        status["tpex"] = _tpex_fetch_label(payload, session)
     else:
-        status["tpex"] = "cached"
+        status["tpex"] = cached_label(tpex_path, "tpex", session)
     return status
 
 
-def download_range(start: date, end: date, data_dir: Path, *, force: bool = False) -> pd.DataFrame:
+def download_range(
+    start: date,
+    end: date,
+    data_dir: Path,
+    *,
+    force: bool = False,
+    today: date | None = None,
+) -> pd.DataFrame:
+    today = today or date.today()
+    last_complete = last_complete_session(data_dir)
     rows = []
     for session in daterange(start, end):
         if session.weekday() >= 5:
             continue
-        info = download_session(session, data_dir, force=force)
+        info = download_session(
+            session,
+            data_dir,
+            force=force,
+            last_complete=last_complete,
+            today=today,
+        )
         rows.append(info)
         print(
             f"{info['date']}  twse={info['twse']}  tpex={info['tpex']}",

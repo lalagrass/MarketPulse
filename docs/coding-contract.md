@@ -175,7 +175,10 @@ Implement:
 ```text
 brief
 timeline
+refresh
 ```
+
+`refresh` is a local daily alias (download trailing → validate → analyze → brief → default chart). Not scheduling.
 
 ### Slice D — Replay
 

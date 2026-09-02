@@ -645,7 +645,15 @@ marketpulse analyze
 marketpulse brief
 marketpulse chart
 marketpulse replay
+marketpulse refresh
 ```
+
+`refresh` is the daily local batch: fetch trailing weekdays (including unusable empty files after the last complete session), validate, analyze, print Brief, write `reports/rotation_latest.png`.
+
+It is not a scheduler. Do not add cron, notifications, or `doctor`.
+
+`chart` with no `--start` uses the last 40 ranked sessions and writes `reports/rotation_latest.png`.
+`chart --start YYYY-MM-DD` writes a dated `reports/rotation_{effective_start}_{effective_end}.png`.
 
 Do not build:
 

@@ -41,16 +41,28 @@ It uses established market-analysis concepts and focuses its own code on Taiwan 
 
 ## Run
 
+Daily update (after official EOD is published):
+
 ```text
 uv sync --extra dev
+uv run marketpulse refresh
+uv run pytest
+```
+
+`refresh` fetches trailing weekdays, validates, analyzes, prints Brief, and writes `reports/rotation_latest.png` (last 40 ranked sessions). Empty too-early files are retried; holidays before the last complete session stay cached.
+
+First-time / explicit range:
+
+```text
 uv run marketpulse download --start 2026-07-20 --end 2026-08-31
 uv run marketpulse validate
 uv run marketpulse analyze
 uv run marketpulse brief
-uv run marketpulse chart
+uv run marketpulse chart --start 2026-07-20
 uv run marketpulse replay --start 2026-07-20 --end 2026-08-31
-uv run pytest
 ```
+
+`chart` with no `--start` overwrites `reports/rotation_latest.png`. Dated PNGs require `--start`.
 
 Daily Brief groups the same RS20 ranks into **領先 / 改善 / 轉弱 / 落後** (改善 first). Classification uses only Rank and Δ5; `value_thrust` and `breadth` are annotations.
 

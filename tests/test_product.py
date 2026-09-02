@@ -9,12 +9,14 @@ from marketpulse import RANK_DISCLOSURE, REPLAY_DISCLOSURE
 from marketpulse.calc import compute_snapshots
 from marketpulse.product import (
     CLASSIFICATION_NOTE,
+    DEFAULT_CHART_SESSIONS,
     MISSING_NOTE,
     STATE_IMPROVING,
     STATE_LAGGING,
     STATE_LEADING,
     STATE_WEAKENING,
     brief_state,
+    chart_window,
     effective_rank_period,
     format_end_label,
     render_brief,
@@ -194,6 +196,48 @@ def test_brief_groups_improving_first_and_omits_empty_blocks() -> None:
     assert "thrust" in text
     assert "breadth" in text
     assert "rotation_score" not in text
+
+
+def test_chart_window_defaults_to_last_n_ranked_dates() -> None:
+    rows = []
+    start = date(2026, 1, 5)
+    dates = session_dates(50, start=start)
+    for i, session in enumerate(dates):
+        rows.append(
+            {
+                "date": session,
+                "theme_id": "alpha",
+                "theme_name": "Alpha",
+                "rank": 1,
+                "rs20": 0.1,
+                "status": "OK",
+            }
+        )
+        rows.append(
+            {
+                "date": session,
+                "theme_id": "beta",
+                "theme_name": "Beta",
+                "rank": 2,
+                "rs20": 0.0,
+                "status": "OK",
+            }
+        )
+    snap = pd.DataFrame(rows)
+    window = chart_window(snap, None, None)
+    kept = sorted(set(window["date"]))
+    assert len(kept) == DEFAULT_CHART_SESSIONS
+    assert kept[-1] == dates[-1]
+    assert kept[0] == dates[-DEFAULT_CHART_SESSIONS]
+
+
+def test_chart_window_explicit_start_is_not_clipped() -> None:
+    dates = session_dates(50)
+    snap = pd.DataFrame(
+        [{"date": session, "theme_id": "alpha", "rank": 1, "rs20": 0.1} for session in dates]
+    )
+    window = chart_window(snap, dates[0], dates[-1])
+    assert sorted(set(window["date"])) == dates
 
 
 def test_brief_rank2_delta_minus1_is_lagging() -> None:

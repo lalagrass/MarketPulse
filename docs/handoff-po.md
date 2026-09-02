@@ -1,64 +1,54 @@
-# 給 PO — Brief 四態
+# 給 PO — 日常 refresh（ops）
 
-狀態：**已實作**。只改 `marketpulse/product.py` 與測試；RS20、rank、Timeline 未動。
-as-of **2026-08-31**，下面是 `uv run marketpulse brief` 真實輸出。
+狀態：**已實作**。公式、四態 Brief、Timeline 幾何都沒改。
+日常指令改成 `uv run marketpulse refresh`。
 
-## 已鎖定規則
+## 做了什麼
 
-- 領先：rank ≤ 3 且 Δ5 ≥ 0
-- 改善：rank ≥ 4 且 Δ5 ≥ +2
-- 轉弱：rank ≤ 3 且 Δ5 ≤ −2
-- 其餘：落後
-- NaN rank 或 NaN Δ5 → 落後
-- 改善列置頂，其後 領先 → 轉弱 → 落後；空塊不印
-- 分類只用 Rank 與 Δ5
-- value_thrust、breadth 只當附註
-- rank #2 但 Δ5 = −1 → 落後
+- 空的官方回應不再當成功快取。9/3 這種「還太早」下次會重抓；9/1 這種已完成交易日之前的空檔當假期留下。
+- `refresh`：從最後完整交易日隔天抓到今天 → validate → analyze → Brief → `reports/rotation_latest.png`。
+- 預設圖：最近 40 個有 rank 的交易日。YTD 長圖要自己加 `--start`。
+- 結尾印 raw last attempt / snapshot as_of / chart 路徑。
 
-## 真實 Brief
+## 真實輸出（2026-09-03 跑 refresh）
+
+9/3 官方收盤檔還沒出，有重抓，仍是 empty，as_of 停在 9/2。
 
 ```text
-MarketPulse — 2026-08-31
+2026-09-03  twse=empty:很抱歉，沒有符合條件的資料!  tpex=empty
+downloaded 1 weekday requests
+sessions: 160  2026-01-02 → 2026-09-02
+validate: ok
+
+MarketPulse — 2026-09-02
 
 Theme Rotation  領先 / 改善 / 轉弱 / 落後
 分類只用 Rank 與 Δ5。value_thrust、breadth 為附註。
 
 改善
- 被動元件             #6   Δ5   +3  RS20  +14.5%
-                      thrust  +11.0%  breadth   57.1%
- 先進製程             #8   Δ5   +2  RS20   +5.6%
-                      thrust   +0.3%  breadth   66.7%
+ 被動元件             #6   Δ5   +2  RS20   +7.5%
+ 先進製程             #7   Δ5   +3  RS20   +2.9%
 
 領先
- 光通訊/CPO           #1   Δ5   +1  RS20  +42.8%
-                      thrust   -4.3%  breadth  100.0%
- 散熱/液冷            #3   Δ5   +0  RS20  +23.5%
-                      thrust   +2.1%  breadth   80.0%
+ 光通訊/CPO           #1   Δ5   +1  RS20  +37.4%
+ 散熱/液冷            #3   Δ5   +1  RS20  +21.8%
 
 落後
- 高速材料/CCL         #2   Δ5   -1  RS20  +39.2%
-                      thrust   -4.6%  breadth   50.0%
- PCB                  #4   Δ5   +1  RS20  +20.2%
-                      thrust   -7.9%  breadth   83.3%
- 記憶體               #5   Δ5   -1  RS20  +19.6%
-                      thrust  +50.7%  breadth   85.7%
- AI伺服器             #7   Δ5   -1  RS20   +7.9%
-                      thrust  -28.6%  breadth   80.0%
- 重電                 #9   Δ5   -2  RS20   +3.6%
-                      thrust  -35.9%  breadth   85.7%
- AI電力/電源          #10  Δ5   -2  RS20   -0.1%
-                      thrust  -45.9%  breadth   60.0%
- 半導體測試/測試介面  #11  Δ5   +0  RS20   -2.8%
-                      thrust   +3.1%  breadth   60.0%
+ 高速材料/CCL         #2   Δ5   -1  RS20  +26.4%
+ PCB                  #4   Δ5   +1  RS20  +12.7%
+ 記憶體               #5   Δ5   -2  RS20   +7.9%
+ 重電                 #8   Δ5   -1  RS20   +1.5%
+ 半導體測試/測試介面  #9   Δ5   +0  RS20   -0.1%
+ AI電力/電源          #10  Δ5   +1  RS20   -4.1%
+ AI伺服器             #11  Δ5   -5  RS20   -4.9%
 
-歷史回放使用現行族群定義，用來把過去的輪動畫清楚，不代表當時已知這份名單。
-Rank is relative leadership over time; it does not prove capital flowed from A to B.
+reports/rotation_latest.png
+effective RS20 period: 2026-07-07 → 2026-09-02
+raw last attempt: 2026-09-03  twse=empty  tpex=empty  (will retry)
+bars/snapshot as_of: 2026-09-02
+chart: reports/rotation_latest.png  effective 2026-07-07 → 2026-09-02
 ```
 
-當日無「轉弱」。高速材料/CCL 是 rank #2 但 Δ5 = −1，因此在落後。
+## 沒做（依計畫）
 
-## 下一刀（未做，需另批）
-
-1. Brief 頂欄加 TAIEX 20 日（股癌流程的「先看大盤」）
-2. 領先／改善主題內列相對強個股（抓裡面最強的）
-3. 才考慮成交值門檻、RRG、歷史 taxonomy
+cron、通知、doctor、個股、大盤 header、RRG、改 RS20。

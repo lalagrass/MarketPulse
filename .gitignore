@@ -19,5 +19,6 @@ data/snapshots/*
 reports/*
 !reports/.gitkeep
 !reports/*.png
+reports/rotation_latest.png
 
 .DS_Store

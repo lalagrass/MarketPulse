@@ -69,6 +69,8 @@ STATE_ORDER = (
 
 NAME_WIDTH = 20
 CLASSIFICATION_NOTE = "分類只用 Rank 與 Δ5。value_thrust、breadth 為附註。"
+DEFAULT_CHART_SESSIONS = 40
+LATEST_CHART_NAME = "rotation_latest.png"
 
 
 def _fmt_pct(value: float | None, digits: int = 1) -> str:
@@ -141,6 +143,35 @@ def effective_rank_period(snapshot: pd.DataFrame) -> tuple[date, date]:
         raise ValueError("no ranked rows")
     dates = list(ranked["date"])
     return min(dates), max(dates)
+
+
+def chart_window(
+    snapshot: pd.DataFrame,
+    start: date | None,
+    end: date | None,
+    n: int = DEFAULT_CHART_SESSIONS,
+) -> pd.DataFrame:
+    """Default: last n ranked sessions. Explicit start keeps the full [start, end] span."""
+    frame = snapshot.copy()
+    if frame.empty:
+        return frame
+    hi = end if end is not None else max(frame["date"])
+    if start is not None:
+        return frame[(frame["date"] >= start) & (frame["date"] <= hi)].copy()
+    ranked = frame.dropna(subset=["rank"])
+    ranked = ranked.loc[ranked["date"] <= hi]
+    dates = sorted(set(ranked["date"]))
+    keep = set(dates[-n:])
+    return frame[frame["date"].isin(keep)].copy()
+
+
+def default_chart_path(reports_dir: Path, start: date | None, output: Path | None) -> Path | None:
+    """None means dated name after effective_rank_period is known."""
+    if output is not None:
+        return output
+    if start is None:
+        return reports_dir / LATEST_CHART_NAME
+    return None
 
 
 def format_end_label(rec) -> str:
