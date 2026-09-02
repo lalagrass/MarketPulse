@@ -1,11 +1,20 @@
 from __future__ import annotations
 
+from datetime import date
 from types import SimpleNamespace
+
+import pandas as pd
 
 from marketpulse import RANK_DISCLOSURE, REPLAY_DISCLOSURE
 from marketpulse.calc import compute_snapshots
 from marketpulse.product import (
+    CLASSIFICATION_NOTE,
     MISSING_NOTE,
+    STATE_IMPROVING,
+    STATE_LAGGING,
+    STATE_LEADING,
+    STATE_WEAKENING,
+    brief_state,
     effective_rank_period,
     format_end_label,
     render_brief,
@@ -42,6 +51,9 @@ def test_brief_discloses_visualization_replay_and_hides_score() -> None:
     assert "rotation_score" not in text
     assert "rank_momentum" not in text
     assert MISSING_NOTE not in text
+    assert CLASSIFICATION_NOTE in text
+    assert "Value%" not in text
+    assert "領先 / 改善 / 轉弱 / 落後" in text
 
 
 def test_brief_marks_missing_data_without_hiding_rank() -> None:
@@ -109,3 +121,90 @@ def test_timeline_png_written(tmp_path) -> None:
     render_timeline(snap, dest)
     assert dest.exists()
     assert dest.stat().st_size > 1000
+
+
+def test_brief_state_predicates() -> None:
+    assert brief_state(1, 0) == STATE_LEADING
+    assert brief_state(3, 1) == STATE_LEADING
+    assert brief_state(4, 2) == STATE_IMPROVING
+    assert brief_state(11, 3) == STATE_IMPROVING
+    assert brief_state(1, -2) == STATE_WEAKENING
+    assert brief_state(3, -3) == STATE_WEAKENING
+    assert brief_state(2, -1) == STATE_LAGGING
+    assert brief_state(4, 1) == STATE_LAGGING
+    assert brief_state(5, -1) == STATE_LAGGING
+    assert brief_state(3, -1) == STATE_LAGGING
+    assert brief_state(float("nan"), 2) == STATE_LAGGING
+    assert brief_state(1, float("nan")) == STATE_LAGGING
+    assert brief_state(None, 0) == STATE_LAGGING
+    assert brief_state(1, None) == STATE_LAGGING
+
+
+def _theme_row(
+    theme_id: str,
+    theme_name: str,
+    rank: float | None,
+    delta: float | None,
+    *,
+    rs20: float = 0.1,
+    thrust: float = 0.0,
+    breadth: float = 0.5,
+    status: str = "OK",
+) -> dict:
+    return {
+        "date": date(2026, 8, 31),
+        "theme_id": theme_id,
+        "theme_name": theme_name,
+        "return_20": 0.12,
+        "rs20": rs20,
+        "rank": rank,
+        "rank_delta_5": delta,
+        "rank_delta_20": 0,
+        "value_share": 0.08,
+        "breadth": breadth,
+        "value_thrust": thrust,
+        "member_count": 5,
+        "missing_count": 0,
+        "status": status,
+    }
+
+
+def test_brief_groups_improving_first_and_omits_empty_blocks() -> None:
+    snap = pd.DataFrame(
+        [
+            _theme_row("optical_cpo", "光通訊/CPO", 1, 1, rs20=0.428, thrust=-0.043, breadth=1.0),
+            _theme_row("high_speed_materials", "高速材料/CCL", 2, -1, rs20=0.392, thrust=-0.046, breadth=0.5),
+            _theme_row("thermal", "散熱/液冷", 3, 0, rs20=0.235, thrust=0.021, breadth=0.8),
+            _theme_row("passive_components", "被動元件", 6, 3, rs20=0.145, thrust=0.110, breadth=0.571),
+            _theme_row("foundry_advanced", "先進製程", 8, 2, rs20=0.056, thrust=0.003, breadth=0.667),
+        ]
+    )
+    text = render_brief(snap, date(2026, 8, 31))
+    blocks = [ln for ln in text.splitlines() if ln in {
+        STATE_IMPROVING,
+        STATE_LEADING,
+        STATE_WEAKENING,
+        STATE_LAGGING,
+    }]
+    assert blocks == [STATE_IMPROVING, STATE_LEADING, STATE_LAGGING]
+    assert text.index("被動元件") < text.index("先進製程")
+    assert text.index("被動元件") < text.index("光通訊/CPO")
+    assert "高速材料/CCL" in text.split("\n落後\n", 1)[1]
+    assert "Value%" not in text
+    assert "thrust" in text
+    assert "breadth" in text
+    assert "rotation_score" not in text
+
+
+def test_brief_rank2_delta_minus1_is_lagging() -> None:
+    snap = pd.DataFrame(
+        [
+            _theme_row("leader", "領先族", 1, 0),
+            _theme_row("almost", "高速材料/CCL", 2, -1),
+        ]
+    )
+    text = render_brief(snap, date(2026, 8, 31))
+    after_lagging = text.split("\n落後\n", 1)[1]
+    assert "高速材料/CCL" in after_lagging
+    before_lagging = text.split("\n落後\n", 1)[0]
+    assert "高速材料/CCL" not in before_lagging

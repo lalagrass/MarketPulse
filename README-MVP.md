@@ -28,9 +28,10 @@ It uses established market-analysis concepts and focuses its own code on Taiwan 
 
 ## Documents
 
-- `docs/design-v0.2.md` — replacement MVP design
+- `docs/design-v0.2.md` — replacement MVP design（產品規格；與此衝突時以它為準）
 - `docs/coding-contract.md` — replacement coding contract
 - `docs/reuse-plan.md` — OSS reuse boundary
+- `docs/gooaye-method.md` — 股癌觀測方法筆記（不是規格；如何更新見文內 §8）
 
 ## OSS
 
@@ -50,6 +51,8 @@ uv run marketpulse chart
 uv run marketpulse replay --start 2026-07-20 --end 2026-08-31
 uv run pytest
 ```
+
+Daily Brief groups the same RS20 ranks into **領先 / 改善 / 轉弱 / 落後** (改善 first). Classification uses only Rank and Δ5; `value_thrust` and `breadth` are annotations.
 
 The Rank Timeline is a **step plot** of daily RS20 rank (rank 1 at the top). The title shows the **effective** RS20 window (after the 20-session lookback), not the raw download start. The last session is labeled `theme + RS20 + Δ5` so you do not have to match colors in a legend.
 

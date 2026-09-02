@@ -54,6 +54,22 @@ MISSING_NOTE = (
     "not a complete-membership signal."
 )
 
+STATE_LEADING = "領先"
+STATE_IMPROVING = "改善"
+STATE_WEAKENING = "轉弱"
+STATE_LAGGING = "落後"
+
+# Improving first: that is the rotation the reader should see before leaders.
+STATE_ORDER = (
+    STATE_IMPROVING,
+    STATE_LEADING,
+    STATE_WEAKENING,
+    STATE_LAGGING,
+)
+
+NAME_WIDTH = 20
+CLASSIFICATION_NOTE = "分類只用 Rank 與 Δ5。value_thrust、breadth 為附註。"
+
 
 def _fmt_pct(value: float | None, digits: int = 1) -> str:
     if value is None or pd.isna(value):
@@ -80,12 +96,6 @@ def _fmt_delta_short(value: float | None) -> str:
     return f"{int(value):+d}"
 
 
-def _fmt_rank(value: float | None) -> str:
-    if value is None or pd.isna(value):
-        return "  n/a"
-    return f"{int(value):4d}"
-
-
 def _vislen(text: str) -> int:
     return sum(2 if ord(ch) > 0x2E80 else 1 for ch in text)
 
@@ -96,6 +106,33 @@ def _ljust(text: str, width: int) -> str:
 
 def status_mark(status: str) -> str:
     return STATUS_MARK.get(str(status), "?")
+
+
+def brief_state(rank: object, rank_delta_5: object) -> str:
+    """Display-only four-state label. Rank is still cross_sectional_rank(RS20)."""
+    if rank is None or pd.isna(rank) or rank_delta_5 is None or pd.isna(rank_delta_5):
+        return STATE_LAGGING
+    position = int(rank)
+    delta = int(rank_delta_5)
+    if position <= 3 and delta >= 0:
+        return STATE_LEADING
+    if position >= 4 and delta >= 2:
+        return STATE_IMPROVING
+    if position <= 3 and delta <= -2:
+        return STATE_WEAKENING
+    return STATE_LAGGING
+
+
+def _fmt_rank_hash(value: float | None) -> str:
+    if value is None or pd.isna(value):
+        return "#n/a"
+    return f"#{int(value)}"
+
+
+def _fmt_signed_pct_col(value: float | None) -> str:
+    if value is None or pd.isna(value):
+        return "   n/a"
+    return f"{value * 100:+6.1f}%"
 
 
 def effective_rank_period(snapshot: pd.DataFrame) -> tuple[date, date]:
@@ -119,30 +156,40 @@ def render_brief(snapshot: pd.DataFrame, as_of: date) -> str:
     day = snapshot.loc[snapshot["date"] == as_of].copy()
     if day.empty:
         return f"MarketPulse — {as_of.isoformat()}\n\nNo snapshot for this date.\n"
+    day["state"] = [
+        brief_state(rank, delta) for rank, delta in zip(day["rank"], day["rank_delta_5"])
+    ]
     day = day.sort_values(["rank", "theme_id"], na_position="last")
     lines = [
         f"MarketPulse — {as_of.isoformat()}",
         "",
-        "Theme Rotation",
+        "Theme Rotation  領先 / 改善 / 轉弱 / 落後",
+        CLASSIFICATION_NOTE,
         "",
-        f" {_ljust('Theme', 16)} {'Rank':>4} {'Δ5':>5} {'RS20':>8} {'Value%':>8} {'Breadth':>8}  Status",
-        "-" * 72,
     ]
-    for rec in day.itertuples(index=False):
-        mark = status_mark(rec.status)
-        lines.append(
-            f"{mark}{_ljust(str(rec.theme_name), 16)} "
-            f"{_fmt_rank(rec.rank)} "
-            f"{_fmt_delta(rec.rank_delta_5)} "
-            f"{_fmt_pct(rec.rs20)} "
-            f"{_fmt_pct(rec.value_share)} "
-            f"{_fmt_pct(rec.breadth)}  "
-            f"{rec.status}"
-        )
+    for state in STATE_ORDER:
+        block = day.loc[day["state"] == state]
+        if block.empty:
+            continue
+        lines.append(state)
+        for rec in block.itertuples(index=False):
+            mark = status_mark(rec.status)
+            lines.append(
+                f"{mark}{_ljust(str(rec.theme_name), NAME_WIDTH)} "
+                f"{_fmt_rank_hash(rec.rank):<3}  "
+                f"Δ5 {_fmt_delta(rec.rank_delta_5)}  "
+                f"RS20 {_fmt_signed_pct_col(rec.rs20)}"
+            )
+            lines.append(
+                f"{' ' * (1 + NAME_WIDTH)} "
+                f"thrust {_fmt_signed_pct_col(rec.value_thrust)}  "
+                f"breadth {_fmt_pct(rec.breadth)}"
+            )
+        lines.append("")
     statuses = set(str(s) for s in day["status"])
     if "MISSING_DATA" in statuses:
-        lines.extend(["", MISSING_NOTE])
-    lines.extend(["", REPLAY_DISCLOSURE, RANK_DISCLOSURE])
+        lines.extend([MISSING_NOTE, ""])
+    lines.extend([REPLAY_DISCLOSURE, RANK_DISCLOSURE])
     return "\n".join(lines) + "\n"
 
 

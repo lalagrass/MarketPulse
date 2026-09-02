@@ -16,6 +16,8 @@ Its only MVP job is:
 
 The product is **not** a prediction engine, trading system, quant research platform, technical-analysis library, or generic financial framework.
 
+User intent (not an algorithm): top-down Taiwan theme observation in the style of 股癌 — index, then themes, then rotation, then leaders later. Living method notes: `docs/gooaye-method.md`. That file is not a spec; if it conflicts with this document, this document wins.
+
 ### MVP output
 
 1. Daily Theme Brief
@@ -584,22 +586,50 @@ The Rank Timeline is sufficient for MVP completion.
 
 # 17. Daily Brief
 
+The Brief is a **display-only** grouping of the same RS20 rank table.
+It does not change RS20, rank, or Timeline.
+
+Classification uses only Rank and Δ5:
+
+```text
+領先: rank ≤ 3 and Δ5 ≥ 0
+改善: rank ≥ 4 and Δ5 ≥ +2
+轉弱: rank ≤ 3 and Δ5 ≤ −2
+其餘: 落後
+NaN rank or NaN Δ5 → 落後
+```
+
+Block order: 改善 → 領先 → 轉弱 → 落後. Omit empty blocks.
+Within a block: rank ASC, then theme_id ASC.
+
+`value_thrust` and `breadth` are annotations. They do not affect classification.
+Do not print a Value% column. Do not print a composite score.
+
 Minimum output:
 
 ```text
 MarketPulse — YYYY-MM-DD
 
-Theme Rotation
+Theme Rotation  領先 / 改善 / 轉弱 / 落後
+分類只用 Rank 與 Δ5。value_thrust、breadth 為附註。
 
-Theme       Rank   Δ5   RS20    Value%   Breadth
----------------------------------------------------
-Optical       1    +4   +18.2%    9.4%      78%
-CCL           2    +2   +13.7%    7.2%      71%
-PCB           3    +3   +11.1%    8.1%      67%
-Passive       4    +5    +7.8%    5.4%      62%
-...
+改善
+ 被動元件            #6  Δ5   +3  RS20  +14.5%
+                     thrust  +11.0%  breadth  57.1%
+
+領先
+ 光通訊/CPO          #1  Δ5   +1  RS20  +42.8%
+                     thrust   -4.3%  breadth 100.0%
+
+轉弱
+ ...
+
+落後
+ 高速材料/CCL        #2  Δ5   -1  RS20  +39.2%
+                     thrust   -4.6%  breadth  50.0%
 ```
 
+A theme at rank #2 with Δ5 = −1 is 落後, not 領先.
 This table should be understandable without knowing the implementation.
 
 ---
