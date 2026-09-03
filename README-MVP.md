@@ -31,7 +31,7 @@ It uses established market-analysis concepts and focuses its own code on Taiwan 
 - `docs/design-v0.2.md` — replacement MVP design（產品規格；與此衝突時以它為準）
 - `docs/coding-contract.md` — replacement coding contract
 - `docs/reuse-plan.md` — OSS reuse boundary
-- `docs/gooaye-method.md` — 股癌觀測方法筆記（不是規格；如何更新見文內 §8）
+- `docs/marketpulse-methodology.md` — 觀測方法論（不是規格；與設計衝突時以設計為準）
 
 ## OSS
 

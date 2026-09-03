@@ -20,4 +20,6 @@ reports/*
 !reports/.gitkeep
 !reports/radar.html
 
+docs/research/
+
 .DS_Store

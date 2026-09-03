@@ -16,7 +16,7 @@ Its only MVP job is:
 
 The product is **not** a prediction engine, trading system, quant research platform, technical-analysis library, or generic financial framework.
 
-User intent (not an algorithm): top-down Taiwan theme observation in the style of 股癌 — index, then themes, then rotation, then leaders later. Living method notes: `docs/gooaye-method.md`. That file is not a spec; if it conflicts with this document, this document wins.
+User intent (not an algorithm): top-down Taiwan theme observation — market regime, then themes, then rotation, then leaders inside a leading theme. Living method notes: `docs/marketpulse-methodology.md`. That file is not a spec; if it conflicts with this document, this document wins.
 
 ### MVP output
 
