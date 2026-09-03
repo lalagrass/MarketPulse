@@ -49,6 +49,8 @@ uv run marketpulse refresh
 uv run pytest
 ```
 
+`uv run pytest` is the only supported test command. Running a bare `pytest` (outside the uv-managed venv) skips `uv sync` and will report `pyarrow`-missing failures on `to_parquet` — that's a missing-dependency artifact of the sandbox, not a repo bug.
+
 `refresh` fetches trailing weekdays, validates, analyzes, prints Brief, writes `reports/rotation_latest.png` (last 40 ranked sessions), prints the Sector Rotation table, and writes `reports/radar.html`. Empty too-early files are retried; holidays before the last complete session stay cached.
 
 Open the radar (ranking table + Momentum state + click a sector for Leader / Follower / Laggard stocks):

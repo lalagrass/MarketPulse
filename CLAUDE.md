@@ -103,6 +103,8 @@ uv run pytest tests/test_calc.py       # Single file
 uv run pytest tests/test_rs.py -v      # Verbose
 ```
 
+`uv run pytest` (after `uv sync --extra dev`) is the only supported test command. A bare `pytest` invoked outside the uv-managed venv (e.g. `PYTHONPATH=. pytest`) skips `uv sync` and will not have `pyarrow` or other dependencies installed, producing `to_parquet`/import failures that look like repo bugs but are just missing dependencies — not a code issue.
+
 ### Common Tasks
 
 **Add a theme or update membership:**
