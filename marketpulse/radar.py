@@ -247,6 +247,39 @@ def _html_pct(value: object) -> str:
     return f'<td class="{_pct_class(value)}">{html.escape(text)}</td>'
 
 
+def _rank_history(snapshot: pd.DataFrame, theme_id: str, as_of: date, n: int = 20) -> list[tuple[date, int | None]]:
+    """Last n sessions of rank for a theme, ending at as_of. Returns (date, rank) tuples."""
+    hist = snapshot.loc[
+        (snapshot["theme_id"] == theme_id) & (snapshot["date"] <= as_of)
+    ].sort_values("date")
+    if hist.empty:
+        return []
+    result = []
+    for _, row in hist.tail(n).iterrows():
+        rank = row["rank"]
+        rank_val = int(rank) if rank is not None and not pd.isna(rank) else None
+        result.append((row["date"], rank_val))
+    return result
+
+
+def _format_rank_history_html(history: list[tuple[date, int | None]]) -> str:
+    """Format rank history as compact HTML text."""
+    if not history:
+        return "<p class='empty'>No historical data available.</p>"
+
+    lines = []
+    for d, rank in history:
+        rank_str = f"#{rank}" if rank is not None else "#n/a"
+        lines.append(f"{d.isoformat():<12} {rank_str}")
+
+    return (
+        "<div class='rank-history'><div style='font-family: monospace; font-size: 0.9rem; "
+        "color: #333; line-height: 1.4;'>"
+        + "<br>".join(lines)
+        + "</div></div>"
+    )
+
+
 def _html_dir_class(direction: str) -> str:
     if direction == "up":
         return "up"
@@ -332,6 +365,15 @@ def render_radar_html(snapshot: pd.DataFrame, stocks: pd.DataFrame, as_of: date)
             f"{_html_evidence_item('Rank', mom.rank, _fmt_rank(rec.rank) + '  ' + _fmt_delta5(getattr(rec, 'rank_delta_5', None)))}"
             "</div>"
         )
+        hist = _rank_history(snapshot, rec.theme_id, as_of)
+        rank_hist_html = (
+            "<div class='metrics rank-trend'>"
+            "<div style='width: 100%;'>"
+            "<span>Rank Trend (last 20 sessions)</span>"
+            f"{_format_rank_history_html(hist)}"
+            "</div>"
+            "</div>"
+        )
         sections.append(
             f'<section id="{html.escape(str(rec.theme_id))}">'
             f"<h2>{name}</h2>"
@@ -352,6 +394,7 @@ def render_radar_html(snapshot: pd.DataFrame, stocks: pd.DataFrame, as_of: date)
             f"<div><span>Volume</span><strong>"
             f"{html.escape(_fmt_x(getattr(rec, 'volume_ratio', None)).strip())}</strong></div>"
             "</div>"
+            f"{rank_hist_html}"
             f"{evidence_html}"
             f"{stock_html}"
             '<p class="back"><a href="#top">← Sector Rotation</a></p>'
@@ -401,6 +444,9 @@ def render_radar_html(snapshot: pd.DataFrame, stocks: pd.DataFrame, as_of: date)
   .metrics strong {{ font-size: 1.1rem; }}
   .metrics.momentum {{ margin-top: -4px; padding: 10px 12px; background: #fafafa;
                       border: 1px solid #eee; border-radius: 8px; }}
+  .metrics.rank-trend {{ background: #f5f5f5; padding: 12px; border: 1px solid #e0e0e0;
+                        border-radius: 6px; margin-top: 8px; }}
+  .rank-history {{ margin-top: 6px; }}
   .back {{ margin-top: 16px; }}
   .foot {{ margin-top: 40px; color: #777; font-size: 0.8rem; }}
   .empty {{ color: #777; }}
