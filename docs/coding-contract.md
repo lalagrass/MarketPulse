@@ -66,6 +66,7 @@ theme ranking
 PIT/as-of rules
 replay
 Timeline
+radar table / sector drill-down
 ```
 
 ## 5. No composite score
@@ -135,6 +136,9 @@ Minimum tests:
 - rank ordering
 - value-share overlap behavior
 - breadth
+- volume ratio
+- rank change
+- leader / follower / laggard
 - future mutation
 - deterministic replay
 
@@ -176,9 +180,11 @@ Implement:
 brief
 timeline
 refresh
+radar
 ```
 
-`refresh` is a local daily alias (download trailing → validate → analyze → brief → default chart). Not scheduling.
+`refresh` is a local daily alias (download trailing → validate → analyze → brief → default chart → radar HTML). Not scheduling.
+`radar` is the Sector Rotation table + HTML drill-down. Rank remains RS20. Leader/Follower/Laggard is stock sort inside a theme, not a new score.
 
 ### Slice D — Replay
 
@@ -194,7 +200,6 @@ market regime
 theme regime
 5-theme baseline
 H1-H4
-leaders
 watchlist
 Streamlit
 notifications

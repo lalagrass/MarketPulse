@@ -22,8 +22,9 @@ User intent (not an algorithm): top-down Taiwan theme observation in the style o
 
 1. Daily Theme Brief
 2. Theme Rank / Rotation Timeline
-3. Historical replay for validation of the visualization
-4. Basic data-quality / future-leakage tests
+3. Sector Rotation Radar (ranking table + sector stock drill-down HTML)
+4. Historical replay for validation of the visualization
+5. Basic data-quality / future-leakage tests
 
 ### MVP deployment
 
@@ -491,11 +492,19 @@ breadth
 Optional:
 
 ```text
+return_1
+return_5
 return_60
 rs60
+rank_delta_1
+above_count
+volume_ratio
 value_thrust
 member_count
 ```
+
+`volume_ratio` = theme volume[T] / SMA20(theme volume). Display as `1.8x`.
+Radar Breadth shows `above_count / member_count` (same Close > SMA20 definition as `breadth`).
 
 Do NOT include:
 
@@ -644,11 +653,14 @@ marketpulse validate
 marketpulse analyze
 marketpulse brief
 marketpulse chart
+marketpulse radar
 marketpulse replay
 marketpulse refresh
 ```
 
-`refresh` is the daily local batch: fetch trailing weekdays (including unusable empty files after the last complete session), validate, analyze, print Brief, write `reports/rotation_latest.png`.
+`refresh` is the daily local batch: fetch trailing weekdays (including unusable empty files after the last complete session), validate, analyze, print Brief, write `reports/rotation_latest.png`, print the Sector Rotation table, write `reports/radar.html`.
+
+`radar` prints the ranking table (1D / 5D / 20D / RS20 / Breadth / Volume / Rank / Rising·Falling·Stable) and writes `reports/radar.html` with sector drill-down. Rank is still `cross_sectional_rank(RS20)`. `--open` opens the HTML. Stock roles (Leader / Follower / Laggard) are terciles of member RS20 inside a theme; they do not change theme rank.
 
 It is not a scheduler. Do not add cron, notifications, or `doctor`.
 

@@ -11,11 +11,11 @@ TWSE / TPEx
     ↓
 Theme Aggregation
     ↓
-RS20 + Value Share + Breadth
+RS20 + Value Share + Breadth + Volume Ratio
     ↓
 Theme Rank
     ↓
-Daily Brief + Rotation Timeline
+Daily Brief + Rotation Timeline + Sector Radar
     ↓
 Historical Replay
 ```
@@ -49,7 +49,13 @@ uv run marketpulse refresh
 uv run pytest
 ```
 
-`refresh` fetches trailing weekdays, validates, analyzes, prints Brief, and writes `reports/rotation_latest.png` (last 40 ranked sessions). Empty too-early files are retried; holidays before the last complete session stay cached.
+`refresh` fetches trailing weekdays, validates, analyzes, prints Brief, writes `reports/rotation_latest.png` (last 40 ranked sessions), prints the Sector Rotation table, and writes `reports/radar.html`. Empty too-early files are retried; holidays before the last complete session stay cached.
+
+Open the radar (ranking table + click a sector for Leader / Follower / Laggard stocks):
+
+```text
+uv run marketpulse radar --open
+```
 
 First-time / explicit range:
 
@@ -58,6 +64,7 @@ uv run marketpulse download --start 2026-07-20 --end 2026-08-31
 uv run marketpulse validate
 uv run marketpulse analyze
 uv run marketpulse brief
+uv run marketpulse radar
 uv run marketpulse chart --start 2026-07-20
 uv run marketpulse replay --start 2026-07-20 --end 2026-08-31
 ```

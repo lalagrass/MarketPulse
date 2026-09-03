@@ -1,8 +1,9 @@
-"""Small CLI: download, validate, analyze, brief, chart, replay, refresh."""
+"""Small CLI: download, validate, analyze, brief, chart, radar, replay, refresh."""
 
 from __future__ import annotations
 
 import json
+import webbrowser
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -10,7 +11,7 @@ import pandas as pd
 import typer
 
 from marketpulse import RANK_DISCLOSURE, REPLAY_DISCLOSURE, __version__
-from marketpulse.calc import compute_snapshots, replay_snapshots, snapshots_equal
+from marketpulse.calc import compute_snapshots, compute_stock_metrics, replay_snapshots, snapshots_equal
 from marketpulse.data import (
     coverage_report,
     download_range,
@@ -29,6 +30,7 @@ from marketpulse.product import (
     render_brief,
     render_timeline,
 )
+from marketpulse.radar import RADAR_HTML_NAME, render_radar, write_radar_html
 from marketpulse.themes import load_themes
 
 app = typer.Typer(no_args_is_help=True, help="MarketPulse: Taiwan theme-rotation radar")
@@ -179,6 +181,22 @@ def _run_chart(
     return dest, (eff_lo, eff_hi)
 
 
+def _run_radar(
+    snapshot: pd.DataFrame,
+    data_dir: Path,
+    themes_path: Path,
+    as_of: date,
+    reports_dir: Path,
+    output: Path | None = None,
+) -> Path:
+    themes = load_themes(themes_path)
+    bars, index = read_normalized(data_dir)
+    stocks = compute_stock_metrics(bars, index, themes, as_of)
+    dest = output if output is not None else reports_dir / RADAR_HTML_NAME
+    write_radar_html(snapshot, stocks, as_of, dest)
+    return dest
+
+
 @app.command()
 def download(
     start: str = typer.Option(..., help="YYYY-MM-DD"),
@@ -219,6 +237,24 @@ def brief(
 
 
 @app.command()
+def radar(
+    as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default = latest snapshot date"),
+    data_dir: Path = typer.Option(DEFAULT_DATA),
+    themes_path: Path = typer.Option(DEFAULT_THEMES),
+    output: Path | None = typer.Option(None, help="HTML path; default reports/radar.html"),
+    open_browser: bool = typer.Option(False, "--open", help="open the HTML radar in a browser"),
+) -> None:
+    """Sector ranking table + stock drill-down HTML. Rank is still RS20."""
+    snapshot = _load_snapshot(data_dir)
+    day = _parse_date(as_of) if as_of else max(snapshot["date"])
+    typer.echo(render_radar(snapshot, day), nl=False)
+    dest = _run_radar(snapshot, data_dir, themes_path, day, DEFAULT_REPORTS, output)
+    typer.echo(str(dest))
+    if open_browser:
+        webbrowser.open(dest.resolve().as_uri())
+
+
+@app.command()
 def chart(
     start: str | None = typer.Option(None),
     end: str | None = typer.Option(None),
@@ -253,7 +289,7 @@ def refresh(
     data_dir: Path = typer.Option(DEFAULT_DATA),
     themes_path: Path = typer.Option(DEFAULT_THEMES),
 ) -> None:
-    """Download trailing days, validate, analyze, print Brief, write latest chart."""
+    """Download trailing days, validate, analyze, Brief, latest chart, radar HTML."""
     hi = _parse_date(end) if end else date.today()
     if start:
         lo = _parse_date(start)
@@ -287,6 +323,9 @@ def refresh(
         typer.echo(f"effective RS20 period: {effective[0].isoformat()} → {effective[1].isoformat()}")
         typer.echo(REPLAY_DISCLOSURE)
         typer.echo(RANK_DISCLOSURE)
+    typer.echo(render_radar(snapshot, day), nl=False)
+    radar_path = _run_radar(snapshot, data_dir, themes_path, day, DEFAULT_REPORTS)
+    typer.echo(str(radar_path))
     typer.echo(format_ops_status(data_dir, chart_path=dest, effective=effective))
 
 
