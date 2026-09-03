@@ -17,6 +17,8 @@ from marketpulse.radar import (
     ROT_FALLING,
     ROT_RISING,
     ROT_STABLE,
+    _format_rank_history_html,
+    _rank_history,
     render_radar,
     render_radar_detail,
     render_radar_html,
@@ -220,3 +222,58 @@ def test_radar_html_links_to_sector_and_lists_leaders() -> None:
     assert "Leader" in detail
     assert "A1" in detail
     assert detail.index("A1") < detail.index("A6")
+    assert "Rank Trend" in page
+
+
+def _rank_history_snapshot(n_sessions: int = 25) -> tuple[pd.DataFrame, list[date]]:
+    dates = session_dates(n_sessions)
+    flat = [100.0] * n_sessions
+    bars = make_bars(dates, {"AAA": flat, "BBB": flat, "CCC": flat}, twse=("AAA", "BBB"), tpex=("CCC",))
+    index = make_index(dates, [1000.0] * n_sessions)
+    snap = compute_snapshots(bars, index, two_theme_set(), thin_min=1)
+    return snap, dates
+
+
+def test_rank_history_returns_ascending_dates_matching_snapshot_rank() -> None:
+    snap, dates = _rank_history_snapshot()
+    as_of = dates[-1]
+    hist = _rank_history(snap, "alpha", as_of, n=5)
+    assert [d for d, _ in hist] == dates[-5:]
+    expected = snap[snap["date"] == as_of].set_index("theme_id").loc["alpha", "rank"]
+    assert hist[-1][1] == int(expected)
+
+
+def test_rank_history_truncates_to_n_sessions() -> None:
+    snap, dates = _rank_history_snapshot()
+    as_of = dates[-1]
+    hist = _rank_history(snap, "alpha", as_of, n=3)
+    assert len(hist) == 3
+    assert [d for d, _ in hist] == dates[-3:]
+
+
+def test_rank_history_excludes_dates_after_as_of() -> None:
+    snap, dates = _rank_history_snapshot()
+    as_of = dates[10]
+    hist = _rank_history(snap, "alpha", as_of, n=20)
+    assert all(d <= as_of for d, _ in hist)
+    assert hist[-1][0] == as_of
+
+
+def test_rank_history_empty_when_theme_has_no_rows() -> None:
+    snap, dates = _rank_history_snapshot()
+    assert _rank_history(snap, "no-such-theme", dates[-1]) == []
+
+
+def test_format_rank_history_html_renders_dates_and_ranks() -> None:
+    history = [(date(2026, 1, 5), 4), (date(2026, 1, 6), 2), (date(2026, 1, 7), None)]
+    out = _format_rank_history_html(history)
+    assert "2026-01-05" in out
+    assert "#4" in out
+    assert "2026-01-06" in out
+    assert "#2" in out
+    assert "#n/a" in out
+
+
+def test_format_rank_history_html_empty_history() -> None:
+    out = _format_rank_history_html([])
+    assert "No historical data available." in out

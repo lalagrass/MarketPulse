@@ -73,7 +73,9 @@ uv run marketpulse replay --start 2026-07-20 --end 2026-08-31
 
 Daily Brief groups the same RS20 ranks into **領先 / 改善 / 轉弱 / 落後** (改善 first). Classification uses only Rank and Δ5; `value_thrust` and `breadth` are annotations.
 
-Sector Radar Rank is still RS20. **Rotation** is rank vs the previous session. **Momentum** is a display-only Strong / Improving / Stable / Weakening / Weak label from 5D, Breadth, Volume, and Rank Δ5 (Unknown if that 5-session history is missing). It is not a score and does not change Rank.
+Sector Radar Rank is still RS20. **Rotation** is rank vs the previous session — a change in relative rank, not a claim about capital flow. **Momentum** is a display-only Strong / Improving / Stable / Weakening / Weak label from 5D, Breadth, Volume, and Rank Δ5 (Unknown if that 5-session history is missing). It is not a score and does not change Rank.
+
+Each sector's detail view also shows **Rank Trend (last 20 sessions)**: the theme's RS20 rank for each of the last 20 available sessions up to the current date, so a persistent climb or slide is visible without cross-referencing the Timeline PNG. It reuses the existing snapshot history (no new storage) and is PIT-safe — only sessions on or before the current date are shown.
 
 The Rank Timeline is a **step plot** of daily RS20 rank (rank 1 at the top). The title shows the **effective** RS20 window (after the 20-session lookback), not the raw download start. The last session is labeled `theme + RS20 + Δ5` so you do not have to match colors in a legend.
 
