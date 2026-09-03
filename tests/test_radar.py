@@ -213,7 +213,9 @@ def test_radar_html_links_to_sector_and_lists_leaders() -> None:
     assert 'id="mix"' in page
     assert "Leader" in page
     assert "A1" in page
+    assert "Momentum" in page
     assert "rotation_score" not in page
+    assert "momentum_score" not in page
     detail = render_radar_detail(snap, stocks, dates[-1], "mix")
     assert "Leader" in detail
     assert "A1" in detail

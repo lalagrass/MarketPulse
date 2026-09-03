@@ -67,6 +67,7 @@ PIT/as-of rules
 replay
 Timeline
 radar table / sector drill-down
+momentum / trend state (display-only)
 ```
 
 ## 5. No composite score
@@ -139,6 +140,7 @@ Minimum tests:
 - volume ratio
 - rank change
 - leader / follower / laggard
+- momentum state (Strong / Improving / Stable / Weakening / Weak / Unknown)
 - future mutation
 - deterministic replay
 
@@ -184,7 +186,7 @@ radar
 ```
 
 `refresh` is a local daily alias (download trailing → validate → analyze → brief → default chart → radar HTML). Not scheduling.
-`radar` is the Sector Rotation table + HTML drill-down. Rank remains RS20. Leader/Follower/Laggard is stock sort inside a theme, not a new score.
+`radar` is the Sector Rotation table + HTML drill-down. Rank remains RS20. Leader/Follower/Laggard is stock sort inside a theme, not a new score. Momentum / Trend State is a display-only label from 5D, Breadth, Volume, and Rank Δ5; it is not a score and does not change Rank.
 
 ### Slice D — Replay
 

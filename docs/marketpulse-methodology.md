@@ -383,7 +383,8 @@ MarketPulse 使用少量、可解釋的價格與量價訊號。
 * SMA
 * 相對排名
 * Breadth
-* Value Thrust
+* Volume ratio
+* Radar Momentum State（Strong / Improving / Stable / Weakening / Weak）
 
 刻意不因為「技術分析工具很多」就加入：
 
@@ -697,10 +698,14 @@ value_thrust
 * SMA
 * Rank
 * Breadth
+* Volume ratio
+* Radar Momentum State
+
+Momentum 與 Rotation 分開：Rotation 是相對前一交易日的名次；Momentum 是 5D / Breadth / Volume / Rank Δ5 的方向狀態。不是 Momentum Score，也不改變 RS20 排序。
 
 ### 狀態
 
-**已實作。**
+**已實作。** Sector Radar 顯示 Strong / Improving / Stable / Weakening / Weak；歷史不足時為 Unknown。
 
 ---
 
@@ -764,7 +769,7 @@ Decision
 | Theme Leadership         | 主題內領導標的   | Radar Leader / Follower / Laggard | 已實作    |
 | Liquidity / Capacity     | 市場容量      | Value Share / Value Thrust | 部分     |
 | Fundamental Confirmation | 基本面支撐     | 人工維護 Theme Knowledge       | 刻意限制   |
-| Trend & Momentum         | 趨勢與動能     | Return / SMA / Rank        | 已實作    |
+| Trend & Momentum         | 趨勢與動能     | Radar Momentum State（5D / Breadth / Volume / Rank Δ5） | 已實作    |
 | Historical Context       | 歷史輪動      | Timeline + Replay          | 已實作    |
 | Human Decision           | 人工判斷      | Brief / Radar / CLI        | 已實作    |
 
@@ -789,7 +794,7 @@ Leading / Improving / Weakening / Lagging
       ↓
 Brief
       ↓
-Radar (theme table + stock drill-down)
+Radar (theme table + Momentum State + stock drill-down)
       ↓
 Timeline
       ↓
@@ -1193,6 +1198,12 @@ Theme Relative Strength
 
 ---
 
+## Increment 2b — Sector Momentum State
+
+**已實作。** Radar 對每個主題顯示 Strong / Improving / Stable / Weakening / Weak，並在下鑽區列出 5D / 20D / Breadth / Volume / Rank Δ5 的方向。不引入 Momentum Score，不改變 RS20 Rank。
+
+---
+
 ## Increment 3 — Liquidity / Capacity Context
 
 增加：
@@ -1341,3 +1352,4 @@ docs/research/
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 2026-09-03 | 將原有來源導向的投資觀察整理，抽象為 MarketPulse 通用市場觀測方法論。統一使用 Market Regime、Theme Breadth、Relative Strength、Capital Rotation、Leadership、Liquidity & Market Capacity 等金融術語。保留 RS20 為主要排序訊號，不引入 Composite Score，並明確分離研究來源與產品方法論。 |
 | 2026-09-03 | 產品文件改指本檔；來源研究改為本機 `docs/research/`（不進 git）。Theme Leadership / Radar 標為已實作。 |
+| 2026-09-03 | Radar 新增 Momentum / Trend State（Strong / Improving / Stable / Weakening / Weak / Unknown）。由既有 5D、Breadth、Volume、Rank Δ5 與五個交易日前的快照比較，不是新指標也不是分數。Rank 仍為 RS20。 |

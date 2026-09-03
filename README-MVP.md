@@ -51,7 +51,7 @@ uv run pytest
 
 `refresh` fetches trailing weekdays, validates, analyzes, prints Brief, writes `reports/rotation_latest.png` (last 40 ranked sessions), prints the Sector Rotation table, and writes `reports/radar.html`. Empty too-early files are retried; holidays before the last complete session stay cached.
 
-Open the radar (ranking table + click a sector for Leader / Follower / Laggard stocks):
+Open the radar (ranking table + Momentum state + click a sector for Leader / Follower / Laggard stocks):
 
 ```text
 uv run marketpulse radar --open
@@ -72,6 +72,8 @@ uv run marketpulse replay --start 2026-07-20 --end 2026-08-31
 `chart` with no `--start` overwrites `reports/rotation_latest.png`. Dated PNGs require `--start`.
 
 Daily Brief groups the same RS20 ranks into **領先 / 改善 / 轉弱 / 落後** (改善 first). Classification uses only Rank and Δ5; `value_thrust` and `breadth` are annotations.
+
+Sector Radar Rank is still RS20. **Rotation** is rank vs the previous session. **Momentum** is a display-only Strong / Improving / Stable / Weakening / Weak label from 5D, Breadth, Volume, and Rank Δ5 (Unknown if that 5-session history is missing). It is not a score and does not change Rank.
 
 The Rank Timeline is a **step plot** of daily RS20 rank (rank 1 at the top). The title shows the **effective** RS20 window (after the 20-session lookback), not the raw download start. The last session is labeled `theme + RS20 + Δ5` so you do not have to match colors in a legend.
 

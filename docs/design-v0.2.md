@@ -643,6 +643,42 @@ This table should be understandable without knowing the implementation.
 
 ---
 
+# 17.5 Sector Momentum State (Radar)
+
+Display-only on the Sector Rotation Radar. Does **not** change RS20, Rank, Brief, or Timeline.
+
+**Rotation** (already on the table) answers: did the sector move up or down in the ranking vs the previous session? (`rank_delta_1`)
+
+**Momentum** answers: is the sector's current strength expanding, stable, or fading?
+
+Reuse existing snapshot fields only. Compare the current row with the same theme 5 sessions earlier. Do not add RSI, MACD, a new indicator, or a Momentum Score.
+
+Directions (↑ / ↓ / →) from:
+
+```text
+5D:      sign of return_5; ↓ also if return_5 dropped ≥ 2pp vs 5 sessions ago
+20D:     sign of return_20 (level, shown as evidence)
+Breadth: above_count vs 5 sessions ago
+Volume:  volume_ratio ≤ 0.8 ↓, ≥ 1.2 ↑, or a 0.20 move vs 5 sessions ago
+Rank:    sign of rank_delta_5 (positive = moved up)
+```
+
+Classification, first match:
+
+```text
+Unknown:   missing rank, return_5, return_20, or rank_delta_5
+Weakening: return_20 > 0 and at least two of {5D, Breadth, Volume, Rank Δ5} are ↓
+Strong:    rank ≤ 3 and return_20 > 0 and 5D is not ↓ and
+           (no ↓ among those four, or more ↑ than ↓)
+Improving: rank ≥ 4 and 5D is ↑ and at least two ↑ and more ↑ than ↓
+Weak:      rank ≥ 8 and fewer than two ↑, or return_20 ≤ 0 and 5D is ↓
+Stable:    otherwise
+```
+
+The detail section must show the state plus those five evidence arrows. Rank remains `cross_sectional_rank(RS20)`.
+
+---
+
 # 18. CLI
 
 Minimum CLI:
@@ -660,7 +696,7 @@ marketpulse refresh
 
 `refresh` is the daily local batch: fetch trailing weekdays (including unusable empty files after the last complete session), validate, analyze, print Brief, write `reports/rotation_latest.png`, print the Sector Rotation table, write `reports/radar.html`.
 
-`radar` prints the ranking table (1D / 5D / 20D / RS20 / Breadth / Volume / Rank / Rising·Falling·Stable) and writes `reports/radar.html` with sector drill-down. Rank is still `cross_sectional_rank(RS20)`. `--open` opens the HTML. Stock roles (Leader / Follower / Laggard) are terciles of member RS20 inside a theme; they do not change theme rank.
+`radar` prints the ranking table (1D / 5D / 20D / RS20 / Breadth / Volume / Rank / Rising·Falling·Stable / Momentum) and writes `reports/radar.html` with sector drill-down. Rank is still `cross_sectional_rank(RS20)`. Momentum is the display-only Strong / Improving / Stable / Weakening / Weak / Unknown state in §17.5. `--open` opens the HTML. Stock roles (Leader / Follower / Laggard) are terciles of member RS20 inside a theme; they do not change theme rank.
 
 It is not a scheduler. Do not add cron, notifications, or `doctor`.
 
