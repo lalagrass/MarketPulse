@@ -224,6 +224,13 @@ Post-MVP work arrives as a spec at `docs/sprints/NNN-spec.md`, written on the
 planning side. **The spec is the whole brief** — implement from it, not from
 conversation. If something is not in the spec, it was not asked for.
 
+**Finding the current spec:** it is the highest-numbered `NNN-spec.md` in
+`docs/sprints/` whose 狀態 / status line reads 待實作. Completed specs carry
+`已完成 <date>`. So "implement the current sprint" is always resolvable without
+being told a number — and the number stays as the join key linking the spec to
+its `sprint/NNN-<slug>` branch, its `NNN-report.md`, and the `[sprint NNN]`
+markers in `docs/product/backlog.md`.
+
 ### Branch and commits
 
 - Branch `sprint/NNN-<slug>` off `dev`. **The trunk of this repo is `dev`; there
