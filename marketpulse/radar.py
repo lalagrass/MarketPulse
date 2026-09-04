@@ -464,8 +464,8 @@ def render_radar_html(
 <body>
 <header id="top">
   <h1>MarketPulse</h1>
-  <p class="sub quality">{html.escape(quality_line(market_row))}</p>
   <p class="sub">Sector Rotation · {html.escape(as_of.isoformat())}</p>
+  <p class="sub quality">{html.escape(quality_line(market_row))}</p>
   <p class="sub">{html.escape(RADAR_NOTE)}</p>
   <p class="sub">{html.escape(RADAR_MOM_NOTE)}</p>
 </header>

@@ -67,7 +67,14 @@ def _percentile(series: pd.Series) -> pd.Series:
 
 
 def compute_market_quality(snapshot: pd.DataFrame) -> pd.DataFrame:
-    """Daily, market-level signal-quality stats. Never uses T+k data for T (R2)."""
+    """Daily, market-level signal-quality stats. Never uses T+k data for T (R2).
+
+    rank_persistence_k uses corrwith's default pairwise-complete handling: a
+    theme with a NaN rank on either side of the pair is dropped from that
+    day's correlation. Different days can therefore correlate over different
+    numbers of themes (e.g. during INSUFFICIENT_HISTORY warm-up), so the
+    coefficient is not strictly apples-to-apples across days.
+    """
     if snapshot.empty:
         return pd.DataFrame(columns=MARKET_COLUMNS)
 
@@ -117,12 +124,14 @@ def quality_line(market_row: pd.Series | None) -> str:
     """Compact one-line signal-quality readout: numbers and percentiles only.
 
     No verdict, no threshold-based label (D10 / acceptance 5) — the reader
-    judges. Uses rank_persistence_1 and rank_churn's own-session comparison,
-    matching rank_churn's T-vs-T-1 basis.
+    judges. Uses rank_persistence_20 rather than rank_persistence_1: the
+    1-day lag answers the same question as rank_churn (today vs. yesterday),
+    so pairing them would spend two of the three slots on one thing. The 20
+    lag gives the line three genuinely different scales instead.
     """
     if market_row is None:
         return "持續性 n/a   換手 n/a   離散 n/a"
-    persistence = _fmt_corr(market_row.get("rank_persistence_1"))
+    persistence = _fmt_corr(market_row.get("rank_persistence_20"))
     churn = market_row.get("rank_churn")
     churn_text = "n/a" if churn is None or pd.isna(churn) else f"{int(round(float(churn)))}"
     churn_pct = _fmt_pct(market_row.get("rank_churn_pct"))
