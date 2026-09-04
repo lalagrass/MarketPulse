@@ -24,3 +24,4 @@ Cowork  下一輪階段 0           → 對照 spec 驗收，寫 NNN-report.md
 | `past-refresh-ops` | 日常 refresh、空回應快取修正 | 已完成 |
 | `past-momentum-visibility` | 雷達動能狀態、排名歷史 | 已完成 |
 | `000` | 文件整地：分離已完成的建置期指令 | 已完成 2026-09-04 |
+| `001` | 訊號品質三數、breadth 修正、脈絡層結構 | 已完成 2026-09-04 |
