@@ -59,16 +59,21 @@ Before implementing any generic indicator:
 - document the selected dependency;
 - use it if it reduces implementation/validation risk.
 
+*[AMENDED 2026-09-04 — see non-goals D8]*
+
 Do not write your own:
 
-- SMA
-- generic ROC
 - generic momentum
-- generic TA indicator
+- generic TA indicator beyond a thin pandas wrapper
 - RRG
 - generic backtest engine
 
-Use pandas / pandas-ta-classic / an established RRG implementation where appropriate.
+**Amendment:** standard series operations that are a direct pandas expression —
+SMA (`rolling().mean()`) and N-day return (`shift()`) — may be written inline as
+thin, tested wrappers rather than pulling in a dependency. `calc.py:88,93` are
+these. pandas-ta-classic is reserved for indicators beyond that level, and is
+not currently a dependency. Anything more involved than a one-line pandas
+expression still requires searching for an existing implementation first.
 
 ## 4. MarketPulse-specific code
 
@@ -232,7 +237,13 @@ cloud
 backtesting frameworks
 ```
 
-RRG may be added only after the Rank Timeline works, and should reuse an established implementation.
+*[AMENDED 2026-09-04]* The former conditional — "RRG may be added only after the
+Rank Timeline works" — is **withdrawn**. The Rank Timeline does work, which under
+that wording would have unlocked RRG by default. RRG is now an explicit non-goal
+(see `docs/product/non-goals.md` D3): `rank` + `rank_delta_5` already cover the
+useful part of the two-axis idea, and RRG adds visual complexity rather than
+information. Reversing this needs a stated reason in a sprint report, like any
+other default.
 
 ## 12. Code quality
 

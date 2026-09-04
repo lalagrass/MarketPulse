@@ -59,8 +59,7 @@ RS20 的計算，兩層就變成同一層，「數字說 A、人說 B」這個�
 ### D3 — 不做 RRG
 **理由：**`rank` + `rank_delta_5` 已經涵蓋了 RRG 雙軸（強度 × 動能）概念的實用部分。
 RRG 增加的主要是視覺複雜度，不是資訊量。
-**註：**coding-contract §11 目前寫「RRG may be added only after the Rank Timeline works」，
-Timeline 已可運作，故契約字面上已解鎖。此條若確立，需同步修正 §11。
+**已確立 2026-09-04。**coding-contract §11 的附帶條件已撤回，矛盾消除。
 
 ### D4 — 不做 regime detection / theme regime
 **理由：**列在 coding-contract §11。目前沒有具體使用情境驅動它——
@@ -81,8 +80,9 @@ YAML，等於用後見之明選成分股。但重建成本高到會吃掉數個 
 ### D8 — 不自造標準指標
 SMA、ROC、一般動能等先找現成實作（pandas / pandas-ta-classic）。
 **理由：**自寫的指標要自己驗證，而驗證成本高於使用成本。
-**註：**目前 `calc.py:88,93` 自行定義了 `n_day_return()` 與 `sma()`（各五行 pandas 包裝），
-而 pandas-ta-classic 並未安裝。此矛盾記於 `open-questions.md` Q2。
+**已釐清 2026-09-04。**§3 已修訂：直接對應單行 pandas 表達式的操作（SMA、N 日報酬）
+可保留為薄包裝，`calc.py:88,93` 屬此類；pandas-ta-classic 保留給更複雜的指標，
+目前不列為相依套件。超過單行 pandas 的東西仍須先找現成實作。
 
 ### D9 — 不過早抽象
 不建 provider framework、plugin 系統、DI 容器、指標註冊表、event bus、策略框架。
@@ -93,10 +93,32 @@ SMA、ROC、一般動能等先找現成實作（pandas / pandas-ta-classic）。
 **理由：**這是 R1 的軟性版本。常數要改必須有市場概念上的理由，不能有「試了比較好」的理由。
 **註：**這條最接近規則，若哪天要動任何一個常數，應先確認是否其實在破 R1。
 
+### D11 — 不用圖結構表達脈絡的上下游
+扁平的帶日期 YAML 先用著，不引入 networkx 或圖資料庫。
+**理由：**過早抽象（D9 的具體應用）。參考架構確實存在（`supat-roong/stock-relation`，
+MIT，用 typed edges 表達 ownership／supply-chain／similarity），但在還沒有任何一個
+脈絡被實際記錄與量測之前，先決定資料結構是在解一個還不存在的問題。
+真的不夠用時，它會自己顯現出來。
+
+### D12 — 不引入 alphalens
+**理由：**它確實提供 `factor_rank_autocorrelation` 與 `quantile_turnover`（Apache-2.0），
+且這兩個函式是純排名統計、不模擬損益。但 11 個主題做分位分析樣本太少，
+而我們需要的 Spearman 相關 pandas 內建就有。多一個相依套件換不到東西。
+**推翻條件：**若之後要在個股層（數百檔）做因子分析，這條就不成立了。
+
+### D13 — 不使用付費或條款未確認的外部資料源
+具體排除：FinMind `TaiwanStockIndustryChain`（經查屬付費層）、
+TPEx 產業價值鏈資訊平台 ic.tpex.org.tw（回 403，使用條款未能確認）。
+**理由：**資料層目前完全本機、只依賴官方公開 EOD，這是一個有價值的性質。
+用付費或條款不明的來源換取脈絡種子，代價高於自己手動記錄。
+**註：**FinMind 的 `TaiwanStockPriceAdj`（還原股價）是不同的資料集，是否屬免費層尚未確認，
+與 D13 無關，見 backlog 的除權息項目。
+
 ---
 
 ## 修訂紀錄
 
+- 2026-09-04 sprint 001 收斂：新增 D11–D13。
 - 2026-09-04 建立（sprint 001 bootstrap）。種子來源：CLAUDE.md Scope boundaries 與
   Common Pitfalls、`docs/coding-contract.md` §5 / §6 / §7 / §11 / §12、
   以及 2026-09-04 的產品討論（兩層架構、L2 決定）。

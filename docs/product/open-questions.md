@@ -7,7 +7,7 @@ Sprint 000 文件整地時發現的矛盾。**這些是決定，不是事實**�
 
 ---
 
-## Q1 — §11 的 RRG 條款自相矛盾
+## ~~Q1~~ — §11 的 RRG 條款自相矛盾　**已解決 2026-09-04：確立 D3，撤回 §11 附帶條件**
 
 `docs/coding-contract.md` §11 把 RRG 列入 "Do not implement yet"，但同段附帶條件：
 
@@ -19,7 +19,7 @@ RRG 已解鎖。需要決定：正式解禁，或改寫為無條件的 non-goal 
 
 參考：開源實作 RRG-Lite（GPL-3.0，CLI，吃 CSV OHLC，計算 RS-Ratio / RS-Momentum）。
 
-## Q2 — §3 要求 pandas-ta-classic，但專案並未使用
+## ~~Q2~~ — §3 要求 pandas-ta-classic，但專案並未使用　**已解決 2026-09-04：修訂 §3，保留現有薄包裝**
 
 `docs/coding-contract.md` §3 明文 "Do not write your own: SMA / generic ROC /
 generic momentum"，並指定使用 pandas-ta-classic。實際情況：
@@ -31,7 +31,7 @@ generic momentum"，並指定使用 pandas-ta-classic。實際情況：
 兩者都是五行的 pandas 包裝，可能是正確取捨。需要決定：補上相依套件，或修改 §3
 說明標準指標直接用 pandas，pandas-ta-classic 保留給 SMA / ROC 以外的需求。
 
-## Q3 — §8 禁止還原股價進入訊號路徑
+## ~~Q3~~ — §8 禁止還原股價進入訊號路徑　**已決定 2026-09-04：只量測幅度（§8 允許 report），不改價格方法。§8 維持不變**
 
 `docs/coding-contract.md` §8：
 
@@ -50,7 +50,7 @@ generic momentum"，並指定使用 pandas-ta-classic。實際情況：
 需要決定：是否量測幅度；若確認顯著，是否鬆綁 §8。註：引入 FinMind 也等於
 讓目前完全本機、無外部相依的資料層接受一個外部 API 與其免費額度。
 
-## Q4 — §11 的 backtesting 禁令範圍
+## ~~Q4~~ — §11 的 backtesting 禁令範圍　**已解決 2026-09-04：完整損益回測寫入 non-goals D2，§11 維持不變**
 
 `docs/coding-contract.md` §11 將 "backtesting frameworks" 列為 not yet。
 2026-09-04 討論中曾考慮解禁「前瞻報酬分布」（依 rank 分組，觀察未來 20 日相對
