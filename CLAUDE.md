@@ -172,7 +172,18 @@ reports/radar.html                    # Interactive sector drill-down
 docs/design-v0.2.md                   # Spec (read before architecture changes)
 docs/coding-contract.md               # Implementation rules
 docs/marketpulse-methodology.md       # Method notes (for context only)
+docs/reuse-plan.md                    # OSS reuse boundary
+docs/sprints/                         # Sprint specs + reports; see its README for the flow
+docs/product/open-questions.md        # Contradictions awaiting a product decision
 ```
+
+**Branching:** the trunk of this repo is `dev` — there is no `main`.
+Sprint work goes on `sprint/NNN-<slug>` and is not merged automatically.
+
+**MVP status:** the Definition of Done in `docs/design-v0.2.md` §26 was met on
+2026-09-03. Sections of the contract marked *[BUILD PHASE — COMPLETE]* are
+history, not current directives. Post-MVP work is scoped by
+`docs/sprints/NNN-spec.md`.
 
 ## Common Pitfalls to Avoid
 

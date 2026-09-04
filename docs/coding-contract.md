@@ -1,5 +1,20 @@
 # MarketPulse MVP Coding Contract v0.2
 
+> **STATUS — 2026-09-04**
+>
+> The MVP described by this contract is **complete**. All 14 Definition-of-Done
+> items in `docs/design-v0.2.md` §26 are satisfied (Slices A–D shipped).
+>
+> Sections marked *[BUILD PHASE — COMPLETE]* below were instructions for
+> constructing the MVP. They are retained for traceability and are **no longer
+> current directives**. Do not read them as "stop working on this project."
+>
+> Rules that remain in force: §1, §3–§9, §12.
+> Work after the MVP is governed by sprint specs under `docs/sprints/`.
+> Open contradictions found during this review are listed in
+> `docs/product/open-questions.md` — they are decisions, not facts, and are
+> resolved by the product owner, not by whoever reads this file.
+>
 > **REPLACEMENT CONTRACT**
 >
 > This contract replaces the previous coding contract.
@@ -17,6 +32,9 @@ Use this order:
 If an older document conflicts with v0.2, ignore the older document.
 
 ## 2. First implementation goal
+
+*[BUILD PHASE — COMPLETE 2026-09-03. The slice below ships and runs daily via
+`uv run marketpulse refresh`. Retained for traceability.]*
 
 Build the smallest end-to-end vertical slice:
 
@@ -148,6 +166,10 @@ Tests should be small and deterministic.
 
 ## 10. Current implementation slices
 
+*[BUILD PHASE — COMPLETE. Slice A–D all shipped; see `docs/sprints/` for the
+reports. Retained for traceability. The "Then stop" below ended the MVP build,
+not the project.]*
+
 ### Slice A — Data spike
 
 Prove:
@@ -231,13 +253,22 @@ Avoid:
 - complex class hierarchies
 - hidden global state
 
-## 13. Agent stop condition
+## 13. Agent stop condition (MVP build phase)
 
-After Definition of Done in `design-v0.2.md` is satisfied:
+*[BUILD PHASE — COMPLETE. This condition was met on 2026-09-03. It is history,
+not a current directive.]*
 
-**STOP.**
+**Superseded by:** post-MVP work is scoped one sprint at a time by a spec under
+`docs/sprints/NNN-spec.md`. An agent's stop condition is now "the current sprint
+spec is satisfied" — not this section.
 
-Do not continue implementing Phase 2 because older documents mention it.
+The original condition, retained for traceability:
+
+> After Definition of Done in `design-v0.2.md` is satisfied:
+>
+> **STOP.**
+>
+> Do not continue implementing Phase 2 because older documents mention it.
 
 Report:
 
