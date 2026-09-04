@@ -101,13 +101,29 @@ narratives/2026-09-18.yaml     # 下次變更時的完整狀態
 ```yaml
 snapshot_date: 2026-09-04
 narratives:
-  - narrative_id: cpo
-    name: CPO / 光通訊
-    first_noted: 2026-08-12      # 這個脈絡第一次被記錄的日期
+  - narrative_id: asic_xpu
+    name: 客製化 ASIC / XPU
+    first_noted: 2026-09-03      # 這個脈絡第一次被記錄的日期
     source: podcast              # podcast | hot-list | self
-    note: 交換器升級帶動光模組
-    members: ["3019", "4977"]
+    source_ref: 股癌 EP693
+    stance: new                  # new | confirming
+    named_symbols: ["2454"]      # 來源自己講出來的
+    inferred_symbols: []         # 我們自己推論的，必須分開
+    note: 聯發科 ECB，輝達認購多數
 ```
+
+**`narratives/2026-09-04.yaml` 已建立**，內容取自一集真實逐字稿，可直接當測試素材。
+
+**schema 的兩個欄位是被真實輸入逼出來的，不是預先設計的：**
+
+1. **`named_symbols` / `inferred_symbols` 必須分開。**實際情況是來源經常一檔台股都沒點名——
+   一整段論述只提到外商或技術架構。如果把「誰會受惠」推論出來塞進同一個欄位，
+   那是我們的分析冒用來源的名義，而且它會回頭決定要量測什麼，直接違反 R3。
+   推論可以有，但必須看得出來哪些是推論。
+
+2. **`stance` 區分新論點與既有確認。**同一集裡「光通訊持續強勢」是對 rank #1 的確認
+   （第一層早就知道了，RS20 +37.4%），而「ASIC/XPU」是第一層完全沒涵蓋的新論點。
+   兩者若都記成「9/3 提到某主題」，這一層就沒有資訊量了。這個區分就是 2×2 的雛形。
 
 新增 `marketpulse/narratives.py`，提供 `load_as_of(date)`：回傳
 `snapshot_date <= date` 之中最新的那一份快照，並且**濾掉 `first_noted > date` 的脈絡**。
@@ -124,7 +140,19 @@ narratives:
 **必須新增的測試**：`tests/test_narratives.py`，涵蓋上述四項，重點在第 2 項——
 它就是防前視的那道測試。
 
-**本項明確不做**：不計算任何脈絡的強度、RS20、排名或圖表。本輪只要結構與載入器。
+**額外要做：涵蓋率報告（`coverage_report`）**
+比對脈絡的 `named_symbols` 與 `themes/v1.yaml`，回報每個脈絡是 `covered`（成分股皆已
+在既有主題中）／`partial`／`uncovered`。**這是衍生值，不存進 YAML。**
+
+實例（已驗證）：`2454` 聯發科不在任何主題中，且無 ASIC/IC 設計類主題，
+故 `asic_xpu` 為 `uncovered`——這集最大的市場論點，第一層完全沒在量。
+**這個報告可能比量測脈絡強度更有價值**：它直接指出第一層的盲區在哪。
+
+驗收條件 5：`coverage_report` 對上述 `asic_xpu` 回傳 `uncovered`，對 `optical_cpo`
+（named_symbols 為空）回傳 `unknown` 而非 `covered`——空集合不等於全涵蓋。
+
+**本項明確不做**：不計算任何脈絡的強度、RS20、排名或圖表。本輪只要結構、載入器、
+涵蓋率報告。**特別不要自行填寫 `inferred_symbols`**——那是使用者的判斷，不是實作者的。
 
 ## 本輪明確不做
 

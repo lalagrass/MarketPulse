@@ -1,0 +1,45 @@
+# 脈絡快照。每次變更寫一個新的帶日期檔，不原地修改。
+# named_symbols  = 來源自己講出來的代號
+# inferred_symbols = 我們自己推論的，必須分開存放（見 non-goals R3：故事層不得改變數學層）
+snapshot_date: 2026-09-04
+
+narratives:
+  - narrative_id: asic_xpu
+    name: 客製化 ASIC / XPU
+    first_noted: 2026-09-03
+    source: podcast
+    source_ref: 股癌 EP693
+    stance: new
+    named_symbols: ["2454"]
+    inferred_symbols: []
+    note: >
+      聯發科發行約 39 億美元 ECB，輝達認購 35 億、票息 0%、溢價約 15%。
+      Alphabet 亦參與，兩者各自獨立入股而非三方結盟。論點是 XPU 興起並未壓縮
+      GPU 廠，而是整體 TAM 膨脹，輝達改賣機櫃內外互聯／網通／儲存整套方案。
+      對照：2454 目前不屬於任何既有主題，無 ASIC/IC 設計類主題。
+
+  - narrative_id: nvhbm
+    name: NVHBM / 記憶體架構變革
+    first_noted: 2026-09-03
+    source: podcast
+    source_ref: 股癌 EP693
+    stance: new
+    named_symbols: ["2330"]
+    inferred_symbols: []
+    note: >
+      記憶體控制器由運算晶片移入 HBM 的 base die，HBM4 世代 base die 規劃由
+      台積電以先進製程代工。這是一個橫跨既有主題（記憶體、先進製程、高速材料）
+      的論點，不是一個新的成分股籃子——目前 schema 無法完整表達，見 spec 註記。
+
+  - narrative_id: optical_cpo
+    name: 光通訊 / CPO
+    first_noted: 2026-09-03
+    source: podcast
+    source_ref: 股癌 EP693
+    stance: confirming
+    named_symbols: []
+    inferred_symbols: []
+    note: >
+      僅以「相關類股持續強勢」帶過，屬對既有走勢的確認而非新論點。
+      對照：optical_cpo 於 2026-09-02 為 rank #1、RS20 +37.4%——
+      數字早已知道，此則不帶新資訊。這正是 2×2 中「強且有人講」那一格。
