@@ -17,6 +17,7 @@ from marketpulse.momentum import (
     momentum_evidence,
 )
 from marketpulse.product import NAME_WIDTH, _fmt_signed_pct, _fmt_signed_pct_col, _ljust, status_mark
+from marketpulse.quality import quality_line
 
 ROT_RISING = "Rising"
 ROT_FALLING = "Falling"
@@ -121,12 +122,13 @@ def radar_day(snapshot: pd.DataFrame, as_of: date) -> pd.DataFrame:
     return day.sort_values(["rank", "theme_id"], na_position="last")
 
 
-def render_radar(snapshot: pd.DataFrame, as_of: date) -> str:
+def render_radar(snapshot: pd.DataFrame, as_of: date, market_row: pd.Series | None = None) -> str:
     day = radar_day(snapshot, as_of)
     if day.empty:
         return f"MarketPulse — {as_of.isoformat()}\n\nNo snapshot for this date.\n"
     lines = [
         f"MarketPulse — {as_of.isoformat()}",
+        quality_line(market_row),
         "",
         "Sector Rotation",
         RADAR_NOTE,
@@ -297,7 +299,12 @@ def _html_evidence_item(label: str, direction: str, value: str) -> str:
     )
 
 
-def render_radar_html(snapshot: pd.DataFrame, stocks: pd.DataFrame, as_of: date) -> str:
+def render_radar_html(
+    snapshot: pd.DataFrame,
+    stocks: pd.DataFrame,
+    as_of: date,
+    market_row: pd.Series | None = None,
+) -> str:
     day = radar_day(snapshot, as_of)
     rows = []
     sections = []
@@ -414,6 +421,8 @@ def render_radar_html(snapshot: pd.DataFrame, stocks: pd.DataFrame, as_of: date)
          margin: 24px auto; max-width: 1180px; color: #1a1a1a; line-height: 1.45; }}
   h1 {{ font-size: 1.6rem; margin: 0 0 4px; }}
   .sub {{ color: #555; margin: 0 0 16px; font-size: 0.95rem; }}
+  .quality {{ font-family: "SF Mono", Menlo, monospace; font-size: 0.82rem;
+             margin-bottom: 10px; }}
   .wrap {{ overflow-x: auto; }}
   table {{ border-collapse: collapse; width: 100%; font-size: 0.92rem; }}
   th, td {{ padding: 8px 10px; text-align: right; border-bottom: 1px solid #eee; }}
@@ -456,6 +465,7 @@ def render_radar_html(snapshot: pd.DataFrame, stocks: pd.DataFrame, as_of: date)
 <header id="top">
   <h1>MarketPulse</h1>
   <p class="sub">Sector Rotation · {html.escape(as_of.isoformat())}</p>
+  <p class="sub quality">{html.escape(quality_line(market_row))}</p>
   <p class="sub">{html.escape(RADAR_NOTE)}</p>
   <p class="sub">{html.escape(RADAR_MOM_NOTE)}</p>
 </header>
@@ -480,7 +490,13 @@ def render_radar_html(snapshot: pd.DataFrame, stocks: pd.DataFrame, as_of: date)
 """
 
 
-def write_radar_html(snapshot: pd.DataFrame, stocks: pd.DataFrame, as_of: date, path: Path) -> Path:
+def write_radar_html(
+    snapshot: pd.DataFrame,
+    stocks: pd.DataFrame,
+    as_of: date,
+    path: Path,
+    market_row: pd.Series | None = None,
+) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_radar_html(snapshot, stocks, as_of), encoding="utf-8")
+    path.write_text(render_radar_html(snapshot, stocks, as_of, market_row), encoding="utf-8")
     return path

@@ -218,6 +218,69 @@ history, not current directives. Post-MVP work is scoped by
 2. Use standard arg patterns (start/end dates via `_parse_date`, data_dir via `Path`)
 3. Document in `README-MVP.md` under "Run"
 
+## Working a Sprint Spec
+
+Post-MVP work arrives as a spec at `docs/sprints/NNN-spec.md`, written on the
+planning side. **The spec is the whole brief** — implement from it, not from
+conversation. If something is not in the spec, it was not asked for.
+
+**Finding the current spec:** it is the highest-numbered `NNN-spec.md` in
+`docs/sprints/` whose 狀態 / status line reads 待實作. Completed specs carry
+`已完成 <date>`. So "implement the current sprint" is always resolvable without
+being told a number — and the number stays as the join key linking the spec to
+its `sprint/NNN-<slug>` branch, its `NNN-report.md`, and the `[sprint NNN]`
+markers in `docs/product/backlog.md`.
+
+### Branch and commits
+
+- Branch `sprint/NNN-<slug>` off `dev`. **The trunk of this repo is `dev`; there
+  is no `main`.** Never merge — the product owner decides that.
+- Commit each DO item separately. They are usually independent, and separate
+  commits give a place to stop if one of them turns into a slog.
+
+### Ask, do not guess
+
+Every spec has a **留給實作者的未決問題 / open questions** section. Those are
+genuinely undecided — ask and wait. Answers are written back into the spec, so
+re-read it before assuming.
+
+Resolve what you can resolve yourself first. If the spec says "measure X and
+report it", measure before asking; do not hand back a question you were given
+the means to answer.
+
+### Honesty
+
+- **Never claim tests pass without running them.** `uv run pytest` is the only
+  supported command (see Testing above). If you cannot run it, say so.
+- If an acceptance criterion is not met, **report that it is not met.** Do not
+  reword a miss until it reads as a pass.
+- Criteria about human comprehension ("a person can tell within two seconds")
+  are verified by the product owner, not by you. Screenshotting your own output
+  is not a proxy for a human glance. Report the arrangement, your reasoning, and
+  what it actually looks like; let the owner judge.
+
+### Scope
+
+`docs/product/non-goals.md` distinguishes **rules** (unbreakable) from
+**defaults** (overridable with a stated reason, recorded in the report). Read it
+before adding anything the spec did not ask for.
+
+Each spec also carries a **本輪明確不做** section. Those options were considered
+and cut, with reasons. Do not add them back because they look convenient — that
+is the failure mode the section exists to prevent.
+
+### Report back
+
+When done, state three things separately:
+
+1. what was done
+2. what was **not** done
+3. **what was done that the spec did not ask for**
+
+The third is the one that matters most. It is not a confession — the planning
+side needs it to tell scope creep from a genuine discovery, and some of the best
+findings arrive that way. Just label it.
+
 ## Questions to Ask Before Major Changes
 
 - **Does this violate the coding contract?** (Check `docs/coding-contract.md` #1–#13)

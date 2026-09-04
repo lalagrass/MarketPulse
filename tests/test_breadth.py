@@ -33,3 +33,32 @@ def test_breadth_is_share_above_sma20() -> None:
     # FLAT: 100 > 100 → False
     # DOWN: 80 > mean(100*19 + 80) ≈ 99 → False
     assert last["breadth"] == pytest.approx(1 / 3)
+
+
+def test_breadth_excludes_members_without_sma20_history() -> None:
+    dates = session_dates(21)
+    flat = [100.0] * 21
+    up = [100.0] * 20 + [120.0]
+    # SHORT only has 10 days of history: no close for the first 11 sessions,
+    # so its SMA20 is NaN even on the last date.
+    short = [float("nan")] * 11 + [100.0] * 10
+    themes = ThemeSet(
+        classification_version="test",
+        taxonomy_frozen_at="2026-01-01",
+        notes="test",
+        themes=(Theme("mix", "Mix", ("UP", "FLAT", "SHORT")),),
+    )
+    bars = make_bars(
+        dates,
+        {"UP": up, "FLAT": flat, "SHORT": short, "TPX": flat},
+        twse=("UP", "FLAT", "SHORT"),
+        tpex=("TPX",),
+    )
+    index = make_index(dates, [1000.0] * 21)
+    snap = compute_snapshots(bars, index, themes, thin_min=1)
+    last = snap[snap["date"] == dates[-1]].set_index("theme_id").loc["mix"]
+    # SHORT has no SMA20 (only 10 closes) and must be excluded entirely,
+    # not counted as "not above". Denominator is 2 (UP, FLAT), not 3.
+    # UP: 120 > mean(100*19 + 120)=101 → True; FLAT: 100 > 100 → False.
+    assert last["breadth"] == pytest.approx(1 / 2)
+    assert last["above_count"] == 1

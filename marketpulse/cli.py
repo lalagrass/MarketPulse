@@ -30,6 +30,7 @@ from marketpulse.product import (
     render_brief,
     render_timeline,
 )
+from marketpulse.quality import MARKET_COLUMNS, compute_market_quality
 from marketpulse.radar import RADAR_HTML_NAME, render_radar, write_radar_html
 from marketpulse.themes import load_themes
 
@@ -96,6 +97,45 @@ def _write_snapshot(
     return path
 
 
+def _write_market_daily(
+    data_dir: Path,
+    market: pd.DataFrame,
+    *,
+    classification_version: str,
+) -> Path:
+    """Sibling of _write_snapshot for market_daily.parquet (spec 001 DO-2,
+    unresolved question 1). classification_version is required in the meta:
+    the three quality stats are derived from theme_daily, so they shift with
+    the theme YAML."""
+    path = data_dir / "snapshots" / "market_daily.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    market.to_parquet(path, index=False)
+    as_of = max(market["date"]) if not market.empty else None
+    _write_snapshot_meta(
+        path,
+        classification_version=classification_version,
+        rows=len(market),
+        as_of=as_of,
+    )
+    return path
+
+
+def _load_market_daily(data_dir: Path) -> pd.DataFrame:
+    path = data_dir / "snapshots" / "market_daily.parquet"
+    if not path.exists():
+        return pd.DataFrame(columns=MARKET_COLUMNS)
+    frame = pd.read_parquet(path)
+    frame["date"] = pd.to_datetime(frame["date"]).dt.date
+    return frame
+
+
+def _market_row(market: pd.DataFrame, as_of: date) -> pd.Series | None:
+    day = market.loc[market["date"] == as_of]
+    if day.empty:
+        return None
+    return day.iloc[0]
+
+
 def format_ops_status(
     data_dir: Path,
     *,
@@ -158,6 +198,13 @@ def _run_analyze(data_dir: Path, themes_path: Path) -> pd.DataFrame:
         f"classification={themes.classification_version}"
     )
     typer.echo(REPLAY_DISCLOSURE)
+    market = compute_market_quality(snapshot)
+    market_path = _write_market_daily(
+        data_dir,
+        market,
+        classification_version=themes.classification_version,
+    )
+    typer.echo(f"wrote {market_path}  rows={len(market)}")
     return snapshot
 
 
@@ -192,8 +239,9 @@ def _run_radar(
     themes = load_themes(themes_path)
     bars, index = read_normalized(data_dir)
     stocks = compute_stock_metrics(bars, index, themes, as_of)
+    market_row = _market_row(_load_market_daily(data_dir), as_of)
     dest = output if output is not None else reports_dir / RADAR_HTML_NAME
-    write_radar_html(snapshot, stocks, as_of, dest)
+    write_radar_html(snapshot, stocks, as_of, dest, market_row)
     return dest
 
 
@@ -233,7 +281,8 @@ def brief(
 ) -> None:
     snapshot = _load_snapshot(data_dir)
     day = _parse_date(as_of) if as_of else max(snapshot["date"])
-    typer.echo(render_brief(snapshot, day), nl=False)
+    market_row = _market_row(_load_market_daily(data_dir), day)
+    typer.echo(render_brief(snapshot, day, market_row), nl=False)
 
 
 @app.command()
@@ -247,7 +296,8 @@ def radar(
     """Sector ranking table + stock drill-down HTML. Rank is still RS20."""
     snapshot = _load_snapshot(data_dir)
     day = _parse_date(as_of) if as_of else max(snapshot["date"])
-    typer.echo(render_radar(snapshot, day), nl=False)
+    market_row = _market_row(_load_market_daily(data_dir), day)
+    typer.echo(render_radar(snapshot, day, market_row), nl=False)
     dest = _run_radar(snapshot, data_dir, themes_path, day, DEFAULT_REPORTS, output)
     typer.echo(str(dest))
     if open_browser:
@@ -310,7 +360,8 @@ def refresh(
         typer.echo("no snapshot rows")
         raise typer.Exit(code=1)
     day = max(snapshot["date"])
-    typer.echo(render_brief(snapshot, day), nl=False)
+    market_row = _market_row(_load_market_daily(data_dir), day)
+    typer.echo(render_brief(snapshot, day, market_row), nl=False)
     dest, effective = _run_chart(
         snapshot,
         start=None,
@@ -323,7 +374,7 @@ def refresh(
         typer.echo(f"effective RS20 period: {effective[0].isoformat()} → {effective[1].isoformat()}")
         typer.echo(REPLAY_DISCLOSURE)
         typer.echo(RANK_DISCLOSURE)
-    typer.echo(render_radar(snapshot, day), nl=False)
+    typer.echo(render_radar(snapshot, day, market_row), nl=False)
     radar_path = _run_radar(snapshot, data_dir, themes_path, day, DEFAULT_REPORTS)
     typer.echo(str(radar_path))
     typer.echo(format_ops_status(data_dir, chart_path=dest, effective=effective))
