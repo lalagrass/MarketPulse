@@ -908,6 +908,16 @@ Research must not silently modify the MVP signal.
 
 # 26. Definition of Done
 
+> **ACHIEVED 2026-09-03.** All 14 items below are satisfied.
+> Evidence: `uv run marketpulse refresh` runs the full chain end to end;
+> `data/snapshots/theme_daily.parquet` plus three replay snapshots exist;
+> `tests/test_replay.py` and `tests/test_future_mutation.py` cover items 11–12;
+> `reports/radar.html` and `reports/rotation_latest.png` cover item 13.
+>
+> The closing instruction ("At this point, stop") was the **MVP build-phase**
+> stop condition and has been met. Post-MVP work is scoped by
+> `docs/sprints/NNN-spec.md`.
+
 MVP is complete when all are true:
 
 1. Official TWSE + TPEx daily data can be acquired for the required test period.
@@ -930,6 +940,10 @@ MVP is complete when all are true:
 14. No custom composite score is required.
 
 **At this point, stop. Do not add features before using the product.**
+
+*[Build-phase instruction, satisfied 2026-09-03. Note that the advice in its
+second half — use the product before adding to it — was not a build-phase
+constraint and still stands.]*
 
 ---
 
