@@ -26,6 +26,10 @@ MarketPulse does not invent a new rotation score.
 
 It uses established market-analysis concepts and focuses its own code on Taiwan theme aggregation and rotation visualization.
 
+## Interpretation Boundary
+
+MarketPulse describes current relative leadership; it does not predict persistence or reversal timing. A high Theme Rank indicates that the theme is currently strong relative to the other tracked themes, not that its strength will continue. Rank changes describe changes in relative position but are not trading signals. RS20, Breadth, Volume, and Momentum are supporting evidence for interpreting the current state; they do not form a predictive composite score.
+
 ## Documents
 
 - `docs/design-v0.2.md` — replacement MVP design（產品規格；與此衝突時以它為準）
