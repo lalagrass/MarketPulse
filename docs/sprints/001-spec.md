@@ -193,9 +193,21 @@ narratives:
 
 ## 留給實作者的未決問題
 
-1. `market_daily.parquet` 要不要跟 `theme_daily.parquet` 放同一個目錄？我傾向要
-   （都在 `data/snapshots/`），但如果 `_write_snapshot` / `_write_snapshot_meta`
-   的現有結構讓這件事變得彆扭，**請問，不要自己改那兩個函式的簽章**。
+1. ~~`market_daily.parquet` 放哪？~~ **已回答 2026-09-04：**
+   放 `data/snapshots/market_daily.parquet`。
+
+   - **不要修改 `_write_snapshot` 或 `_load_snapshot`**（`cli.py:50,80`）——
+     它們寫死 `theme_daily.parquet` 是刻意的，為兩個呼叫點去改一個已在關鍵路徑上的
+     函式並不划算。
+   - 新增兄弟函式 `_write_market_daily(data_dir, frame, *, classification_version)`，
+     結構與 `_write_snapshot` 同構。
+   - **直接重用現有的 `_write_snapshot_meta`**（`cli.py:59`）——它的簽章
+     `(parquet_path, *, classification_version, rows, as_of)` 本來就是泛用的。
+   - meta 必須帶 `classification_version`：三個統計由 `theme_daily` 算出，
+     換一組主題定義結果就不同，這是 provenance 的一部分。
+   - 先例：`data/snapshots/` 已有三組 `replay_*.parquet` 各配一份 `.meta.json`，
+     「一個目錄多種產出、每份配一個 meta」是既有慣例，非破例。
+   - `.gitignore` 不需修改，`data/snapshots/*` 已全部排除。
 
 2. Brief 表頭要放三個數字全部，還是只放 churn 百分位與 dispersion？
    我傾向全放但排成一行。如果實際印出來太擠，**回報實際寬度**，不要自己刪掉一個。
