@@ -159,7 +159,7 @@ def compute_snapshots(
     ret_5 = n_day_return(close, RETURN_5)
     ret_n = n_day_return(close, RETURN_N)
     ma = sma(close, SMA_N)
-    above = close > ma
+    above = (close > ma).where(close.notna() & ma.notna())
 
     taiex_frame = history_idx.drop_duplicates("date").copy()
     taiex = taiex_frame.set_index(pd.to_datetime(taiex_frame["date"]))["close"].sort_index()
