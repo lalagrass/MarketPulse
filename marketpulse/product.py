@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from marketpulse import RANK_DISCLOSURE, REPLAY_DISCLOSURE
+from marketpulse.quality import quality_line
 
 THEME_ORDER = [
     "ai_server",
@@ -183,7 +184,7 @@ def format_end_label(rec) -> str:
     )
 
 
-def render_brief(snapshot: pd.DataFrame, as_of: date) -> str:
+def render_brief(snapshot: pd.DataFrame, as_of: date, market_row: pd.Series | None = None) -> str:
     day = snapshot.loc[snapshot["date"] == as_of].copy()
     if day.empty:
         return f"MarketPulse — {as_of.isoformat()}\n\nNo snapshot for this date.\n"
@@ -193,6 +194,7 @@ def render_brief(snapshot: pd.DataFrame, as_of: date) -> str:
     day = day.sort_values(["rank", "theme_id"], na_position="last")
     lines = [
         f"MarketPulse — {as_of.isoformat()}",
+        quality_line(market_row),
         "",
         "Theme Rotation  領先 / 改善 / 轉弱 / 落後",
         CLASSIFICATION_NOTE,
