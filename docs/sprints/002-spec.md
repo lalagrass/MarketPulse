@@ -1,6 +1,6 @@
 # Sprint 002 — 長尺度到底在量什麼
 
-狀態：待實作
+狀態：已完成 2026-09-05
 契約：CLAUDE.md 與 docs/coding-contract.md 全數適用
 層次：兩項皆為第一層（數學）
 
