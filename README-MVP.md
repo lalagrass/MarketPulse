@@ -30,15 +30,17 @@ It uses established market-analysis concepts and focuses its own code on Taiwan 
 
 MarketPulse describes current relative leadership; it does not predict persistence or reversal timing. A high Theme Rank indicates that the theme is currently strong relative to the other tracked themes, not that its strength will continue. Rank changes describe changes in relative position but are not trading signals. RS20, Breadth, Volume, and Momentum are supporting evidence for interpreting the current state; they do not form a predictive composite score.
 
-**And now it is measured, not just asserted.** `marketpulse validate-signal`, over 161 sessions:
+**Part of it is now measured.** Rank persistence — the mean rank correlation between day T and day T−k — over the 161-session sample:
 
 ```text
 rank persistence   k=1   0.945
                    k=5   0.773
-                   k=20  0.282   observed 0.2141  null 0.0409 +/- 0.2948  percentile 81.0
+                   k=20  0.214   (median 0.282)
 ```
 
-Read that as: **the short end is real, the 20-day rank ordering is not distinguishable from noise on this sample.** 19% of random circular shifts produce persistence at least this high. The estimate is also computed on hindsight-frozen membership, which most likely flatters it.
+**Those numbers stand. The significance test behind them does not.** An earlier version of this README reported "percentile 81.0, not distinguishable from noise" for the 20-day figure. That came from a circular-shift null whose shift range included the degenerate self-comparison, which biased every percentile downward (sprint 003 DO-4). The corrected test now refuses to run on a sample this short (DO-5).
+
+So: the 1- and 5-day readings are large enough to read at face value. **The 20-day one is untested** — not confirmed, and not refuted either. It also rests on hindsight-frozen membership, which most likely flatters it.
 
 What this does *not* say: that RS60 is meaningless. A 60-day relative return honestly describes the last 60 days. What fails is treating a month-scale rank *ordering* as a stable structure. The `R5·#R20·R60` triplet exists so that a `10·#3·1` — 60-day leader, 5-day laggard — is visible; sprint 002's finding is that such a shape is the norm, not an anomaly.
 

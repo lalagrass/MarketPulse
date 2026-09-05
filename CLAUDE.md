@@ -12,13 +12,26 @@ MarketPulse is a **local Taiwan stock theme-rotation radar** that:
 - Produces daily briefs, rank timelines, and interactive sector radars
 - Supports historical replay for validation
 
-**Known limit of the signal (measured, sprint 002).** Rank persistence is
-0.945 at 1 day, 0.773 at 5 days, and 0.282 at 20 days — and the 20-day figure
-sits at the 81st percentile of its circular-shift null, i.e. **not
-distinguishable from noise on the current 161-session sample**. Short-horizon
-readings are the trustworthy ones. Do not write copy, docs, or UI that presents
-the 20-day rank ordering as a stable structure. See `docs/sprints/002-report.md`
-and `docs/product/open-questions.md` Q7.
+**Known limit of the signal (sprint 002, corrected sprint 003).** Rank
+persistence — mean over T of Spearman(rank[T], rank[T-k]) — is 0.945 at 1 day,
+0.773 at 5 days and 0.214 at 20 days (median 0.282). **Those observed figures
+stand.**
+
+**Any statement about their significance does not.** The earlier claim
+("81st percentile, not distinguishable from noise") came from a circular-shift
+null whose sampling range included the degenerate self-comparison and its
+neighbourhood, biasing every reported percentile downward (sprint 003 DO-4).
+The corrected test **refuses to run on this sample**: 161 calendar sessions
+become 141 after warm-up rows drop out, and at L=60 only 22 of 141 shifts (16%)
+survive — under the half-circle floor the test now requires (DO-5).
+
+**Current honest position: the 20-day rank ordering has not been validly tested
+against a null on this data.** The 1- and 5-day figures are large enough that no
+plausible null changes how you read them; the 20-day one is precisely the case
+that needs the test, and the test needs a longer sample (~236 sessions minimum
+at k=20; ~730 retains 84% of the shift circle). Until then, do not write copy,
+docs or UI that presents the 20-day rank ordering either as a stable structure
+**or as proven noise**. See `docs/sprints/003-spec.md` and `003-report.md`.
 
 **Scope boundaries:**
 - MVP does NOT invent new indicators—it reuses pandas, pandas-ta-classic, and established patterns

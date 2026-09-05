@@ -382,12 +382,21 @@ k=5    0.773
 k=20   0.282     observed 0.2141 vs null 0.0409 +/- 0.2948 -> percentile 81.0
 ```
 
-The circular-shift null test puts the 20-day figure at the 81st percentile of
-its own null distribution. **The 20-day rank ordering cannot be distinguished
-from noise on this sample.** RS60 still honestly describes what happened over
-the last 60 days; what does not hold is reading a month-scale rank *ordering* as
-a stable structure. The figure is also computed on hindsight-frozen membership
-(non-goals D6), which most likely biases it upward.
+*[CORRECTED 2026-09-05, sprint 003 DO-4/DO-5.]* The percentile line above is
+**withdrawn**. The circular-shift null that produced it sampled shifts from a
+range whose lower bound was the degenerate self-comparison (`s = k`, where the
+partner index equals the current index and the correlation is exactly 1.0), so
+its null had a fat right tail by construction and every percentile it reported
+was biased downward. The corrected test refuses to run on this sample at all:
+after warm-up rows drop out only 141 sessions remain, and at L=60 just 22 of
+141 shifts (16%) survive, below the half-circle floor now required.
+
+**The observed persistence figures stand; the significance claim does not.**
+RS60 still honestly describes what happened over the last 60 days. Whether a
+month-scale rank *ordering* is a stable structure is now **untested** — neither
+confirmed nor refuted — and needs a longer sample (~236 sessions minimum at
+k=20). The figure also rests on hindsight-frozen membership (non-goals D6),
+which most likely biases it upward.
 
 Full result: `docs/sprints/002-report.md`. Whether the primary ranking window
 should therefore change is an **open product decision**, not a settled one —
