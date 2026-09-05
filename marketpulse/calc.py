@@ -11,6 +11,7 @@ volume_ratio = theme volume / SMA20(theme volume).
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import date
 
 import numpy as np
@@ -27,6 +28,21 @@ THIN_MIN = 4
 RANK_N1 = 1
 RANK_N5 = 5
 RANK_N20 = 20
+
+# DO-3, sprint 004. Longest scheduled TWSE market closure is Lunar New Year,
+# historically at most 9 consecutive trading days; the 2026 sample shows a
+# 12-calendar-day / 7-weekday CNY gap. 10 weekdays admits any CNY closure with
+# one day of slack and needs no holiday calendar. A removed trading month
+# (~20+ weekdays with no data) trips it comfortably. This is a market fact,
+# not a fitted value (contract D10).
+MAX_SESSION_GAP_BDAYS = 10
+
+
+class DataGapError(ValueError):
+    """Raised before any rolling window is computed when the input data has a
+    hole a 60-day window would silently span (DO-3, sprint 004). A subclass of
+    ValueError so callers that already catch ValueError keep working; a
+    distinct type so the analyze path can present it cleanly."""
 
 ROLE_LEADER = "Leader"
 ROLE_FOLLOWER = "Follower"
@@ -125,6 +141,79 @@ def asof_index(index: pd.DataFrame, as_of: date) -> pd.DataFrame:
     frame = index.copy()
     frame["date"] = _as_dates(frame["date"])
     return frame.loc[frame["date"] <= as_of].copy()
+
+
+def _weekdays_between(a: date, b: date) -> int:
+    """Mon-Fri dates strictly between a and b (a, b are trading days, so both
+    are weekdays; bdate_range is inclusive, hence the -2)."""
+    return max(0, len(pd.bdate_range(a, b)) - 2)
+
+
+def _fmt_dates(dates: list[date], head: int = 6) -> str:
+    body = ", ".join(d.isoformat() for d in dates[:head])
+    return body if len(dates) <= head else f"{body}, ... ({len(dates)} total)"
+
+
+def check_data_gaps(
+    bars: pd.DataFrame,
+    index: pd.DataFrame,
+    *,
+    raw_twse_dates: Iterable[date] | None = None,
+    raw_tpex_dates: Iterable[date] | None = None,
+    max_gap_bdays: int = MAX_SESSION_GAP_BDAYS,
+) -> None:
+    """Two guards against silently computing a rolling window across a hole
+    (DO-3, sprint 004). Both raise DataGapError; neither warns or returns NaN.
+    Call this before compute_snapshots / basket metrics, never inside them.
+
+    1. Date continuity - the normalized session dates (any market or TAIEX)
+       must not skip more than `max_gap_bdays` weekdays between two adjacent
+       sessions. A deleted trading month shows up here even though every file
+       that remains is individually fine.
+    2. Daily TWSE/TPEx pairing - checked at the *raw file* level when
+       `raw_twse_dates` / `raw_tpex_dates` are given (analyze passes them),
+       because a session that was never fetched on one side normalizes to
+       zero rows and then a 60-day window steps straight over it. Every date
+       present on one side must be present on the other.
+    """
+    session_dates = set()
+    if not bars.empty:
+        session_dates |= set(_as_dates(bars["date"]))
+    if not index.empty:
+        session_dates |= set(_as_dates(index["date"]))
+    ordered = sorted(session_dates)
+    for earlier, later in zip(ordered, ordered[1:]):
+        gap = _weekdays_between(earlier, later)
+        if gap > max_gap_bdays:
+            raise DataGapError(
+                f"session gap: {gap} weekday(s) with no data between "
+                f"{earlier.isoformat()} and {later.isoformat()} "
+                f"(limit {max_gap_bdays})"
+            )
+
+    if raw_twse_dates is None and raw_tpex_dates is None:
+        return
+    twse = set(raw_twse_dates or ())
+    tpex = set(raw_tpex_dates or ())
+    if not twse and not tpex:
+        return
+    only_twse = sorted(twse - tpex)
+    only_tpex = sorted(tpex - twse)
+    if only_twse or only_tpex:
+        parts = []
+        if only_twse:
+            parts.append(
+                f"TPEx missing for {len(only_twse)} session(s) that TWSE has: "
+                f"{only_twse[0].isoformat()} -> {only_twse[-1].isoformat()} "
+                f"[{_fmt_dates(only_twse)}]"
+            )
+        if only_tpex:
+            parts.append(
+                f"TWSE missing for {len(only_tpex)} session(s) that TPEx has: "
+                f"{only_tpex[0].isoformat()} -> {only_tpex[-1].isoformat()} "
+                f"[{_fmt_dates(only_tpex)}]"
+            )
+        raise DataGapError("raw data incomplete: " + "; ".join(parts))
 
 
 def _cross_sectional_rank(out: pd.DataFrame, value_col: str, rank_col: str) -> pd.DataFrame:

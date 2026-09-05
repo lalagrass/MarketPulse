@@ -11,7 +11,14 @@ import pandas as pd
 import typer
 
 from marketpulse import RANK_DISCLOSURE, REPLAY_DISCLOSURE, __version__
-from marketpulse.calc import compute_snapshots, compute_stock_metrics, replay_snapshots, snapshots_equal
+from marketpulse.calc import (
+    DataGapError,
+    check_data_gaps,
+    compute_snapshots,
+    compute_stock_metrics,
+    replay_snapshots,
+    snapshots_equal,
+)
 from marketpulse.data import (
     coverage_report,
     download_range,
@@ -196,9 +203,33 @@ def _run_validate(data_dir: Path) -> None:
     typer.echo("validate: ok")
 
 
+def _raw_session_dates(data_dir: Path, market: str) -> set[date]:
+    raw_dir = data_dir / "raw" / market
+    if not raw_dir.exists():
+        return set()
+    out: set[date] = set()
+    for path in raw_dir.glob("*.json"):
+        try:
+            out.add(parse_yyyymmdd(path.stem))
+        except ValueError:
+            continue
+    return out
+
+
 def _run_analyze(data_dir: Path, themes_path: Path) -> pd.DataFrame:
     themes = load_themes(themes_path)
     bars, index = read_normalized(data_dir)
+    # DO-3 (sprint 004): refuse to compute rolling windows across a data hole.
+    try:
+        check_data_gaps(
+            bars,
+            index,
+            raw_twse_dates=_raw_session_dates(data_dir, "twse"),
+            raw_tpex_dates=_raw_session_dates(data_dir, "tpex"),
+        )
+    except DataGapError as exc:
+        typer.echo(f"data gap: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     snapshot = compute_snapshots(bars, index, themes)
     path = _write_snapshot(
         data_dir,
