@@ -1,0 +1,32 @@
+name: restore-rest
+on:
+  push:
+    branches: [sprint/003-uncertainty]
+    paths: ['scratch/rest_bundle.b64.part*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: sprint/003-uncertainty
+      - name: Restore remaining sprint 003 files
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cat scratch/rest_bundle.b64.partaa scratch/rest_bundle.b64.partab scratch/rest_bundle.b64.partac scratch/rest_bundle.b64.partad scratch/rest_bundle.b64.partae scratch/rest_bundle.b64.partaf > /tmp/bundle.b64
+          python3 - <<'PY'
+          import base64, tarfile, io, pathlib
+          raw = base64.b64decode(pathlib.Path('/tmp/bundle.b64').read_text().strip())
+          with tarfile.open(fileobj=io.BytesIO(raw), mode='r:gz') as tar:
+            tar.extractall('.')
+            print('extracted', tar.getnames())
+          PY
+          git add marketpulse/cli.py marketpulse/data.py marketpulse/product.py marketpulse/radar.py docs/product/open-questions.md tests/test_product.py tests/test_quality.py
+          git status
+          git commit -m "feat: sprint 003 remaining DO-1/2/3 code (cli/data/product/radar/tests/docs)"
+          git push origin HEAD:sprint/003-uncertainty
