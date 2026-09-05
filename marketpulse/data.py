@@ -85,6 +85,35 @@ def daterange(start: date, end: date) -> list[date]:
     return days
 
 
+def _fetch_json_via_wget(url: str, timeout: float = 30.0) -> str:
+    """Fallback when HiNetCDN returns naked HTTP 307 to urllib."""
+    import subprocess
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(prefix="mp-fetch-", suffix=".json", delete=False) as tmp:
+        dest = tmp.name
+    try:
+        subprocess.run(
+            [
+                "wget",
+                "-q",
+                "-O",
+                dest,
+                f"--timeout={int(timeout)}",
+                f"--user-agent={USER_AGENT}",
+                url,
+            ],
+            check=True,
+            timeout=timeout + 10,
+        )
+        return Path(dest).read_text(encoding="utf-8")
+    finally:
+        try:
+            os.unlink(dest)
+        except OSError:
+            pass
+
+
 def fetch_json(url: str, timeout: float = 30.0, retries: int = 4) -> dict[str, Any]:
     last_err: Exception | None = None
     raw = ""
@@ -96,7 +125,20 @@ def fetch_json(url: str, timeout: float = 30.0, retries: int = 4) -> dict[str, A
             break
         except urllib.error.HTTPError as exc:
             last_err = exc
-            if exc.code in {429, 500, 502, 503, 504} and attempt + 1 < retries:
+            # HiNetCDN sometimes answers 307 with an HTML "security" page and
+            # no Location — urllib cannot follow that. wget often still gets
+            # the JSON, so fall through to the wget path below.
+            if exc.code == 307:
+                try:
+                    raw = _fetch_json_via_wget(url, timeout=timeout)
+                    break
+                except Exception as wget_exc:  # noqa: BLE001 - surface as last_err
+                    last_err = wget_exc
+                    if attempt + 1 < retries:
+                        time.sleep(3.0 * (attempt + 1))
+                        continue
+                    raise RuntimeError(f"HTTP 307 for {url} (wget fallback failed: {wget_exc})") from wget_exc
+            if exc.code in {429, 500, 502, 503, 504, 520, 522, 524} and attempt + 1 < retries:
                 time.sleep(2.0 * (attempt + 1))
                 continue
             raise RuntimeError(f"HTTP {exc.code} for {url}") from exc
