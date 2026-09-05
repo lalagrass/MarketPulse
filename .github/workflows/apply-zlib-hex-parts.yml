@@ -1,0 +1,40 @@
+name: apply-zlib-hex-parts
+on:
+  workflow_dispatch:
+  push:
+    branches: [sprint/003-uncertainty]
+    paths:
+      - scratch/radar.hex.part0
+      - scratch/data.hex.part0
+      - .github/workflows/apply-zlib-hex-parts.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: sprint/003-uncertainty
+      - name: Reassemble hex zlib parts and commit sources
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python3 << 'PY'
+          import zlib
+          from pathlib import Path
+          for name in ("radar.py", "data.py"):
+              stem = name.replace(".py", "")
+              parts = sorted(Path("scratch").glob(f"{stem}.hex.part*"), key=lambda p: int(p.name.split("part")[-1]))
+              hx = "".join(p.read_text().strip() for p in parts)
+              raw = zlib.decompress(bytes.fromhex(hx))
+              Path(f"marketpulse/{name}").write_bytes(raw)
+              print(name, len(parts), "parts", len(raw), "bytes")
+          PY
+          git add marketpulse/radar.py marketpulse/data.py
+          git status
+          git commit -m "fix: sync complete sprint 003 implementation from implementer box" || echo nochange
+          git push origin HEAD:sprint/003-uncertainty
