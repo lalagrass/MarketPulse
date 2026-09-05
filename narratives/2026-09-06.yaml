@@ -1,0 +1,93 @@
+# 脈絡快照。每次變更寫一個新的帶日期檔，不原地修改（D9：全狀態快照仍是權威）。
+# named_symbols  = 來源自己講出來的代號
+# inferred_symbols = 我們自己推論的，必須分開存放（non-goals R3）
+# basket（branches 內）= 人指定的支線籃子，與 inferred_symbols 同級，不得由程式推論填入
+#
+# 本檔是 sprint 004 DO-1 新 schema 的第一個真實樣本，把股癌 EP694（2026-09-05 播出）
+# 的博通電話會議段落寫成 asic_xpu 的一則 log ＋ 兩條支線。
+snapshot_date: 2026-09-06
+
+narratives:
+  - narrative_id: asic_xpu
+    name: 客製化 ASIC / XPU
+    first_noted: 2026-09-03
+    source: podcast
+    source_ref: 股癌 EP693
+    stance: new
+    stage: open
+    revisit: 2026-10-15 或 Broadcom 下一次財報電話會議（以先到者為準）
+    named_symbols: ["2454"]
+    inferred_symbols: []
+    note: >
+      聯發科發行約 39 億美元 ECB，輝達認購 35 億、票息 0%、溢價約 15%。
+      Alphabet 亦參與，兩者各自獨立入股而非三方結盟。論點是 XPU 興起並未壓縮
+      GPU 廠，而是整體 TAM 膨脹，輝達改賣機櫃內外互聯／網通／儲存整套方案。
+      對照：2454 目前不屬於任何既有主題，無 ASIC/IC 設計類主題。
+    branches:
+      - branch_id: mediatek_asic_share
+        claim: 聯發科在雲端客製 ASIC 拿到實質份額，被晶片王者認可為真正競爭對手
+        basket: ["2454"]
+        watch: 下一季 Broadcom / NVDA 電話會議是否再點名；聯發科法說是否單獨揭露 ASIC 營收
+        status: live
+      - branch_id: xpu_not_squeezing_gpu
+        claim: XPU 興起擴大整體 TAM，未壓縮 GPU 廠的營收與毛利
+        basket: []
+        watch: NVDA 資料中心毛利率、機櫃互聯／網通方案營收占比
+        status: live
+    log:
+      - date: 2026-09-05
+        source_ref: 股癌 EP694
+        kind: evidence
+        text: >
+          Broadcom FY 電話會議：Hock Tan 首度正面點名聯發科為真正的競爭對手（過去多以
+          「Ankle Biters」或「Talk Shit」帶過）。同場提到六大客製晶片客戶中，Anthropic
+          與 OpenAI 因尚未上市、信評較弱，Broadcom 與 NVIDIA 均出手協助確保硬體開出。
+          Fabric／光通訊／互聯 Guidance 均佳。一則證據兩個方向：支持「聯發科拿到份額」，
+          同時削弱「XPU 壓縮 GPU 廠」（王者仍在擴大合作而非防守）。
+        bears_on: [mediatek_asic_share, xpu_not_squeezing_gpu]
+
+  - narrative_id: nvhbm
+    name: NVHBM / 記憶體架構變革
+    first_noted: 2026-09-03
+    source: podcast
+    source_ref: 股癌 EP693
+    stance: new
+    stage: open
+    revisit: 台積電 2026-10 法說（HBM4 base die 代工客戶／資本支出揭露）
+    named_symbols: ["2330"]
+    inferred_symbols: []
+    note: >
+      記憶體控制器由運算晶片移入 HBM 的 base die，HBM4 世代 base die 規劃由
+      台積電以先進製程代工。這是一個橫跨既有主題（記憶體、先進製程、高速材料）
+      的論點，schema 加入 branches 後可分別掛籃子追蹤。
+    branches:
+      - branch_id: hbm4_base_die_tsmc
+        claim: HBM4 base die 由台積電先進製程代工，價值往代工端移轉
+        basket: ["2330"]
+        watch: 台積電法說是否確認 HBM base die 訂單；記憶體三雄 HBM4 時程
+        status: live
+    log: []
+
+  - narrative_id: optical_cpo
+    name: 光通訊 / CPO
+    first_noted: 2026-09-03
+    source: podcast
+    source_ref: 股癌 EP693
+    stance: confirming
+    stage: mapped
+    revisit: 2026-10-01；若 optical_cpo 主題 rank 跌出前 3 則提前重評
+    named_symbols: []
+    inferred_symbols: []
+    note: >
+      僅以「相關類股持續強勢」帶過，屬對既有走勢的確認而非新論點。
+      對照：optical_cpo 於 2026-09-02 為 rank #1、RS20 +37.4%——數字早已知道。
+      EP694 的博通 Fabric／光通訊 Guidance 佳，屬同向確認，不另立支線。
+    branches: []
+    log:
+      - date: 2026-09-05
+        source_ref: 股癌 EP694
+        kind: evidence
+        text: >
+          Broadcom 在 Fabric、光通訊與互聯架構的 Guidance 給得極佳，屬對既有強勢的
+          同向確認，不帶新資訊。
+        bears_on: []
