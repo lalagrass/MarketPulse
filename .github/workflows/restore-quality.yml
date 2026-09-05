@@ -2,7 +2,7 @@ name: restore-quality
 on:
   push:
     branches: [sprint/003-uncertainty]
-    paths: ['scratch/quality.b64.part*']
+    paths: ['scratch/quality.py.zlib.b64']
   workflow_dispatch:
 permissions:
   contents: write
@@ -13,14 +13,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: sprint/003-uncertainty
-      - name: Restore quality.py from b64 parts
+      - name: Restore quality.py
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          cat scratch/quality.b64.partaa scratch/quality.b64.partab scratch/quality.b64.partac scratch/quality.b64.partad > /tmp/q.b64
-          base64 -d /tmp/q.b64 > marketpulse/quality.py
-          python3 -c "import pathlib; t=pathlib.Path('marketpulse/quality.py').read_text(); assert 'write_null_baseline' in t"
+          python3 - <<'PY'
+          import base64, zlib, pathlib
+          b64 = pathlib.Path('scratch/quality.py.zlib.b64').read_text().strip()
+          raw = zlib.decompress(base64.b64decode(b64))
+          pathlib.Path('marketpulse/quality.py').write_bytes(raw)
+          assert b'write_null_baseline' in raw
+          print('restored', len(raw))
+          PY
           git add marketpulse/quality.py
           git commit -m "fix: restore marketpulse/quality.py (DO-1)"
           git push origin HEAD:sprint/003-uncertainty
