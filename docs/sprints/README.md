@@ -17,9 +17,23 @@ Cowork  下一輪階段 0           → 對照 spec 驗收，寫 NNN-report.md
 
 主幹是 `dev`（本 repo 無 `main`）。sprint 分支不自動併入，由 PO 決定。
 
-**分支殘骸（2026-09-05 查證）：**`sprint/003-{uncertainty,do4-null-range,do5-null-guard,do6-stale-artifact}`
-四條的**產品碼與測試與 `dev` 逐字元相同**（`git diff dev <branch> -- marketpulse/ tests/` 為空），
-文件則比 `dev` **舊一輪**——它們還帶著已被 DO-4/DO-5 撤回的「百分位 81、與雜訊不可區分」說法。
+**分支殘骸（2026-09-05 查證，同日更正一次——見下）：**
+`sprint/003-{uncertainty,do4-null-range,do5-null-guard,do6-stale-artifact}` 是一條線性鏈，
+`uncertainty → do4 → do5 → do6`，前三條都是 `do6` 的祖先（`git merge-base --is-ancestor` 確認，
+且 `git rev-list --count do6..<branch>` 全為 0）。**鏈尾 `do6` 的產品碼與測試與 `dev` 逐字元相同**
+（`git diff dev sprint/003-do6-stale-artifact -- marketpulse/ tests/` 為空）。
+`dev` 的 `4ea9a02` 是把 DO-1…DO-6 整條鏈**合併成單一 commit** 落下的，所以沒有一條能 fast-forward。
+
+**更正：**本節初版寫「四條的產品碼與測試與 `dev` 逐字元相同」。**那句話是錯的，只有 `do6` 是。**
+其餘三條對 `dev` 的 `marketpulse/`＋`tests/` diff 分別是 493／372／211 行——
+但每一行都是 `dev` 後來修訂過的**舊版本**（`uncertainty` 缺 DO-4 的位移範圍修正、
+`do4` 再缺 DO-5 的 `MIN_RETAINED_FRACTION` 護欄、`do5` 再缺 DO-6 的 `NULL_METHOD_VERSION`），
+加上一個過期的 `_null_payload` fixture。**沒有任何一條帶著 `dev` 缺的東西。**
+初版的錯在於：只驗了鏈尾就寫成四條都驗過。**正確的判準是「鏈尾對 `dev` 為空 ＋ 其餘三條是鏈尾的祖先」**，
+不是「四條各自對 `dev` 為空」——後者在 `dev` 用合併 commit 落地時本來就不可能成立。
+
+文件方向則是反的：分支上的文件比 `dev` **舊一輪**，還帶著已被 DO-4/DO-5 撤回的
+「百分位 81、與雜訊不可區分」（`do6` 的 `CLAUDE.md:21`、`README-MVP.md:41`，`dev` 兩處都已改掉）。
 **併它們會讓文件倒退**。正確動作是刪分支，不是 merge。
 `scratch/fetch-2025-gap` 另有一顆 16.6MB 的 TWSE 2025 缺口 tarball（由 GitHub Actions 出口抓取，
 繞過 307），那顆要解進本機 `data/raw/` 而不是留在 git 裡。
