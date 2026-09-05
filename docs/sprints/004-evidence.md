@@ -112,28 +112,97 @@ sha256 79e332f4f47415410dceaf995ff1828b0b00ae26fb42b8b251660d7543a7dede  （兩�
 
 ---
 
-## 第 4 步（回報，不是驗收條件）— `validate-signal --k 20`
+## 第 4 步（回報，不是驗收條件）— `validate-signal`
+
+**第二層閘門打開了。** 樣本從 329 → ~367+ 個交易日後，`retained_fraction=69.25%`
+高於 DO-5 的 `MIN_RETAINED_FRACTION=0.5` 半圈護欄——三個 k 的虛無檢定現在**都跑得起來**，
+不再 raise。以下為追加項的新輸出格式（σ 距離 ＋ 超越計數，取代會飽和的 percentile），
+三個 k 對齊在同一份 367 天樣本（`sample=2024-12-27→2026-09-03`）：
 
 ```
+$ uv run marketpulse validate-signal --k 1
+k=1   observed=0.9307  n_days_used=386  null_mean=0.0590  null_std=0.0254  null>=obs=0/1000  dist=+34.36σ  seed=0  n_candidates=268  retained_fraction=69.25%  sample=2024-12-27→2026-09-03
+$ uv run marketpulse validate-signal --k 5
+k=5   observed=0.7167  n_days_used=382  null_mean=0.0602  null_std=0.0258  null>=obs=0/1000  dist=+25.44σ  seed=0  n_candidates=268  retained_fraction=69.25%  sample=2024-12-27→2026-09-03
 $ uv run marketpulse validate-signal --k 20
-restated (frozen membership applied historically; not as-of / point-in-time)
-k=20  observed=0.1404  n_days_used=367  null_mean=0.0637  null_std=0.0270  percentile=100.0  n_iter=1000  seed=0  n_candidates=268  retained_fraction=69.25%  sample=2024-12-27→2026-09-03
-wrote data/processed/signal_quality_null.json
-reports/persistence_20.png
+k=20  observed=0.1404  n_days_used=367  null_mean=0.0637  null_std=0.0270  null>=obs=0/1000  dist=+2.84σ   seed=0  n_candidates=268  retained_fraction=69.25%  sample=2024-12-27→2026-09-03
 ```
 
-**第二層閘門打開了。** 樣本從 329 → 367 個交易日後，`retained_fraction=69.25%`
-高於 DO-5 的 `MIN_RETAINED_FRACTION=0.5` 半圈護欄——k=20 的虛無檢定現在**跑得起來**，
-不再 raise。結果：`observed=0.1404` vs `null 0.0637±0.0270`（約 2.8σ），percentile 100.0。
+讀法：`null>=obs=0/1000` = 1000 個虛無抽樣中沒有一個 ≥ observed；`dist` = observed
+距虛無平均幾個虛無標準差。**percentile 不再是主要數字**（三個 k 的 percentile 都是
+100.0，看起來跟 DO-5 要擋的退化虛無一樣，人分不出來）；它仍留在
+`data/processed/signal_quality_null.json` 的每個 entry 裡。
+
+k=20 = `+2.84σ`、0/1000。k=1 / k=5 在拉長樣本上仍是壓倒性（`+34σ` / `+25σ`）。
+如何解讀 20 日尺度是 PO 的事，本步只回報。
 
 **沒有為了讓它過去動任何常數**（D10）。`MAX_SESSION_GAP_BDAYS`、`MIN_RETAINED_FRACTION`、
-`_null_min_lag` 全部原封不動；閘門是因為資料變長而開，不是因為調參。
+`_null_min_lag`、`NULL_METHOD_VERSION` 全部原封不動；閘門是因為資料變長而開，不是因為調參。
 
-副作用：這一步重寫了 `data/processed/signal_quality_null.json`（k=20 entry），
-`brief` 第二行的持續性虛無基準因此從 `.09±.07 p85` 變成 `.06±.03 p100`
-（`79e332f4…` → `3b7ca322…`）。這是 `validate-signal` 的正常行為（它就是寫這個檔的命令），
-與 DO-3 驗收條件 3 無關——那一條在此步之前、虛無基準未動時已驗過。
-`data/processed/` 為 gitignore，未 commit。
+副作用：這一步重寫了 `data/processed/signal_quality_null.json`。`brief` / `radar` 第二行
+的持續性虛無基準格式隨追加項改為 `.06±.03 +2.8σ 0/1000`（見下）。
+`data/processed/` 為 gitignore，未 commit。DO-3 驗收條件 3 的 `brief` 逐字元檢查在此步
+之前、虛無基準未動時已通過，與這裡的格式改動無關。
+
+---
+
+## 追加項（sprint 004 follow-up）
+
+| 項 | commit | 標題 |
+|---|---|---|
+| 1（顯示改 σ ＋ 計數） | `3d812c4` | feat(quality): report null exceedance count + σ distance, not a percentile |
+| 2（樣本範圍不符即不顯示） | `095f79c` | feat(quality): hide a null entry whose sample window != the file's |
+
+**都沒有改常數、沒有改門檻。**
+
+### 追加項 1 — 顯示層與 evidence 不再用會飽和的 percentile
+
+- `persistence_null_test` 回傳新增 `n_ge_observed`（虛無抽樣 ≥ observed 的個數）與
+  `sigma`（`(observed − null_mean) / null_std`）。`percentile` 保留在 dict 與 JSON。
+- `write_null_baseline` 每個 entry 多寫 `n_ge_observed` / `sigma`。
+- `validate-signal` CLI：`percentile=100.0` → `null>=obs=0/1000  dist=+2.84σ`（見上）。
+- `_fmt_null_baseline`（`brief` / `radar` 的持續性那行）：`p{pct}` → `{±sigma}σ {n_ge}/{n_iter}`。
+  新的 `brief` 第二行實測：
+
+  ```
+  持續性 .11 虛無 .06±.03 +2.8σ 0/1000   換手 10 (80%)   離散 14.1pp (7%)
+  ```
+
+- 測試：`test_null_test_reports_exceedance_count_and_sigma_distance`
+  （k=1 → `n_ge_observed==0`、`sigma>3`、`percentile` 仍在）；
+  `test_quality_line_null_baseline_present_appends_numbers_only` 改為斷言
+  `+0.6σ` / `190/1000` 出現、`p81` 不出現。
+
+### 追加項 2 — 樣本範圍不符即降級為「不顯示」
+
+`data/processed/signal_quality_null.json` 一份檔頂層只有一組 `sample_start`/`sample_end`，
+每次 `validate-signal` 重寫；先前 k=20 是 367 天樣本、k=1/k=5 還是 304/308 天的舊樣本，
+但頂層被覆寫成 `2024-12-27`，三者 `method_version` 又都是 1，`_entry_method_current`
+全部放行。
+
+- `_entry_sample_matches_file(entry, payload)`：entry 自己的 `sample_start`/`sample_end`
+  必須等於檔案頂層。不符 → `_null_entry_for_display` 回 `None`，
+  **走 DO-6 既有的「treat as absent」路徑**（跟 `method_version` 不符同一條），
+  不新增第三種顯示狀態。
+- 測試：`test_quality_line_entry_from_a_different_sample_matches_absent_byte_for_byte`
+  （不符 entry 的 `quality_line` 輸出 == null-absent 輸出，逐字元）；
+  `test_null_entry_for_display_rejects_entry_from_other_sample`（直接單元測試）。
+- 然後把 k=1 / k=5 用現在的 367 天樣本重跑，三個 k 對齊（見上三行輸出）。
+  對齊後的 `signal_quality_null.json`：三個 entry 的 `sample_start`/`sample_end`
+  都是 `2024-12-27` / `2026-09-03`，與頂層一致；每個 entry 都有 `n_ge_observed=0`、
+  `sigma`（`+34.36` / `+25.44` / `+2.84`）。
+
+### 追加項後的全套測試
+
+```
+131 passed in 24.75s
+```
+
+（DO-3/1/2 的 128 → +1（追加項 1）+2（追加項 2）= 131。）
+
+`git diff dev --stat` 追加項部分：`marketpulse/quality.py`、`marketpulse/cli.py`、
+`tests/test_quality.py` 三檔（`quality.py` 原不在 sprint 004 權限邊界內，
+依本輪 follow-up 指示放行——見報告）。
 
 ---
 
