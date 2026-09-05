@@ -242,6 +242,21 @@ def test_null_test_sanity_check_k1_is_far_above_noise() -> None:
     assert result["n_days_used"] == PN_N_DAYS - 1
 
 
+def test_null_test_reports_exceedance_count_and_sigma_distance() -> None:
+    """sprint 004 follow-up: the result carries a raw exceedance count and a
+    distance in null σ, which keep discriminating after percentile saturates
+    at 100. percentile is still in the dict."""
+    result = persistence_null_test(_persistent_snapshot(), k=1, n_iter=500, seed=1)
+    assert result["n_ge_observed"] == 0          # k=1 clears every null draw
+    assert result["n_iter"] == 500
+    assert result["sigma"] > 3                   # far above the null, still measurable
+    assert result["percentile"] == pytest.approx(100.0)  # kept, just not displayed
+
+    mid = persistence_null_test(_random_snapshot(), k=5, n_iter=500, seed=2)
+    assert 0 < mid["n_ge_observed"] < 500
+    assert -5 < mid["sigma"] < 5
+
+
 def test_null_test_independent_permutations_are_not_extreme() -> None:
     """No genuine persistence by construction: the observed statistic should
     land somewhere unremarkable in the null distribution, not near either
@@ -372,6 +387,8 @@ def _null_payload(
         "null_mean": 0.0409,
         "null_std": 0.2948,
         "percentile": 81.0,
+        "n_ge_observed": 190,
+        "sigma": (0.2141 - 0.0409) / 0.2948,
         "n_days_used": 121,
         "n_iter": 1000,
         "seed": 0,
@@ -404,7 +421,11 @@ def test_quality_line_null_baseline_present_appends_numbers_only() -> None:
     payload = _null_payload(sample_end=as_of)
     line = quality_line(row, null_baseline=payload, snapshot_as_of=as_of)
     assert "虛無" in line
-    assert "p81" in line
+    # σ distance and a raw exceedance count, never a percentile (sprint 004
+    # follow-up: percentile saturates and reads like a degenerate null).
+    assert "+0.6σ" in line
+    assert "190/1000" in line
+    assert "p81" not in line
     assert STALE_MARKER not in line
     for banned in ("不顯著", "弱", "noise", "僅供參考", "OK", "NG"):
         assert banned not in line

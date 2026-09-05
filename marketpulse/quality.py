@@ -282,9 +282,18 @@ def persistence_null_test(
     valid_null = null_values[~np.isnan(null_values)]
     null_mean = float(np.mean(valid_null)) if len(valid_null) else float("nan")
     null_std = float(np.std(valid_null, ddof=1)) if len(valid_null) > 1 else float("nan")
-    percentile = (
-        float((valid_null < observed).mean() * 100)
-        if len(valid_null) and pd.notna(observed)
+    have_obs = bool(len(valid_null)) and pd.notna(observed)
+    percentile = float((valid_null < observed).mean() * 100) if have_obs else float("nan")
+    # Report these instead of percentile at the display layer (sprint 004
+    # follow-up): a percentile saturates at 100 the moment the observed
+    # statistic clears every draw, which is exactly what a degenerate
+    # DO-5-style null also does - a reader can't tell the two apart. A raw
+    # exceedance count and a distance in null standard deviations both keep
+    # discriminating past that point. percentile stays in the dict / JSON.
+    n_ge_observed = int(np.sum(valid_null >= observed)) if have_obs else 0
+    sigma = (
+        float((observed - null_mean) / null_std)
+        if have_obs and pd.notna(null_std) and null_std > 0
         else float("nan")
     )
 
@@ -295,6 +304,8 @@ def persistence_null_test(
         "null_mean": null_mean,
         "null_std": null_std,
         "percentile": percentile,
+        "n_ge_observed": n_ge_observed,
+        "sigma": sigma,
         "n_iter": int(len(valid_null)),
         "seed": seed,
         "n_candidates": int(candidates.size),
@@ -379,6 +390,8 @@ def write_null_baseline(
         "null_mean": result["null_mean"],
         "null_std": result["null_std"],
         "percentile": result["percentile"],
+        "n_ge_observed": result.get("n_ge_observed"),
+        "sigma": result.get("sigma"),
         "n_days_used": result["n_days_used"],
         "n_iter": result["n_iter"],
         "seed": result["seed"],
@@ -421,16 +434,28 @@ def _null_entry_for_display(payload: dict | None, k: int = DISPLAY_NULL_K) -> di
     return None
 
 
+def _fmt_sigma(value: object) -> str:
+    if value is None or pd.isna(value):
+        return "n/aσ"
+    return f"{float(value):+.1f}σ"
+
+
+def _fmt_exceedance(entry: dict) -> str:
+    n_ge = entry.get("n_ge_observed")
+    n_iter = entry.get("n_iter")
+    if n_ge is None or n_iter is None or pd.isna(n_ge) or pd.isna(n_iter):
+        return "n/a"
+    return f"{int(n_ge)}/{int(n_iter)}"
+
+
 def _fmt_null_baseline(entry: dict) -> str:
-    """Pure numbers for the null reference — no adjectives (D10)."""
+    """Pure numbers for the null reference — no adjectives (D10). Distance in
+    null σ and a raw exceedance count, not a percentile: the percentile
+    saturates at 100 and then can't be told apart from a degenerate null
+    (sprint 004 follow-up)."""
     mean = _fmt_corr(entry.get("null_mean"))
     std = _fmt_corr(entry.get("null_std"))
-    pct = entry.get("percentile")
-    if pct is None or pd.isna(pct):
-        pct_text = "n/a"
-    else:
-        pct_text = f"{int(round(float(pct)))}"
-    return f"虛無 {mean}±{std} p{pct_text}"
+    return f"虛無 {mean}±{std} {_fmt_sigma(entry.get('sigma'))} {_fmt_exceedance(entry)}"
 
 
 def quality_line(

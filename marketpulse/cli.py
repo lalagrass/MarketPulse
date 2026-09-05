@@ -367,11 +367,14 @@ def validate_signal(
         sample_start=sample_start,
         sample_end=sample_end,
     )
+    sigma = result["sigma"]
+    sigma_text = "n/a" if sigma is None or pd.isna(sigma) else f"{sigma:+.2f}σ"
     typer.echo(
         f"k={result['k']}  observed={result['observed']:.4f}  "
         f"n_days_used={result['n_days_used']}  "
         f"null_mean={result['null_mean']:.4f}  null_std={result['null_std']:.4f}  "
-        f"percentile={result['percentile']:.1f}  n_iter={result['n_iter']}  seed={result['seed']}  "
+        f"null>=obs={result['n_ge_observed']}/{result['n_iter']}  dist={sigma_text}  "
+        f"seed={result['seed']}  "
         f"n_candidates={result['n_candidates']}  "
         f"retained_fraction={result['retained_fraction']:.2%}  "
         f"sample={sample_start.isoformat()}→{sample_end.isoformat()}"
