@@ -111,6 +111,16 @@ Primary rank:
 rank = cross_sectional_rank(RS20)
 ```
 
+*[CLARIFIED 2026-09-05 — sprint 002]* The same formula evaluated at several
+window lengths, with **every** result displayed side by side and none selected,
+is not a composite score. `rank_rs5` / `rank / rank_rs20` / `rank_rs60` are
+three independent cross-sectional ranks; they are not averaged, weighted, or
+collapsed into an arrow or a direction marker. The test that separates the two
+cases is **whether the addition leaves a tunable handle**: parallel parameters
+leave none, an invented blend is a weight by construction. Picking the
+best-looking window after the fact would break this section; showing all of them
+does not.
+
 ## 6. No premature abstraction
 
 Do not create:
@@ -166,8 +176,18 @@ Minimum tests:
 - momentum state (Strong / Improving / Stable / Weakening / Weak / Unknown)
 - future mutation
 - deterministic replay
+- signal-quality statistics *(sprint 001)*
+- persistence null test: reproducible under a fixed seed, k=1 sanity check
+  *(sprint 002)*
+- all three ranks obey the same ordering rules *(sprint 002)*
 
 Tests should be small and deterministic.
+
+**Not coverable by tests.** Acceptance criteria about what a human sees
+("the middle rank must be visually marked") pass automatically no matter what
+the page renders. Sprint 002 shipped a silent failure of exactly this kind and
+caught it by looking, not by testing. Such criteria are verified by eye and
+reported to the product owner; do not treat a green suite as evidence for them.
 
 ## 10. Current implementation slices
 

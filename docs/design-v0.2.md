@@ -5,6 +5,12 @@
 > This document intentionally replaces the previous `docs/design-v0.1.md`.
 > Do not incrementally preserve the previous architecture.
 > If a previous design conflicts with this document, this document wins.
+>
+> **POST-MVP — READ THIS FIRST.** The MVP specified here was completed
+> 2026-09-03 (§26). This document is no longer the whole current state: work
+> after the MVP arrives as `docs/sprints/NNN-spec.md` and is folded back into
+> the relevant section here, marked *(sprint NNN)*. Where a section carries such
+> a marker, the marker is current and the surrounding original text is history.
 
 ## 0. Product Definition
 
@@ -351,13 +357,41 @@ Primary strength metric:
 RS20 = theme_return_20 - TAIEX_return_20
 ```
 
-Optional supporting metric:
+Supporting metrics, computed and displayed alongside *(sprint 002)*:
 
 ```text
+RS5  = theme_return_5  - TAIEX_return_5
 RS60 = theme_return_60 - TAIEX_return_60
 ```
 
-RS20 is the **only primary ranking metric**.
+RS20 is the **only primary ranking metric**. `rank` is, and remains,
+`cross_sectional_rank(RS20)`.
+
+`rs5` and `rs60` each carry their own independent cross-sectional rank
+(`rank_rs5`, `rank_rs60`). All three are displayed side by side and none is
+selected over the others — the same formula at three parameters, leaving no
+tunable handle. This is **not** a composite score; see coding-contract §5.
+
+### Measured scale limitation *(sprint 002)*
+
+Rank persistence falls off sharply with the horizon. On 161 sessions:
+
+```text
+k=1    0.945
+k=5    0.773
+k=20   0.282     observed 0.2141 vs null 0.0409 +/- 0.2948 -> percentile 81.0
+```
+
+The circular-shift null test puts the 20-day figure at the 81st percentile of
+its own null distribution. **The 20-day rank ordering cannot be distinguished
+from noise on this sample.** RS60 still honestly describes what happened over
+the last 60 days; what does not hold is reading a month-scale rank *ordering* as
+a stable structure. The figure is also computed on hindsight-frozen membership
+(non-goals D6), which most likely biases it upward.
+
+Full result: `docs/sprints/002-report.md`. Whether the primary ranking window
+should therefore change is an **open product decision**, not a settled one —
+see `docs/product/open-questions.md` Q7.
 
 No composite score.
 
@@ -489,19 +523,34 @@ value_share
 breadth
 ```
 
+Present since *(sprint 002)* — three independent ranks, side by side:
+
+```text
+rs5
+rs60
+rank_rs5
+rank_rs60
+```
+
 Optional:
 
 ```text
 return_1
 return_5
 return_60
-rs60
 rank_delta_1
 above_count
 volume_ratio
 value_thrust
 member_count
+missing_count
+status
 ```
+
+A second daily record, `data/snapshots/market_daily.parquet` *(sprint 001)*,
+holds market-level signal-quality statistics — `rank_persistence_k`, turnover
+and dispersion — one row per session. It is diagnostic output about the signal,
+not an input to it, and nothing in the ranking path reads it.
 
 `volume_ratio` = theme volume[T] / SMA20(theme volume). Display as `1.8x`.
 Radar Breadth shows `above_count / member_count` (same Close > SMA20 definition as `breadth`).
@@ -692,11 +741,19 @@ marketpulse chart
 marketpulse radar
 marketpulse replay
 marketpulse refresh
+marketpulse validate-signal
 ```
 
 `refresh` is the daily local batch: fetch trailing weekdays (including unusable empty files after the last complete session), validate, analyze, print Brief, write `reports/rotation_latest.png`, print the Sector Rotation table, write `reports/radar.html`.
 
 `radar` prints the ranking table (1D / 5D / 20D / RS20 / Breadth / Volume / Rank / Rising·Falling·Stable / Momentum) and writes `reports/radar.html` with sector drill-down. Rank is still `cross_sectional_rank(RS20)`. Momentum is the display-only Strong / Improving / Stable / Weakening / Weak / Unknown state in §17.5. `--open` opens the HTML. Stock roles (Leader / Follower / Laggard) are terciles of member RS20 inside a theme; they do not change theme rank.
+
+`validate-signal` *(sprint 002)* runs the circular-shift null test for
+`rank_persistence_k` and writes `reports/persistence_20.png`. It is a one-off
+diagnostic, deliberately **not** on the daily `refresh` path (~4s at
+`n_iter=1000`). It prints observed value, null mean, null std, percentile, and
+the number of sessions actually used. It sets no threshold and draws no
+conclusion — reading the number is the product owner's job.
 
 It is not a scheduler. Do not add cron, notifications, or `doctor`.
 

@@ -30,6 +30,18 @@ It uses established market-analysis concepts and focuses its own code on Taiwan 
 
 MarketPulse describes current relative leadership; it does not predict persistence or reversal timing. A high Theme Rank indicates that the theme is currently strong relative to the other tracked themes, not that its strength will continue. Rank changes describe changes in relative position but are not trading signals. RS20, Breadth, Volume, and Momentum are supporting evidence for interpreting the current state; they do not form a predictive composite score.
 
+**And now it is measured, not just asserted.** `marketpulse validate-signal`, over 161 sessions:
+
+```text
+rank persistence   k=1   0.945
+                   k=5   0.773
+                   k=20  0.282   observed 0.2141  null 0.0409 +/- 0.2948  percentile 81.0
+```
+
+Read that as: **the short end is real, the 20-day rank ordering is not distinguishable from noise on this sample.** 19% of random circular shifts produce persistence at least this high. The estimate is also computed on hindsight-frozen membership, which most likely flatters it.
+
+What this does *not* say: that RS60 is meaningless. A 60-day relative return honestly describes the last 60 days. What fails is treating a month-scale rank *ordering* as a stable structure. The `R5·#R20·R60` triplet exists so that a `10·#3·1` — 60-day leader, 5-day laggard — is visible; sprint 002's finding is that such a shape is the norm, not an anomaly.
+
 ## Documents
 
 - `docs/design-v0.2.md` — replacement MVP design（產品規格；與此衝突時以它為準）
@@ -39,9 +51,17 @@ MarketPulse describes current relative leadership; it does not predict persisten
 
 ## OSS
 
-- pandas-ta-classic: https://github.com/xgboosted/pandas-ta-classic
-- pandas-ta: https://github.com/JameRawlings/pandas-ta
-- RRG-Lite: https://github.com/BennyThadikaran/RRG-Lite
+Actual dependencies are in `pyproject.toml`. The list below is the *evaluation*
+record — surveyed, and deliberately not adopted:
+
+- pandas-ta-classic — https://github.com/xgboosted/pandas-ta-classic — **not a
+  dependency.** SMA and N-day return are one-line pandas expressions; see
+  coding-contract §3 and non-goals D8
+- pandas-ta — https://github.com/JameRawlings/pandas-ta — same reason
+- RRG-Lite — https://github.com/BennyThadikaran/RRG-Lite — **non-goal D3.**
+  `rank` + `rank_delta_5` already cover the useful part of the two-axis idea
+- alphalens — **non-goal D12.** 11 themes is too few for quantile analysis, and
+  the Spearman correlation we need ships with pandas
 
 ## Run
 
@@ -75,11 +95,22 @@ uv run marketpulse chart --start 2026-07-20
 uv run marketpulse replay --start 2026-07-20 --end 2026-08-31
 ```
 
+Signal diagnostics (one-off, deliberately not on the `refresh` path — ~4s):
+
+```text
+uv run marketpulse validate-signal
+```
+
+It runs the circular-shift null test for rank persistence and writes
+`reports/persistence_20.png`. It prints the observed value, the null mean and
+standard deviation, the percentile, and how many sessions were actually used.
+It sets no threshold and reaches no verdict — reading the number is your job.
+
 `chart` with no `--start` overwrites `reports/rotation_latest.png`. Dated PNGs require `--start`.
 
 Daily Brief groups the same RS20 ranks into **領先 / 改善 / 轉弱 / 落後** (改善 first). Classification uses only Rank and Δ5; `value_thrust` and `breadth` are annotations.
 
-Sector Radar Rank is still RS20. **Rotation** is rank vs the previous session — a change in relative rank, not a claim about capital flow. **Momentum** is a display-only Strong / Improving / Stable / Weakening / Weak label from 5D, Breadth, Volume, and Rank Δ5 (Unknown if that 5-session history is missing). It is not a score and does not change Rank.
+Sector Radar Rank is a single cell holding three independent ranks, shortest window first: `R5·#R20·R60` (e.g. `3·#1·7`). The middle one is the primary rank and is the only one marked — bold in HTML, a `#` prefix in plain text. They are never merged into one number and never summarised by an arrow: the information is in the *shape* of the three, not in any one of them. Brief and Radar use the identical presentation. **Rotation** is rank vs the previous session — a change in relative rank, not a claim about capital flow. **Momentum** is a display-only Strong / Improving / Stable / Weakening / Weak label from 5D, Breadth, Volume, and Rank Δ5 (Unknown if that 5-session history is missing). It is not a score and does not change Rank.
 
 Each sector's detail view also shows **Rank Trend (last 20 sessions)**: the theme's RS20 rank for each of the last 20 available sessions up to the current date, so a persistent climb or slide is visible without cross-referencing the Timeline PNG. It reuses the existing snapshot history (no new storage) and is PIT-safe — only sessions on or before the current date are shown.
 

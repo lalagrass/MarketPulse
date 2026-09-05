@@ -6,9 +6,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 MarketPulse is a **local Taiwan stock theme-rotation radar** that:
 - Aggregates daily TWSE/TPEx data into 11 themes
-- Ranks themes by RS20 (theme return – TAIEX return over 20 days)
+- Ranks themes by RS20 (theme return – TAIEX return over 20 days). Since
+  sprint 002 `rs5` and `rs60` carry their own independent ranks alongside it;
+  the primary `rank` is still RS20 only
 - Produces daily briefs, rank timelines, and interactive sector radars
 - Supports historical replay for validation
+
+**Known limit of the signal (measured, sprint 002).** Rank persistence is
+0.945 at 1 day, 0.773 at 5 days, and 0.282 at 20 days — and the 20-day figure
+sits at the 81st percentile of its circular-shift null, i.e. **not
+distinguishable from noise on the current 161-session sample**. Short-horizon
+readings are the trustworthy ones. Do not write copy, docs, or UI that presents
+the 20-day rank ordering as a stable structure. See `docs/sprints/002-report.md`
+and `docs/product/open-questions.md` Q7.
 
 **Scope boundaries:**
 - MVP does NOT invent new indicators—it reuses pandas, pandas-ta-classic, and established patterns
@@ -27,14 +37,27 @@ MarketPulse is a **local Taiwan stock theme-rotation radar** that:
 
 ```
 marketpulse/
-├── cli.py              # Entry point; commands: download, validate, analyze, brief, chart, radar, replay, refresh
+├── cli.py              # Entry point; commands: download, validate, analyze, validate-signal,
+│                     #   brief, chart, radar, replay, refresh
 ├── data.py             # TWSE/TPEx adapters, normalize, local cache (data/raw/, data/normalized/)
 ├── themes.py           # Load 11-theme YAML from themes/v1.yaml
-├── calc.py             # Core: RS20, rank, value_share, breadth, volume_ratio, snapshot snapshots
+├── calc.py             # Core: RS5/RS20/RS60, three independent ranks, value_share,
+│                     #   breadth, volume_ratio, snapshots
 ├── momentum.py         # Display-only state labels: Strong/Improving/Stable/Weakening/Weak/Unknown
-├── product.py          # Brief, Timeline PNG generation
+├── quality.py          # LAYER 1 diagnostics: persistence / turnover / dispersion,
+│                     #   circular-shift null test. Reads snapshots, feeds nothing back
+├── narratives.py       # LAYER 2 loader: dated narrative snapshots + coverage report.
+│                     #   PIT-safe. Must never influence a layer-1 number (non-goals R3)
+├── product.py          # Brief, Timeline PNG, persistence chart
 └── radar.py            # Sector Radar HTML, drill-down UI, Leader/Follower/Laggard stock sort
 ```
+
+**Two layers, and the boundary between them is a rule.** Layer 1 (`calc.py`,
+`quality.py`) is pure price/volume, computed from official EOD, statistically
+checkable. Layer 2 (`narratives.py`, `narratives/*.yaml`) is market context that
+a person wrote down, with a date on it. Layer 2 may decide *which* basket to
+measure; it may never change *how* the measurement is done. See
+`docs/product/non-goals.md` R3.
 
 ### Data Flow
 
@@ -46,8 +69,13 @@ data/raw/{TWSE,TPEx}/{yyyymmdd}.json
 data/normalized/{TWSE,TPEx}/{yyyymmdd}.parquet
     ↓ compute_snapshots()
 data/snapshots/theme_daily.parquet  (11 themes × dates)
-    ↓
-Brief → Timeline PNG → Radar HTML
+    ↓                              ↓ compute_market_quality()
+    ↓                          data/snapshots/market_daily.parquet
+    ↓                              ↓ persistence_null_test()
+Brief → Timeline PNG → Radar HTML   reports/persistence_20.png
+
+narratives/YYYY-MM-DD.yaml  →  narratives.py  →  coverage report
+   (layer 2, hand-written, dated — read-only with respect to layer 1)
 ```
 
 ### Key Types & Constants
@@ -125,8 +153,13 @@ uv run pytest tests/test_rs.py -v      # Verbose
 
 ### 1. Reuse Before Implementation
 - Use `pandas` for rolling, aggregation, ranking
-- Use `pandas-ta-classic` for any standard TA indicator (SMA, ROC, etc.)
-- Do **not** write custom SMA, momentum, RRG, or backtesting code
+- Do **not** write custom momentum, RRG, or backtesting code
+- **Amended 2026-09-04 (non-goals D8, contract §3):** a standard operation that
+  is a direct one-line pandas expression — SMA (`rolling().mean()`), N-day
+  return (`shift()`) — may stay as a thin tested wrapper. `calc.py:88,93` are
+  these. **`pandas-ta-classic` is deliberately not a dependency.** Anything more
+  involved than a one-line pandas expression still requires searching for an
+  existing implementation first
 
 ### 2. Small, Pure Functions
 Prefer:
@@ -169,11 +202,17 @@ data/normalized/                      # Normalized parquet (price, volume)
 data/snapshots/theme_daily.parquet    # PRIMARY: 11 themes × dates (computed)
 reports/rotation_latest.png           # 40-session rank timeline (auto-updated)
 reports/radar.html                    # Interactive sector drill-down
+narratives/YYYY-MM-DD.yaml            # LAYER 2: dated narrative snapshots, hand-written
+data/snapshots/market_daily.parquet   # Signal-quality stats (diagnostic, not an input)
+reports/persistence_20.png            # rank_persistence_20 over time
 docs/design-v0.2.md                   # Spec (read before architecture changes)
 docs/coding-contract.md               # Implementation rules
 docs/marketpulse-methodology.md       # Method notes (for context only)
 docs/reuse-plan.md                    # OSS reuse boundary
 docs/sprints/                         # Sprint specs + reports; see its README for the flow
+docs/product/non-goals.md             # RULES (unbreakable) vs DEFAULTS (overridable
+                                      #   with a stated reason). Read before adding anything
+docs/product/backlog.md               # Candidates, with why each was or wasn't picked
 docs/product/open-questions.md        # Contradictions awaiting a product decision
 ```
 
