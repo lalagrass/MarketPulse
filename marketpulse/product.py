@@ -126,10 +126,34 @@ def brief_state(rank: object, rank_delta_5: object) -> str:
     return STATE_LAGGING
 
 
-def _fmt_rank_hash(value: float | None) -> str:
+RANK_TRIPLET_SEP = "·"  # middle dot; single-width in _vislen and monospace
+RANK_TRIPLET_HEADER = f"Rank R5{RANK_TRIPLET_SEP}R20{RANK_TRIPLET_SEP}R60"
+
+
+def _fmt_rank_num(value: object) -> str:
     if value is None or pd.isna(value):
-        return "#n/a"
-    return f"#{int(value)}"
+        return "n/a"
+    return str(int(value))
+
+
+def fmt_rank_triplet(rank_rs5: object, rank: object, rank_rs60: object) -> str:
+    """R5{sep}R20{sep}R60 in one cell, short-to-long window (spec 002 DO-2
+    acceptance 5 / unresolved question 2). The information is in the
+    relationship between the three, read by proximity - not in any one
+    number, so they are never split into separate columns.
+
+    `rank` (RS20-based) is the primary, contract-R1 ranking; R5/R60 are
+    context, not equal-status rankings, so only `rank` keeps the `#`
+    prefix (plain text has no bold). No arrow or direction mark is ever
+    added here - that would collapse the three numbers back into a single
+    verdict, which is exactly what R1/D10 forbid. The reader sees the raw
+    shape (e.g. "1·#3·7" vs "7·#3·1") and draws their own conclusion.
+    """
+    return (
+        f"{_fmt_rank_num(rank_rs5)}{RANK_TRIPLET_SEP}"
+        f"#{_fmt_rank_num(rank)}{RANK_TRIPLET_SEP}"
+        f"{_fmt_rank_num(rank_rs60)}"
+    )
 
 
 def _fmt_signed_pct_col(value: float | None) -> str:
@@ -207,9 +231,12 @@ def render_brief(snapshot: pd.DataFrame, as_of: date, market_row: pd.Series | No
         lines.append(state)
         for rec in block.itertuples(index=False):
             mark = status_mark(rec.status)
+            rank_triplet = fmt_rank_triplet(
+                getattr(rec, "rank_rs5", None), rec.rank, getattr(rec, "rank_rs60", None)
+            )
             lines.append(
                 f"{mark}{_ljust(str(rec.theme_name), NAME_WIDTH)} "
-                f"{_fmt_rank_hash(rec.rank):<3}  "
+                f"{rank_triplet:<9}  "
                 f"Δ5 {_fmt_delta(rec.rank_delta_5)}  "
                 f"RS20 {_fmt_signed_pct_col(rec.rs20)}"
             )
