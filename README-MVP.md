@@ -30,20 +30,20 @@ It uses established market-analysis concepts and focuses its own code on Taiwan 
 
 MarketPulse describes current relative leadership; it does not predict persistence or reversal timing. A high Theme Rank indicates that the theme is currently strong relative to the other tracked themes, not that its strength will continue. Rank changes describe changes in relative position but are not trading signals. RS20, Breadth, Volume, and Momentum are supporting evidence for interpreting the current state; they do not form a predictive composite score.
 
-**And now it is measured.** Rank persistence — the mean rank correlation between day T and day T−k — tested against a circular-shift null over 329 sessions (2025-05-02 → 2026-09-03):
+**And now it is measured (sprint 004 follow-up).** Rank persistence — the mean rank correlation between day T and day T−k — tested against a circular-shift null over 367 sessions (2024-12-27 → 2026-09-03):
 
 ```text
-k     observed   null              distance   percentile
-1     0.9346     0.0929 ± 0.0701     12.0 σ     100.0
-5     0.7297     0.0902 ± 0.0710      9.0 σ     100.0
-20    0.1613     0.0864 ± 0.0745       1.0 σ     84.6
+k     observed   null              distance      exceedance
+1     0.9307     0.0590 ± 0.0254     +34.36σ     0/1000
+5     0.7167     0.0602 ± 0.0258     +25.44σ     0/1000
+20    0.1404     0.0637 ± 0.0270      +2.84σ     0/1000
 ```
 
-**The 1- and 5-day orderings are real by any standard. The 20-day ordering sits one standard deviation above noise and clears no conventional threshold.** MarketPulse is a short-horizon instrument, and the rank triplet `R5·#R20·R60` exists so that a `10·#3·1` — 60-day leader, 5-day laggard — is visible. That shape is the norm, not an anomaly.
+**讀法是 B＋C，不是「證實了」。** 20 日排名持續性 0.14，在 367 個 session 上高出其循環位移虛無 2.8σ，1000 次位移沒有一次追上。這代表月尺度排名帶有可偵測的結構，不代表它穩定。1 日（34σ）與 5 日（25σ）遠強於它——真正的讀數是結構隨天期急速衰減。此數字在凍結成分股上量得（non-goals D6），該偏誤方向為高估。
 
-Two caveats worth carrying. The figure is **restated**: the current frozen membership applied backwards over 2025, which biases persistence upward, so the truth is likely lower. And an earlier version of this README reported "percentile 81.0" from a null that turned out to be contaminated by a degenerate shift — same conclusion, invalid evidence. The conclusion survived the correction; do not mistake that for the original having been right.
+MarketPulse is a short-horizon instrument. The rank triplet `R5·#R20·R60` exists so that a `10·#3·1` — 60-day leader, 5-day laggard — is visible; that shape is the norm, not an anomaly. Do not treat a month-scale rank ordering as stable or usable.
 
-What this does *not* say: that RS60 is meaningless. A 60-day relative return honestly describes the last 60 days. What fails is treating a month-scale rank *ordering* as a stable structure. The `R5·#R20·R60` triplet exists so that a `10·#3·1` — 60-day leader, 5-day laggard — is visible; sprint 002's finding is that such a shape is the norm, not an anomaly.
+What this does *not* say: that RS60 is meaningless. A 60-day relative return honestly describes the last 60 days. What fails is treating a month-scale rank *ordering* as a stable structure.
 
 ## Documents
 
@@ -106,7 +106,8 @@ uv run marketpulse validate-signal
 
 It runs the circular-shift null test for rank persistence and writes
 `reports/persistence_20.png`. It prints the observed value, the null mean and
-standard deviation, the percentile, and how many sessions were actually used.
+standard deviation, the σ distance and exceedance count (`null>=obs`), and how
+many sessions were actually used.
 It sets no threshold and reaches no verdict — reading the number is your job.
 
 `chart` with no `--start` overwrites `reports/rotation_latest.png`. Dated PNGs require `--start`.

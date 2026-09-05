@@ -1,6 +1,6 @@
 # Sprint 004 — 讓一條故事有「還在等什麼」
 
-狀態：待實作
+狀態：已完成
 契約：CLAUDE.md 與 docs/coding-contract.md 全數適用
 層次：第二層（故事）＋ 一格工程
 

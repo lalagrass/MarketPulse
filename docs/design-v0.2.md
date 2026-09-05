@@ -389,31 +389,32 @@ partner index equals the current index and the correlation is exactly 1.0),
 giving it a fat right tail by construction and biasing every percentile
 downward.
 
-**Measured result, corrected test, 329 sessions (2025-05-02 → 2026-09-03),
-61.5% of the shift circle retained:**
+*[SUPERSEDED 2026-09-06, sprint 004 follow-up — aligned sample + σ/exceedance
+display.]* The sprint 003 corrected measurement (329 sessions, k=20 ≈ 1.0σ /
+p84.6) used a shorter sample whose null width and by_k windows were not yet
+aligned; display also relied on a saturating percentile. Replaced by:
+
+**Measured result, sprint 004 follow-up, 367 sessions (2024-12-27 → 2026-09-03),
+retained_fraction 69.25%:**
 
 ```text
-k     observed   null              distance   percentile   n_days_used
-1     0.9346     0.0929 ± 0.0701     12.0 σ      100.0          308
-5     0.7297     0.0902 ± 0.0710      9.0 σ      100.0          304
-20    0.1613     0.0864 ± 0.0745       1.0 σ      84.6           289
+k     observed   null              distance      exceedance   n_days_used
+1     0.9307     0.0590 ± 0.0254     +34.36σ      0/1000          386
+5     0.7167     0.0602 ± 0.0258     +25.44σ      0/1000          382
+20    0.1404     0.0637 ± 0.0270      +2.84σ      0/1000          367
 ```
 
-The 1- and 5-day orderings are real by any standard. **The 20-day ordering is
-one standard deviation above noise and clears no conventional threshold.** RS60
-still honestly describes what happened over the last 60 days; a month-scale
-rank *ordering* is not a structure you can lean on.
+**讀法是 B＋C，不是「證實了」。** 20 日排名持續性 0.14，在 367 個 session 上高出其
+循環位移虛無 2.8σ，1000 次位移沒有一次追上。這代表月尺度排名帶有可偵測的結構，
+不代表它穩定。1 日（34σ）與 5 日（25σ）遠強於它——真正的讀數是結構隨天期急速
+衰減。此數字在凍結成分股上量得（non-goals D6），該偏誤方向為高估。
 
-Two properties of this measurement matter as much as the numbers. The
-percentile is **internally consistent** with the σ distance (1.0 σ ↔ 84.6, and
-a normal null puts 1.0 σ at 84.1) — the contaminated versions were not, and
-that inconsistency is what exposed them. And the figure is **restated**: the
-2026-frozen membership applied backwards over 2025 (non-goals D6), which biases
-persistence upward, so the true value is likely lower still.
+RS60 still honestly describes what happened over the last 60 days; a month-scale
+rank *ordering* is not a structure you can lean on. Display reports σ distance +
+exceedance count, not percentile (see `docs/sprints/004-evidence.md`).
 
-Full result: `docs/sprints/002-report.md`. Whether the primary ranking window
-should therefore change is an **open product decision**, not a settled one —
-see `docs/product/open-questions.md` Q7.
+Primary ranking window: Q7 resolved as (a) — keep RS20; see
+`docs/product/open-questions.md`.
 
 No composite score.
 
@@ -770,12 +771,13 @@ marketpulse validate-signal
 
 `radar` prints the ranking table (1D / 5D / 20D / RS20 / Breadth / Volume / Rank / Rising·Falling·Stable / Momentum) and writes `reports/radar.html` with sector drill-down. Rank is still `cross_sectional_rank(RS20)`. Momentum is the display-only Strong / Improving / Stable / Weakening / Weak / Unknown state in §17.5. `--open` opens the HTML. Stock roles (Leader / Follower / Laggard) are terciles of member RS20 inside a theme; they do not change theme rank.
 
-`validate-signal` *(sprint 002)* runs the circular-shift null test for
-`rank_persistence_k` and writes `reports/persistence_20.png`. It is a one-off
-diagnostic, deliberately **not** on the daily `refresh` path (~4s at
-`n_iter=1000`). It prints observed value, null mean, null std, percentile, and
-the number of sessions actually used. It sets no threshold and draws no
-conclusion — reading the number is the product owner's job.
+`validate-signal` *(sprint 002; display restated sprint 004)* runs the
+circular-shift null test for `rank_persistence_k` and writes
+`reports/persistence_20.png`. It is a one-off diagnostic, deliberately **not**
+on the daily `refresh` path (~4s at `n_iter=1000`). It prints observed value,
+null mean, null std, σ distance, exceedance count (`null>=obs`), and the number
+of sessions actually used. It sets no threshold and draws no conclusion —
+reading the number is the product owner's job.
 
 It is not a scheduler. Do not add cron, notifications, or `doctor`.
 

@@ -12,31 +12,26 @@ MarketPulse is a **local Taiwan stock theme-rotation radar** that:
 - Produces daily briefs, rank timelines, and interactive sector radars
 - Supports historical replay for validation
 
-**Known limit of the signal — measured, sprint 003.** Rank persistence is the
-mean over T of Spearman(rank[T], rank[T−k]). Against a circular-shift null on
-329 sessions (2025-05-02 → 2026-09-03, 61.5% of the shift circle retained):
+**Known limit of the signal — measured, sprint 004 follow-up.** Rank persistence
+is the mean over T of Spearman(rank[T], rank[T−k]). Against a circular-shift
+null on 367 sessions (2024-12-27 → 2026-09-03, retained_fraction 69.25%):
 
 ```text
-k     observed   null            distance   percentile
-1     0.9346     0.0929 ± 0.0701   12.0 σ     100.0
-5     0.7297     0.0902 ± 0.0710    9.0 σ     100.0
-20    0.1613     0.0864 ± 0.0745    1.0 σ      84.6
+k     observed   null            distance      exceedance
+1     0.9307     0.0590 ± 0.0254   +34.36σ      0/1000
+5     0.7167     0.0602 ± 0.0258   +25.44σ      0/1000
+20    0.1404     0.0637 ± 0.0270    +2.84σ      0/1000
 ```
 
-**Read it as: the 1- and 5-day orderings are real by any standard; the 20-day
-ordering is one standard deviation above noise and does not reach any
-conventional threshold.** So the tool is a short-horizon instrument. Do not
-write copy, docs or UI that presents the 20-day rank ordering as a stable
-structure.
+**Read it as B＋C, not "confirmed".** 20 日排名持續性 0.14，在 367 個 session 上
+高出其循環位移虛無 2.8σ，1000 次位移沒有一次追上。這代表月尺度排名帶有可偵測的
+結構，不代表它穩定。1 日（34σ）與 5 日（25σ）遠強於它——真正的讀數是結構隨天期
+急速衰減。此數字在凍結成分股上量得（non-goals D6），該偏誤方向為高估。
 
-Three things to keep straight about this number. It is **restated** — the
-2026-frozen `themes/v1.yaml` applied backwards over 2025 — which biases
-persistence upward (non-goals D6), so the true figure is likely lower.
-The percentile is internally consistent with the σ distance (1.0 σ ↔ 84.6),
-which the earlier contaminated versions were not — that consistency is how you
-tell the test is behaving. And an earlier claim of "81st percentile" reached
-the same conclusion through an invalid null; the conclusion survived, the
-evidence for it did not. See `docs/sprints/003-report.md`.
+Do not write copy, docs or UI that presents the 20-day rank ordering as a stable
+or usable structure. Display layer reports σ distance + exceedance count, not a
+saturating percentile (see `docs/sprints/004-evidence.md`). Earlier sprint 003
+tables (329 sessions, k=20 ≈ 1.0σ / p84.6) are superseded by this measurement.
 
 **Scope boundaries:**
 - MVP does NOT invent new indicators—it reuses pandas, pandas-ta-classic, and established patterns
