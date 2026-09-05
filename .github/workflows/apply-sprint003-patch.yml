@@ -1,0 +1,28 @@
+name: apply-sprint003-patch
+on:
+  push:
+    branches: [sprint/003-uncertainty]
+    paths:
+      - scratch/sprint003_rest.patch
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: sprint/003-uncertainty
+      - name: Apply patch and commit
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git apply --index scratch/sprint003_rest.patch
+          # delete radar.html if patch includes it; ensure gitignore already set
+          git status
+          git commit -m "feat: apply sprint 003 DO-1/2/3 code from patch" || echo nochange
+          git push origin HEAD:sprint/003-uncertainty
