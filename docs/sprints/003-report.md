@@ -60,4 +60,4 @@ CLI 每輪皆印：`restated (frozen membership applied historically; not as-of 
 
 ## 未做（依 spec）
 
-as-of 成分、`arch.bootstrap`、`narratives/`、`themes/v1.yaml`、calc 排名邏輯、radar 顏色、lint/mypy/CI、radar HTML f-string 重構；**未 merge 進 `dev`**。
+as-of 成分、`arch.bootstrap`、`narratives/`、`themes/v1.yaml`、calc 排名邏輯、radar 顏色、lint/mypy/CI、radar HTML f-string 重構；**未 merge 進 dev**。
