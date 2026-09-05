@@ -420,17 +420,38 @@ def _entry_method_current(entry: dict) -> bool:
     return entry.get("method_version") == NULL_METHOD_VERSION
 
 
+def _entry_sample_matches_file(entry: dict, payload: dict) -> bool:
+    """sprint 004 follow-up: by_k entries can be left over from earlier,
+    shorter samples while the file's top-level sample_start/sample_end has
+    been overwritten by a later run for a different k. Such an entry is not
+    from the sample the file claims to describe, so it is not a display
+    candidate - same treatment as a rejected method_version (DO-6), routed
+    through the same "treat as absent" path, not a new display state."""
+    return (
+        str(entry.get("sample_start")) == str(payload.get("sample_start"))
+        and str(entry.get("sample_end")) == str(payload.get("sample_end"))
+    )
+
+
 def _null_entry_for_display(payload: dict | None, k: int = DISPLAY_NULL_K) -> dict | None:
     if not payload:
         return None
+
+    def _ok(entry: dict) -> dict | None:
+        return (
+            entry
+            if _entry_method_current(entry) and _entry_sample_matches_file(entry, payload)
+            else None
+        )
+
     by_k = payload.get("by_k")
     if isinstance(by_k, dict):
         entry = by_k.get(str(k))
         if isinstance(entry, dict):
-            return entry if _entry_method_current(entry) else None
+            return _ok(entry)
     # tolerate a flat single-result file
     if payload.get("k") == k or str(payload.get("k")) == str(k):
-        return payload if _entry_method_current(payload) else None
+        return _ok(payload)
     return None
 
 

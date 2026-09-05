@@ -470,6 +470,35 @@ def test_quality_line_missing_method_version_matches_absent_byte_for_byte() -> N
     assert with_no_version_field == absent
 
 
+def test_quality_line_entry_from_a_different_sample_matches_absent_byte_for_byte() -> None:
+    """sprint 004 follow-up: a by_k entry whose own sample_start/sample_end
+    disagree with the file's top-level window is not from the sample the file
+    claims to describe. It must be treated as absent - the same "treat as
+    absent" path DO-6 uses for a rejected method_version, not a new state."""
+    row = _sample_market_row()
+    as_of = row["date"]
+    payload = _null_payload(sample_end=as_of)
+    # top-level says the file describes a sample ending `as_of`; the entry
+    # was actually computed on a sample that ended a month earlier.
+    payload["by_k"]["20"]["sample_start"] = "2025-05-02"
+    payload["by_k"]["20"]["sample_end"] = (as_of - timedelta(days=30)).isoformat()
+
+    mismatched = quality_line(row, null_baseline=payload, snapshot_as_of=as_of)
+    absent = quality_line(row, null_baseline=None, snapshot_as_of=as_of)
+    assert mismatched == absent
+    assert "虛無" not in mismatched
+
+
+def test_null_entry_for_display_rejects_entry_from_other_sample() -> None:
+    from marketpulse.quality import _null_entry_for_display
+
+    payload = _null_payload(sample_end=date(2026, 9, 3))
+    assert _null_entry_for_display(payload, k=20) is not None  # aligned → shows
+
+    payload["by_k"]["20"]["sample_end"] = "2026-08-01"  # entry from a shorter sample
+    assert _null_entry_for_display(payload, k=20) is None
+
+
 def test_quality_line_matching_method_version_unaffected_by_DO_6() -> None:
     """DO-6 acceptance 2: behaviour is unchanged when method_version
     matches - the DO-1 present/stale tests above already cover this since
