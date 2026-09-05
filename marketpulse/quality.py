@@ -531,3 +531,110 @@ def quality_line(
         f"換手 {churn_text} ({churn_pct})   "
         f"離散 {dispersion_text} ({dispersion_pct})"
     )
+
+
+RANK_IC_WINDOWS = (5, 20, 60)
+RANK_IC_RS_COLS = {5: "rs5", 20: "rs20", 60: "rs60"}
+
+
+def _spearman_cross_section(left: pd.Series, right: pd.Series) -> float:
+    """Spearman via Pearson-of-ranks (no scipy). Pairwise-complete."""
+    paired = pd.concat([left, right], axis=1, keys=["a", "b"]).dropna()
+    if len(paired) < 2:
+        return float("nan")
+    ra = paired["a"].rank()
+    rb = paired["b"].rank()
+    if float(ra.std()) == 0.0 or float(rb.std()) == 0.0:
+        return float("nan")
+    return float(ra.corr(rb, method="pearson"))
+
+
+def compute_rank_ic(
+    snapshot: pd.DataFrame,
+    *,
+    as_of: date | None = None,
+) -> pd.DataFrame:
+    """Forward Rank-IC matrix: Spearman(RS_k[T], forward h-day excess[T→T+h]).
+
+    Excess over (T, T+h] equals ``rs_h`` observed at session T+h — the same
+    theme n-day return minus TAIEX n-day return already stored on the
+    snapshot. Session lag is in trading days (snapshot date index), not
+    calendar days. Returns one row per (k, h) with mean_ic, n_days, se
+    (sample sd / √n). Pure numbers; no adjectives.
+    """
+    cols = ["k", "h", "mean_ic", "n_days", "se"]
+    if snapshot.empty:
+        return pd.DataFrame(columns=cols)
+
+    work = snapshot.copy()
+    work["date"] = pd.to_datetime(work["date"]).dt.date
+    dates = sorted(work["date"].unique())
+    if as_of is not None:
+        dates = [d for d in dates if d <= as_of]
+        work = work.loc[work["date"].isin(dates)]
+    if not dates:
+        return pd.DataFrame(columns=cols)
+
+    rs_frames = {
+        k: _pivot(work, col).reindex(dates)
+        for k, col in RANK_IC_RS_COLS.items()
+        if col in work.columns
+    }
+    for k in RANK_IC_WINDOWS:
+        if k not in rs_frames:
+            rs_frames[k] = pd.DataFrame(index=dates)
+
+    rows: list[dict] = []
+    n_sessions = len(dates)
+    for k in RANK_IC_WINDOWS:
+        for h in RANK_IC_WINDOWS:
+            ics: list[float] = []
+            for i in range(n_sessions - h):
+                ic = _spearman_cross_section(
+                    rs_frames[k].iloc[i],
+                    rs_frames[h].iloc[i + h],
+                )
+                if pd.notna(ic):
+                    ics.append(float(ic))
+            n_days = len(ics)
+            if n_days == 0:
+                mean_ic = float("nan")
+                se = float("nan")
+            else:
+                arr = np.asarray(ics, dtype=float)
+                mean_ic = float(arr.mean())
+                se = (
+                    float(arr.std(ddof=1) / np.sqrt(n_days))
+                    if n_days > 1
+                    else float("nan")
+                )
+            rows.append(
+                {
+                    "k": k,
+                    "h": h,
+                    "mean_ic": mean_ic,
+                    "n_days": n_days,
+                    "se": se,
+                }
+            )
+    return pd.DataFrame(rows, columns=cols)
+
+
+def format_rank_ic_table(frame: pd.DataFrame) -> str:
+    """Plain 3×3 text table: mean IC, n_days, se per (k, h) cell."""
+    lines = [
+        "forward Rank-IC  Spearman(RS_k[T], excess_h[T→T+h])",
+        "k\\h".ljust(6) + "".join(f"{h:>22d}" for h in RANK_IC_WINDOWS),
+    ]
+    by_kh = {(int(r.k), int(r.h)): r for r in frame.itertuples(index=False)}
+    for k in RANK_IC_WINDOWS:
+        cells: list[str] = []
+        for h in RANK_IC_WINDOWS:
+            r = by_kh.get((k, h))
+            if r is None or pd.isna(r.mean_ic):
+                cells.append(f"{'n/a':>22}")
+            else:
+                se_text = "n/a" if pd.isna(r.se) else f"{r.se:.4f}"
+                cells.append(f"{r.mean_ic:+.4f} n={int(r.n_days)} se={se_text}".rjust(22))
+        lines.append(f"{k:<6}" + "".join(cells))
+    return "\n".join(lines)

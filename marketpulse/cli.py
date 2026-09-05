@@ -44,6 +44,8 @@ from marketpulse.quality import (
     MARKET_COLUMNS,
     NULL_TEST_ITER,
     compute_market_quality,
+    compute_rank_ic,
+    format_rank_ic_table,
     load_null_baseline,
     null_baseline_path,
     persistence_null_test,
@@ -388,6 +390,26 @@ def validate_signal(
     dest = reports_dir / f"persistence_{k}.png"
     render_persistence_chart(market, dest, k=k)
     typer.echo(str(dest))
+
+
+@app.command(name="rank-ic")
+def rank_ic_cmd(
+    as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default = latest snapshot date"),
+    data_dir: Path = typer.Option(DEFAULT_DATA),
+) -> None:
+    """Forward Rank-IC 3×3: Spearman(RS_k[T], h-day excess[T→T+h]).
+
+    Buy-information diagnostic (spec 005 DO-1). Not part of refresh; does not
+    write signal_quality_null.json. Numbers only — no significance language.
+    """
+    snapshot = _load_snapshot(data_dir)
+    day = _parse_date(as_of) if as_of else max(snapshot["date"])
+    typer.echo(
+        "restated (frozen membership applied historically; not as-of / point-in-time)"
+    )
+    frame = compute_rank_ic(snapshot, as_of=day)
+    typer.echo(format_rank_ic_table(frame))
+    typer.echo(f"as_of={day.isoformat()}  cells={len(frame)}")
 
 
 @app.command()
