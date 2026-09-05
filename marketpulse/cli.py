@@ -19,6 +19,7 @@ from marketpulse.calc import (
     replay_snapshots,
     snapshots_equal,
 )
+from marketpulse.baskets import compute_basket_metrics, render_basket_panel
 from marketpulse.data import (
     coverage_report,
     download_range,
@@ -30,6 +31,7 @@ from marketpulse.data import (
     validate_normalized,
     write_normalized,
 )
+from marketpulse.narratives import load_as_of
 from marketpulse.product import (
     chart_window,
     default_chart_path,
@@ -508,6 +510,49 @@ def refresh(
     radar_path = _run_radar(snapshot, data_dir, themes_path, day, DEFAULT_REPORTS)
     typer.echo(str(radar_path))
     typer.echo(format_ops_status(data_dir, chart_path=dest, effective=effective))
+
+
+@app.command()
+def baskets(
+    as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default = last complete session"),
+    data_dir: Path = typer.Option(DEFAULT_DATA),
+    narratives_dir: Path = typer.Option(Path("narratives")),
+) -> None:
+    """Strength panel for every live branch basket (sprint 004 DO-2).
+
+    One line per basket: member count, RS5/RS20/RS60, breadth, value_share.
+    Reads price/volume only; writes nothing. Not a rank, not a score — baskets
+    print in the order the narratives list them (contract R1 / R3).
+    """
+    bars, index = read_normalized(data_dir)
+    try:
+        check_data_gaps(
+            bars,
+            index,
+            raw_twse_dates=_raw_session_dates(data_dir, "twse"),
+            raw_tpex_dates=_raw_session_dates(data_dir, "tpex"),
+        )
+    except DataGapError as exc:
+        typer.echo(f"data gap: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    if as_of:
+        day = _parse_date(as_of)
+    else:
+        day = last_complete_session(data_dir)
+        if day is None:
+            typer.echo("no complete session in normalized data; pass --as-of", err=True)
+            raise typer.Exit(code=1)
+
+    snapshot = load_as_of(day, narratives_dir)
+    live = [
+        (n.narrative_id, b)
+        for n in snapshot.narratives
+        for b in n.branches
+        if b.status == "live"
+    ]
+    rows = compute_basket_metrics(bars, index, live, day)
+    typer.echo(render_basket_panel(rows, day), nl=False)
 
 
 @app.command()
