@@ -13,6 +13,8 @@ from tests.conftest import make_bars, make_index, session_dates, two_theme_set
 def test_earlier_history_does_not_mutate_post_2026_snapshot_rows() -> None:
     """When post-2026 rows already had full lookback, adding earlier sessions
     must leave every post-2026-01 cell unchanged (DO-2 acceptance 3)."""
+    # ~14 months of business days: enough pre-2026 lookback for RS60, plus
+    # post-2026 dates to compare.
     dates = session_dates(300, start=date(2025, 6, 2))
     assert min(dates) < date(2026, 1, 1) <= max(dates)
 
@@ -25,6 +27,8 @@ def test_earlier_history_does_not_mutate_post_2026_snapshot_rows() -> None:
     bars_full = make_bars(dates, prices, twse=("AAA", "BBB"), tpex=("CCC",))
     index_full = make_index(dates, [1000.0 + i for i in range(n)])
 
+    # before = already includes months of pre-2026 history (RS60 defined).
+    # after  = same plus earlier sessions (the backfill).
     mid = date(2025, 8, 1)
     bars_before = bars_full[bars_full["date"] >= mid].copy()
     index_before = index_full[index_full["date"] >= mid].copy()
