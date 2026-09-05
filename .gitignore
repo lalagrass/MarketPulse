@@ -16,9 +16,10 @@ data/normalized/*
 !data/normalized/.gitkeep
 data/snapshots/*
 !data/snapshots/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
 reports/*
 !reports/.gitkeep
-!reports/radar.html
 
 docs/research/
 

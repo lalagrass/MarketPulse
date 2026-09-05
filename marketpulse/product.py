@@ -208,7 +208,12 @@ def format_end_label(rec) -> str:
     )
 
 
-def render_brief(snapshot: pd.DataFrame, as_of: date, market_row: pd.Series | None = None) -> str:
+def render_brief(
+    snapshot: pd.DataFrame,
+    as_of: date,
+    market_row: pd.Series | None = None,
+    null_baseline: dict | None = None,
+) -> str:
     day = snapshot.loc[snapshot["date"] == as_of].copy()
     if day.empty:
         return f"MarketPulse — {as_of.isoformat()}\n\nNo snapshot for this date.\n"
@@ -218,7 +223,7 @@ def render_brief(snapshot: pd.DataFrame, as_of: date, market_row: pd.Series | No
     day = day.sort_values(["rank", "theme_id"], na_position="last")
     lines = [
         f"MarketPulse — {as_of.isoformat()}",
-        quality_line(market_row),
+        quality_line(market_row, null_baseline=null_baseline, snapshot_as_of=as_of),
         "",
         "Theme Rotation  領先 / 改善 / 轉弱 / 落後",
         CLASSIFICATION_NOTE,

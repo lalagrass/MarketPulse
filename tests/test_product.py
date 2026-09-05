@@ -252,3 +252,15 @@ def test_brief_rank2_delta_minus1_is_lagging() -> None:
     assert "高速材料/CCL" in after_lagging
     before_lagging = text.split("\n落後\n", 1)[0]
     assert "高速材料/CCL" not in before_lagging
+
+
+def test_brief_unbroken_when_null_baseline_missing() -> None:
+    """spec 003 DO-1: missing null-baseline file must not break Brief layout."""
+    snap, dates = _snap_ok()
+    text = render_brief(snap, dates[-1], market_row=None, null_baseline=None)
+    assert "MarketPulse" in text
+    assert "持續性 n/a" in text
+    assert "虛無" not in text
+    assert "†" not in text
+    # Same as calling without the new kwarg (sprint-002 call shape).
+    assert text == render_brief(snap, dates[-1])

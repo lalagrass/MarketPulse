@@ -35,7 +35,10 @@ from marketpulse.quality import (
     MARKET_COLUMNS,
     NULL_TEST_ITER,
     compute_market_quality,
+    load_null_baseline,
+    null_baseline_path,
     persistence_null_test,
+    write_null_baseline,
 )
 from marketpulse.radar import RADAR_HTML_NAME, render_radar, write_radar_html
 from marketpulse.themes import load_themes
@@ -140,6 +143,10 @@ def _market_row(market: pd.DataFrame, as_of: date) -> pd.Series | None:
     if day.empty:
         return None
     return day.iloc[0]
+
+
+def _load_null_baseline(data_dir: Path) -> dict | None:
+    return load_null_baseline(null_baseline_path(data_dir))
 
 
 def format_ops_status(
@@ -247,7 +254,14 @@ def _run_radar(
     stocks = compute_stock_metrics(bars, index, themes, as_of)
     market_row = _market_row(_load_market_daily(data_dir), as_of)
     dest = output if output is not None else reports_dir / RADAR_HTML_NAME
-    write_radar_html(snapshot, stocks, as_of, dest, market_row)
+    write_radar_html(
+        snapshot,
+        stocks,
+        as_of,
+        dest,
+        market_row,
+        null_baseline=_load_null_baseline(data_dir),
+    )
     return dest
 
 
@@ -291,15 +305,45 @@ def validate_signal(
     """Circular-shift null test: is rank_persistence_k distinguishable from
     noise? A one-off diagnostic (spec 002 DO-1) - not part of `refresh`, since
     it doesn't change day to day the way the daily snapshot does. Reports
-    numbers only; no "signal"/"noise" verdict (contract D10)."""
+    numbers only; no "signal"/"noise" verdict (contract D10). Persists the
+    result beside the daily data for Brief/radar (spec 003 DO-1)."""
     snapshot = _load_snapshot(data_dir)
-    result = persistence_null_test(snapshot, k=k, n_iter=n_iter, seed=seed)
+    # R2 / §7: this uses frozen current membership applied historically —
+    # restated, not as-of. Disclosure must appear in the command output itself.
+    typer.echo(
+        "restated (frozen membership applied historically; not as-of / point-in-time)"
+    )
+    try:
+        result = persistence_null_test(snapshot, k=k, n_iter=n_iter, seed=seed)
+    except ValueError as exc:
+        typer.echo(str(exc))
+        existing = null_baseline_path(data_dir)
+        if existing.exists():
+            typer.echo(
+                f"existing baseline file is now stale/invalid for k={k}: {existing} "
+                "- this run could not refresh it, so any entry it holds for this k "
+                "was computed by a method no longer trusted; delete it "
+                "(data/processed/ is gitignored - local action, not tracked)"
+            )
+        raise typer.Exit(code=1) from exc
+    sample_start = min(snapshot["date"])
+    sample_end = max(snapshot["date"])
+    out_path = write_null_baseline(
+        null_baseline_path(data_dir),
+        result,
+        sample_start=sample_start,
+        sample_end=sample_end,
+    )
     typer.echo(
         f"k={result['k']}  observed={result['observed']:.4f}  "
         f"n_days_used={result['n_days_used']}  "
         f"null_mean={result['null_mean']:.4f}  null_std={result['null_std']:.4f}  "
-        f"percentile={result['percentile']:.1f}  n_iter={result['n_iter']}  seed={result['seed']}"
+        f"percentile={result['percentile']:.1f}  n_iter={result['n_iter']}  seed={result['seed']}  "
+        f"n_candidates={result['n_candidates']}  "
+        f"retained_fraction={result['retained_fraction']:.2%}  "
+        f"sample={sample_start.isoformat()}→{sample_end.isoformat()}"
     )
+    typer.echo(f"wrote {out_path}")
     market = _load_market_daily(data_dir)
     column = f"rank_persistence_{k}"
     if column not in market.columns or market[column].notna().sum() == 0:
@@ -318,7 +362,15 @@ def brief(
     snapshot = _load_snapshot(data_dir)
     day = _parse_date(as_of) if as_of else max(snapshot["date"])
     market_row = _market_row(_load_market_daily(data_dir), day)
-    typer.echo(render_brief(snapshot, day, market_row), nl=False)
+    typer.echo(
+        render_brief(
+            snapshot,
+            day,
+            market_row,
+            null_baseline=_load_null_baseline(data_dir),
+        ),
+        nl=False,
+    )
 
 
 @app.command()
@@ -333,7 +385,11 @@ def radar(
     snapshot = _load_snapshot(data_dir)
     day = _parse_date(as_of) if as_of else max(snapshot["date"])
     market_row = _market_row(_load_market_daily(data_dir), day)
-    typer.echo(render_radar(snapshot, day, market_row), nl=False)
+    null_baseline = _load_null_baseline(data_dir)
+    typer.echo(
+        render_radar(snapshot, day, market_row, null_baseline=null_baseline),
+        nl=False,
+    )
     dest = _run_radar(snapshot, data_dir, themes_path, day, DEFAULT_REPORTS, output)
     typer.echo(str(dest))
     if open_browser:
@@ -397,7 +453,11 @@ def refresh(
         raise typer.Exit(code=1)
     day = max(snapshot["date"])
     market_row = _market_row(_load_market_daily(data_dir), day)
-    typer.echo(render_brief(snapshot, day, market_row), nl=False)
+    null_baseline = _load_null_baseline(data_dir)
+    typer.echo(
+        render_brief(snapshot, day, market_row, null_baseline=null_baseline),
+        nl=False,
+    )
     dest, effective = _run_chart(
         snapshot,
         start=None,
@@ -410,7 +470,10 @@ def refresh(
         typer.echo(f"effective RS20 period: {effective[0].isoformat()} → {effective[1].isoformat()}")
         typer.echo(REPLAY_DISCLOSURE)
         typer.echo(RANK_DISCLOSURE)
-    typer.echo(render_radar(snapshot, day, market_row), nl=False)
+    typer.echo(
+        render_radar(snapshot, day, market_row, null_baseline=null_baseline),
+        nl=False,
+    )
     radar_path = _run_radar(snapshot, data_dir, themes_path, day, DEFAULT_REPORTS)
     typer.echo(str(radar_path))
     typer.echo(format_ops_status(data_dir, chart_path=dest, effective=effective))

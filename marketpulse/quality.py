@@ -16,12 +16,35 @@ DO-2.
 
 from __future__ import annotations
 
+import json
+from datetime import date, datetime, timezone
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
 PERSISTENCE_LAGS = (1, 5, 20)
 PERCENTILE_WINDOW = 60
 NULL_TEST_ITER = 1000
+# Stale marker for a null-baseline file whose sample_end differs from the
+# latest snapshot date. Must not collide with status_mark glyphs (* MISSING,
+# ~ THIN, · INSUFFICIENT_HISTORY) or the rank-triplet separator · (U+00B7).
+STALE_MARKER = "†"
+NULL_BASELINE_FILENAME = "signal_quality_null.json"
+DISPLAY_NULL_K = 20  # quality_line shows persistence_20; pair with k=20 null
+NULL_METHOD_VERSION = 1
+"""Identifies the null-sampling *method* a stored by_k entry was computed
+with - not when it was written (DO-6, sprint 003). Bump this whenever
+persistence_null_test's sampling or its guards change in a way that
+changes what the output means (a new algorithm, a new rejection rule) -
+not for cosmetic changes. An entry whose method_version doesn't match
+(including one missing the field entirely, i.e. every file written before
+DO-6) is a different measurement, not an old one: STALE_MARKER only
+answers "is this current", this answers "was this computed by a method we
+still stand behind". Freshness and validity are different questions - see
+_null_entry_for_display, which is where a mismatch turns into "treat as
+absent" rather than "print it with a warning tag" - an invalid number
+doesn't earn screen space just because it's labeled (D10)."""
 
 MARKET_COLUMNS = [
     "date",
@@ -125,6 +148,50 @@ def _row_wise_pearson(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return out
 
 
+def _null_min_lag(k: int) -> int:
+    """Minimum |effective lag| let into persistence_null_test's null.
+
+    ``max(2*k, 60)``. The 60 floor is PERCENTILE_WINDOW, this module's
+    existing stand-in for "a trading quarter" (already used above for the
+    rolling percentile windows) - reused here rather than picked to make
+    any particular k's percentile look better (contract D10: constants need
+    a market/statistical reason, not a fitted one). The ``2*k`` term makes
+    the excluded band strictly wider than the lag under test itself, which
+    is what guarantees it also excludes effective lag -k - see
+    persistence_null_test's docstring for why that shift matters too, not
+    just effective lag 0.
+    """
+    return max(2 * k, PERCENTILE_WINDOW)
+
+
+MIN_RETAINED_FRACTION = 0.5
+"""persistence_null_test refuses to run below this fraction of the shift
+circle retained as candidates (DO-5, sprint 003). 1/2: below half the
+circle, the excluded near-lag band is *larger* than what's left, so the
+null is built from a minority arc rather than a representative majority of
+possible alignments - exactly the DO-4 failure mode (161 sessions kept
+only 26% of the circle, all far shifts, and every k's percentile came back
+100.0 regardless of how large the observed statistic actually was). This
+is a property of the candidate set's shape (a majority-vs-minority split),
+not a value fitted to any particular k's output - it does not change
+_null_min_lag's L, only whether persistence_null_test proceeds at all for
+a given (n, k)."""
+
+
+def _null_shift_candidates(n: int, k: int, lag_l: int) -> np.ndarray:
+    """Valid effective lags e for persistence_null_test's circular shift.
+
+    e is the offset applied to every row's own position: partner_index =
+    (current_index + e) mod n. Candidates are the full circle of distinct
+    shifts, canonically e in [-(n//2), n//2] (each represents one wrap
+    direction; circular distance for e in this range is |e| itself, since
+    |e| <= n//2 <= n-|e|), minus the band |e| < lag_l.
+    """
+    half = n // 2
+    e = np.arange(-half, half + 1)
+    return e[np.abs(e) >= lag_l]
+
+
 def persistence_null_test(
     snapshot: pd.DataFrame,
     k: int = 20,
@@ -140,26 +207,61 @@ def persistence_null_test(
     warm-up) contributes no term, and how many did is reported as
     n_days_used (spec 002 DO-1 acceptance 3).
 
-    Null: for each of n_iter draws, pick a random additional shift s and
-    recompute the same mean using rank[(T-k+s) mod n] in place of
-    rank[T-k]. Circular shift keeps each side's own autocorrelation intact
-    and only scrambles the alignment between them - unlike an i.i.d.
-    shuffle of rows, which would also destroy real day-to-day continuity
-    and understate the null's spread (this is the standard technique for
-    testing association between two autocorrelated series). s is sampled
-    from [k, n-k) so it is never close to 0 or n, where the wrapped pairing
-    would coincide with (or nearly coincide with) the real, unshifted
-    lag-k pairing (acceptance 2).
+    Null: for each of n_iter draws, pick a random effective lag e (see
+    _null_shift_candidates) and recompute the same mean pairing rank[T]
+    with rank[(T+e) mod n] in place of rank[T-k]. Circular shift keeps each
+    side's own autocorrelation intact and only scrambles the alignment
+    between them - unlike an i.i.d. shuffle of rows, which would also
+    destroy real day-to-day continuity and understate the null's spread
+    (this is the standard technique for testing association between two
+    autocorrelated series).
+
+    e is restricted to |e| >= L = _null_min_lag(k) (DO-4, sprint 003). Two
+    prior sprints (002 DO-1, `c2aaefe`; 003 unchanged) instead sampled a
+    shift s from [k, n-k) with partner = rank[(T-k+s) mod n], i.e. e = s-k
+    ranging over [0, n-2k). That range includes e=0 (s=k, its own lower
+    bound): partner_index == current_index there, so every such draw is a
+    self-comparison with corr(x, x) == 1.0 by construction, not a random
+    pairing at all. Its neighbourhood (e near 0) inherits whatever real
+    short-lag persistence the series has, biasing the null's right tail up
+    and every reported percentile down. (A since-corrected docstring claimed
+    the coincidence was at the range's ends, "never close to 0 or n" - that
+    reasoning had it backwards: e=-k, i.e. s=0, is what reproduces the real
+    unshifted lag-k pairing the observed statistic itself uses; e=0, i.e.
+    s=k, is the self-comparison. s=0 was already excluded by the old range;
+    s=k sat right at its edge.) L=max(2k, 60) is wide enough to exclude both
+    e=0 and e=-k, plus every shift in between that would still read as
+    "nearly the real pairing" to an autocorrelated series.
 
     This is explicitly a research statistic, unlike the T-vs-T-k-only
     display values elsewhere in this module (contract R2 red line): building
     the null intentionally uses a wraparound that a live per-day value never
     would, purely to construct a comparison distribution.
+
+    L does not scale with n (DO-5, sprint 003): on a short sample it can
+    exclude most of the shift circle, leaving only a handful of far-apart
+    candidates. That is not merely a smaller null - it's a *biased* one
+    (the retained shifts are all "far", none "medium", so the null mean
+    drifts away from 0 and its spread collapses), and it fails silently: a
+    161-session sample once retained only 26% of the circle and returned
+    percentile 100.0 for k=1, 5, and 20 alike, regardless of how different
+    their observed statistics actually were. See MIN_RETAINED_FRACTION -
+    below that retained share, this function raises instead of returning a
+    number that looks confident but measures the sample length, not the
+    series.
     """
     ranks = _pivot(snapshot, "rank")
     n = len(ranks)
-    if n <= 2 * k:
-        raise ValueError(f"need more than 2*k={2 * k} sessions, got {n}")
+    lag_l = _null_min_lag(k)
+    candidates = _null_shift_candidates(n, k, lag_l)
+    retained_fraction = candidates.size / n if n else 0.0
+    if retained_fraction < MIN_RETAINED_FRACTION:
+        raise ValueError(
+            f"sample too short to support a null test at k={k}: retained "
+            f"{candidates.size}/{n} ({retained_fraction:.0%}) of the shift "
+            f"circle, need >= {MIN_RETAINED_FRACTION:.0%} (L={lag_l}); "
+            "this sample length cannot support a null test at this k"
+        )
 
     values = ranks.to_numpy(dtype=float)
     positions = np.arange(k, n)
@@ -169,11 +271,10 @@ def persistence_null_test(
     observed = float(np.nanmean(observed_terms)) if n_days_used else float("nan")
 
     rng = np.random.default_rng(seed)
-    lo, hi = k, n - k
     null_values = np.full(n_iter, np.nan)
     for i in range(n_iter):
-        s = int(rng.integers(lo, hi))
-        partner = values[(positions - k + s) % n]
+        e = int(rng.choice(candidates))
+        partner = values[(positions + e) % n]
         terms = _row_wise_pearson(current, partner)
         if np.any(~np.isnan(terms)):
             null_values[i] = np.nanmean(terms)
@@ -196,6 +297,8 @@ def persistence_null_test(
         "percentile": percentile,
         "n_iter": int(len(valid_null)),
         "seed": seed,
+        "n_candidates": int(candidates.size),
+        "retained_fraction": retained_fraction,
     }
 
 
@@ -222,7 +325,120 @@ def _fmt_pp(value: object) -> str:
     return f"{float(value) * 100:.1f}pp"
 
 
-def quality_line(market_row: pd.Series | None) -> str:
+def null_baseline_path(data_dir: Path) -> Path:
+    """Independent JSON beside the daily snapshots (spec 003 DO-1)."""
+    return Path(data_dir) / "processed" / NULL_BASELINE_FILENAME
+
+
+def load_null_baseline(path: Path) -> dict | None:
+    """Return parsed payload or None if the file is absent / unreadable."""
+    path = Path(path)
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _parse_iso_date(value: object) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    return date.fromisoformat(text[:10])
+
+
+def write_null_baseline(
+    path: Path,
+    result: dict,
+    *,
+    sample_start: date,
+    sample_end: date,
+    generated_at: datetime | None = None,
+) -> Path:
+    """Persist / merge one validate-signal result into the null-baseline file.
+
+    Multiple k values share one file under ``by_k``; sample window and
+    generated_at are refreshed on every write (the diagnostic is re-run over
+    the current snapshot).
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = load_null_baseline(path) or {}
+    by_k = existing.get("by_k") if isinstance(existing.get("by_k"), dict) else {}
+    k = int(result["k"])
+    entry = {
+        "k": k,
+        "method_version": NULL_METHOD_VERSION,
+        "observed": result["observed"],
+        "null_mean": result["null_mean"],
+        "null_std": result["null_std"],
+        "percentile": result["percentile"],
+        "n_days_used": result["n_days_used"],
+        "n_iter": result["n_iter"],
+        "seed": result["seed"],
+        "sample_start": sample_start.isoformat(),
+        "sample_end": sample_end.isoformat(),
+    }
+    by_k[str(k)] = entry
+    when = generated_at or datetime.now(timezone.utc)
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    payload = {
+        "generated_at": when.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "sample_start": sample_start.isoformat(),
+        "sample_end": sample_end.isoformat(),
+        "by_k": by_k,
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def _entry_method_current(entry: dict) -> bool:
+    """DO-6: an entry computed by a method this codebase no longer stands
+    behind (including one with no method_version at all - every file
+    written before DO-6) is not a display candidate, regardless of how
+    fresh its sample_end is."""
+    return entry.get("method_version") == NULL_METHOD_VERSION
+
+
+def _null_entry_for_display(payload: dict | None, k: int = DISPLAY_NULL_K) -> dict | None:
+    if not payload:
+        return None
+    by_k = payload.get("by_k")
+    if isinstance(by_k, dict):
+        entry = by_k.get(str(k))
+        if isinstance(entry, dict):
+            return entry if _entry_method_current(entry) else None
+    # tolerate a flat single-result file
+    if payload.get("k") == k or str(payload.get("k")) == str(k):
+        return payload if _entry_method_current(payload) else None
+    return None
+
+
+def _fmt_null_baseline(entry: dict) -> str:
+    """Pure numbers for the null reference — no adjectives (D10)."""
+    mean = _fmt_corr(entry.get("null_mean"))
+    std = _fmt_corr(entry.get("null_std"))
+    pct = entry.get("percentile")
+    if pct is None or pd.isna(pct):
+        pct_text = "n/a"
+    else:
+        pct_text = f"{int(round(float(pct)))}"
+    return f"虛無 {mean}±{std} p{pct_text}"
+
+
+def quality_line(
+    market_row: pd.Series | None,
+    *,
+    null_baseline: dict | None = None,
+    snapshot_as_of: date | None = None,
+) -> str:
     """Compact one-line signal-quality readout: numbers and percentiles only.
 
     No verdict, no threshold-based label (D10 / acceptance 5) — the reader
@@ -230,17 +446,42 @@ def quality_line(market_row: pd.Series | None) -> str:
     1-day lag answers the same question as rank_churn (today vs. yesterday),
     so pairing them would spend two of the three slots on one thing. The 20
     lag gives the line three genuinely different scales instead.
+
+    When ``null_baseline`` (from validate-signal) is present, appends the
+    k=20 null reference as pure numbers. If its sample_end differs from
+    ``snapshot_as_of`` (or market_row's date), appends STALE_MARKER (†) after
+    the observed persistence — visible, not silent. Missing file / None
+    baseline keeps the sprint-002 string byte-for-byte.
     """
     if market_row is None:
-        return "持續性 n/a   換手 n/a   離散 n/a"
+        base = "持續性 n/a   換手 n/a   離散 n/a"
+        # Still allow a stale/present null marker only when there is something
+        # to attach to; without a row there is no persistence digit.
+        return base
     persistence = _fmt_corr(market_row.get("rank_persistence_20"))
     churn = market_row.get("rank_churn")
     churn_text = "n/a" if churn is None or pd.isna(churn) else f"{int(round(float(churn)))}"
     churn_pct = _fmt_pct(market_row.get("rank_churn_pct"))
     dispersion_text = _fmt_pp(market_row.get("dispersion"))
     dispersion_pct = _fmt_pct(market_row.get("dispersion_pct"))
+
+    entry = _null_entry_for_display(null_baseline, DISPLAY_NULL_K)
+    if entry is None:
+        return (
+            f"持續性 {persistence}   "
+            f"換手 {churn_text} ({churn_pct})   "
+            f"離散 {dispersion_text} ({dispersion_pct})"
+        )
+
+    as_of = snapshot_as_of
+    if as_of is None:
+        as_of = _parse_iso_date(market_row.get("date"))
+    sample_end = _parse_iso_date(entry.get("sample_end") or (null_baseline or {}).get("sample_end"))
+    stale = sample_end is not None and as_of is not None and sample_end != as_of
+    mark = STALE_MARKER if stale else ""
+    null_text = _fmt_null_baseline(entry)
     return (
-        f"持續性 {persistence}   "
+        f"持續性 {persistence}{mark} {null_text}   "
         f"換手 {churn_text} ({churn_pct})   "
         f"離散 {dispersion_text} ({dispersion_pct})"
     )
