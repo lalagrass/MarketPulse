@@ -168,3 +168,44 @@ sprint 003 DO-1 把虛無基準併進持續性那一行，正是把尺度限制�
 
 留著一條每輪都被破的規則，會侵蝕其他規則的可信度——這正是 non-goals
 「規則 vs 預設值」機制存在的理由，只是這次要質疑的是 skill 自己的規則。
+
+
+---
+
+## ~~Q9~~ — 市場故事脈絡的追蹤，有沒有現成的開源可以直接套用？　**已結案 2026-09-05：沒有。這一題不需要再研究**
+
+**提出：**2026-09-05。使用者的原話：「感覺好像不少開源都有類似的功能，感覺應該能套用」。
+
+**結論：直覺是合理的，但查完是錯的。**這個問題在開源世界的名字不是「投資故事追蹤」，
+而是**新聞事件追蹤（Topic Detection and Tracking, TDT）**，而那一整族工具都假設你有一個
+**大型文件語料庫**。我們的輸入是一週一集 podcast 加上使用者自己的判斷——
+樣本量小到自動化沒有意義。**手寫 YAML 就是對的規模，不是權宜之計。**
+
+查過的東西，與判定：
+
+| 東西 | 授權／狀態 | 判定 |
+|---|---|---|
+| [open-synthesis](https://github.com/twschiller/open-synthesis)（ACH 平台，Django） | AGPL-3.0，**2026-05-27 已封存**，2024-03 起維護模式 | 不用。工具死了，但**方法要借**（見下） |
+| [narrative-maps / NMVT](https://github.com/briankeithn/narrative-maps)（[SoftwareX 2025](https://www.sciencedirect.com/science/article/pii/S2352711025003437)） | MIT，活躍 | 不用。要 CSV 語料庫 + `all-MiniLM-L6-v2` embedding + PuLP 線性規劃。我們沒有語料庫，且會引入 embedding 相依 |
+| [burst_detection](https://pypi.org/project/burst_detection/)（Kleinberg 2002） | **non-commercial，非 OSI**，0.1.3 / 2018-01 | 不用。且 `s`／`gamma` 是 D10 要擋的可調把手，見 backlog 的更正 |
+| [pybursts](https://github.com/hitalex/pybursts) | MIT，10 個 commit，未維護 | 不用。同上的參數問題 |
+| [Argdown](https://github.com/argdown/argdown) | MIT，活躍，Node.js | 不裝。但它「一則論點 + 支持／反對」的形狀值得抄進 YAML |
+| [python-prediction-scorer](https://github.com/yhoiseth/python-prediction-scorer)（Brier） | 開源 | **押後但方向對。**對應 backlog 的「每週五自填下週誰會強」。要先有紀錄累積才有東西可計分 |
+| [supat-roong/stock-relation](https://github.com/supat-roong/stock-relation) | MIT | 已在 D11 評估過，維持不用 |
+
+**真正該借的是方法，不是套件：**
+
+1. **ACH（Analysis of Competing Hypotheses，Heuer，CIA）**——
+   [方法說明](https://en.wikipedia.org/wiki/Analysis_of_competing_hypotheses)。
+   核心紀律不是那張矩陣，是**「找能區辨假說的證據，而不是支持主線的證據」**。
+   對應到我們：EP694 的「Hock Tan 首度點名聯發科」同時**支持**「聯發科拿到份額」
+   且**削弱**「XPU 壓縮 GPU 廠」——一則證據對多條支線各有方向。
+   sprint 004 DO-1 的 `bears_on` 欄位就是這條紀律的最小實作。
+2. **預測的「回頭日期」紀律**——一條沒有 revisit 日期的故事會靜靜地爛掉。
+   004 DO-1 把 `revisit` 設為**必填**，缺就 raise。
+3. **TDT 這個詞本身**（[UMass CIIR](https://ciir.cs.umass.edu/tdt)）——
+   之後要找相關研究，用這個詞比用「narrative tracking」找得到東西。
+
+**這一題結案。**不要再排「調研故事追蹤工具」這種項目。
+下次值得重開的條件：`narratives/` 累積超過 50 則、或開始有非 podcast 的文字來源進來
+（那時語料庫規模才可能讓 TDT 系工具成立）。
