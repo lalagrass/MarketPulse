@@ -2,10 +2,16 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+import numpy as np
 import pandas as pd
 import pytest
 
-from marketpulse.quality import MARKET_COLUMNS, compute_market_quality, quality_line
+from marketpulse.quality import (
+    MARKET_COLUMNS,
+    compute_market_quality,
+    persistence_null_test,
+    quality_line,
+)
 
 THEME_IDS = [f"t{i:02d}" for i in range(1, 12)]
 N_DAYS = 25
@@ -171,3 +177,87 @@ def test_empty_snapshot_returns_empty_frame_with_expected_columns() -> None:
     market = compute_market_quality(empty)
     assert list(market.columns) == MARKET_COLUMNS
     assert market.empty
+
+
+# --- persistence_null_test (spec 002 DO-1) -----------------------------------
+
+PN_THEME_IDS = [f"t{i:02d}" for i in range(11)]
+PN_N_DAYS = 150
+
+
+def _pn_dates(n: int = PN_N_DAYS) -> list[date]:
+    start = date(2026, 1, 5)
+    return [start + timedelta(days=i) for i in range(n)]
+
+
+def _ranks_from_scores(scores: np.ndarray) -> pd.DataFrame:
+    """scores: (n_days, n_themes). Rank 1 = highest score that day."""
+    rows: list[dict] = []
+    for day_idx, day in enumerate(_pn_dates(scores.shape[0])):
+        order = np.argsort(-scores[day_idx])
+        ranks = np.empty(scores.shape[1], dtype=int)
+        ranks[order] = np.arange(1, scores.shape[1] + 1)
+        for theme_idx, theme in enumerate(PN_THEME_IDS):
+            rows.append({"date": day, "theme_id": theme, "rank": int(ranks[theme_idx])})
+    return pd.DataFrame(rows)
+
+
+def _persistent_snapshot() -> pd.DataFrame:
+    """A slow random walk per theme: adjacent days are highly correlated
+    (real short-lag persistence), unlike a fixed permutation repeated every
+    day, which would make every possible pairing - including null shifts -
+    trivially perfectly correlated and thus uninformative as a fixture."""
+    rng = np.random.default_rng(1)
+    scores = np.cumsum(rng.normal(scale=1.0, size=(PN_N_DAYS, 11)), axis=0)
+    return _ranks_from_scores(scores)
+
+
+def _random_snapshot() -> pd.DataFrame:
+    """An independent random permutation each day: no genuine persistence
+    at any lag."""
+    rng = np.random.default_rng(11)
+    rows: list[dict] = []
+    for day in _pn_dates(PN_N_DAYS):
+        perm = rng.permutation(11) + 1
+        for theme_idx, theme in enumerate(PN_THEME_IDS):
+            rows.append({"date": day, "theme_id": theme, "rank": int(perm[theme_idx])})
+    return pd.DataFrame(rows)
+
+
+def test_null_test_sanity_check_k1_is_far_above_noise() -> None:
+    """Acceptance 1: k=1 must be obviously significant (percentile > 99) -
+    if it isn't, the implementation itself is broken, since day-to-day
+    persistence is essentially always real."""
+    result = persistence_null_test(_persistent_snapshot(), k=1, n_iter=500, seed=1)
+    assert result["percentile"] > 99
+    assert result["n_days_used"] == PN_N_DAYS - 1
+
+
+def test_null_test_independent_permutations_are_not_extreme() -> None:
+    """No genuine persistence by construction: the observed statistic should
+    land somewhere unremarkable in the null distribution, not near either
+    tail."""
+    result = persistence_null_test(_random_snapshot(), k=5, n_iter=500, seed=2)
+    assert 1 < result["percentile"] < 99
+
+
+def test_null_test_is_reproducible_with_a_fixed_seed() -> None:
+    snapshot = _persistent_snapshot()
+    first = persistence_null_test(snapshot, k=20, n_iter=200, seed=99)
+    second = persistence_null_test(snapshot, k=20, n_iter=200, seed=99)
+    assert first == second
+
+
+def test_null_test_shift_sampling_excludes_near_zero_and_near_n() -> None:
+    """Acceptance 2: shift s must come from [k, n-k) - anywhere else the
+    wrapped pairing would coincide with (or nearly coincide with) the real,
+    unshifted lag-k pairing. n = 2k+1 is the smallest valid session count
+    (leaves exactly one candidate shift); n = 2k must be rejected outright."""
+    snapshot = _persistent_snapshot()
+    k = 20
+    trimmed_ok = snapshot.loc[snapshot["date"] < _pn_dates()[2 * k + 1]]
+    persistence_null_test(trimmed_ok, k=k, n_iter=10, seed=1)  # must not raise
+
+    trimmed_too_short = snapshot.loc[snapshot["date"] < _pn_dates()[2 * k]]
+    with pytest.raises(ValueError):
+        persistence_null_test(trimmed_too_short, k=k, n_iter=10, seed=1)

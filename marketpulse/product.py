@@ -316,3 +316,40 @@ def render_timeline(snapshot: pd.DataFrame, path: Path) -> Path:
     fig.savefig(path, dpi=140)
     plt.close(fig)
     return path
+
+
+def render_persistence_chart(market: pd.DataFrame, path: Path, k: int = 20) -> Path:
+    """Plot rank_persistence_k over time (spec 002 DO-1 acceptance 4).
+
+    Fixed y-axis [-1, 1] with a zero line, since the statistic is bounded
+    there by construction - this is not a data-driven axis choice. No
+    verdict is drawn on the chart itself; reading it is left to the viewer
+    (contract D10).
+    """
+    column = f"rank_persistence_{k}"
+    frame = market.loc[market[column].notna(), ["date", column]].sort_values("date")
+    if frame.empty:
+        raise ValueError(f"no non-null {column} rows to chart")
+
+    fig, ax = plt.subplots(figsize=(12, 4.5))
+    ax.plot(
+        pd.to_datetime(frame["date"]),
+        frame[column],
+        color="#4C78A8",
+        linewidth=1.2,
+    )
+    ax.axhline(0, color="#999", linewidth=1, linestyle="--")
+    ax.set_ylim(-1, 1)
+    ax.set_ylabel(f"rank_persistence_{k}")
+    ax.set_xlabel("Date")
+    ax.set_title(
+        f"Rank Persistence (k={k}) — Spearman corr. of today's rank vs. T-{k}",
+        loc="left",
+        pad=10,
+    )
+    ax.grid(True, axis="y", linestyle=":", alpha=0.4)
+    fig.subplots_adjust(left=0.08, right=0.97, top=0.85, bottom=0.15)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=140)
+    plt.close(fig)
+    return path
