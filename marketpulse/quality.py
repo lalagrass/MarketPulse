@@ -30,6 +30,9 @@ NULL_TEST_ITER = 1000
 # latest snapshot date. Must not collide with status_mark glyphs (* MISSING,
 # ~ THIN, · INSUFFICIENT_HISTORY) or the rank-triplet separator · (U+00B7).
 STALE_MARKER = "†"
+# Fixed B+C horizon reading (spec 005 DO-3). Locked Chinese string — do not
+# rewrite from IC / persistence magnitude (D10).
+HORIZON_FOOTNOTE = "月尺度：可偵測≠穩定；短端遠強於長端；凍結成分偏高估（D6）。"
 NULL_BASELINE_FILENAME = "signal_quality_null.json"
 DISPLAY_NULL_K = 20  # quality_line shows persistence_20; pair with k=20 null
 NULL_METHOD_VERSION = 1
@@ -485,7 +488,7 @@ def quality_line(
     null_baseline: dict | None = None,
     snapshot_as_of: date | None = None,
 ) -> str:
-    """Compact one-line signal-quality readout: numbers and percentiles only.
+    """Compact signal-quality readout: numbers/percentiles plus fixed horizon note.
 
     No verdict, no threshold-based label (D10 / acceptance 5) — the reader
     judges. Uses rank_persistence_20 rather than rank_persistence_1: the
@@ -497,7 +500,11 @@ def quality_line(
     k=20 null reference as pure numbers. If its sample_end differs from
     ``snapshot_as_of`` (or market_row's date), appends STALE_MARKER (†) after
     the observed persistence — visible, not silent. Missing file / None
-    baseline keeps the sprint-002 string byte-for-byte.
+    baseline keeps the numeric line without 虛無.
+
+    Whenever ``market_row`` is present, appends HORIZON_FOOTNOTE on the next
+    line (spec 005 DO-3 default: show even without a null baseline — it is a
+    scale reading, not a null digit). Absent when market_row is None.
     """
     if market_row is None:
         base = "持續性 n/a   換手 n/a   離散 n/a"
@@ -513,24 +520,25 @@ def quality_line(
 
     entry = _null_entry_for_display(null_baseline, DISPLAY_NULL_K)
     if entry is None:
-        return (
+        body = (
             f"持續性 {persistence}   "
             f"換手 {churn_text} ({churn_pct})   "
             f"離散 {dispersion_text} ({dispersion_pct})"
         )
-
-    as_of = snapshot_as_of
-    if as_of is None:
-        as_of = _parse_iso_date(market_row.get("date"))
-    sample_end = _parse_iso_date(entry.get("sample_end") or (null_baseline or {}).get("sample_end"))
-    stale = sample_end is not None and as_of is not None and sample_end != as_of
-    mark = STALE_MARKER if stale else ""
-    null_text = _fmt_null_baseline(entry)
-    return (
-        f"持續性 {persistence}{mark} {null_text}   "
-        f"換手 {churn_text} ({churn_pct})   "
-        f"離散 {dispersion_text} ({dispersion_pct})"
-    )
+    else:
+        as_of = snapshot_as_of
+        if as_of is None:
+            as_of = _parse_iso_date(market_row.get("date"))
+        sample_end = _parse_iso_date(entry.get("sample_end") or (null_baseline or {}).get("sample_end"))
+        stale = sample_end is not None and as_of is not None and sample_end != as_of
+        mark = STALE_MARKER if stale else ""
+        null_text = _fmt_null_baseline(entry)
+        body = (
+            f"持續性 {persistence}{mark} {null_text}   "
+            f"換手 {churn_text} ({churn_pct})   "
+            f"離散 {dispersion_text} ({dispersion_pct})"
+        )
+    return f"{body}\n{HORIZON_FOOTNOTE}"
 
 
 RANK_IC_WINDOWS = (5, 20, 60)

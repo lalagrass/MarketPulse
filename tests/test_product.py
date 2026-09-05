@@ -7,6 +7,7 @@ import pandas as pd
 
 from marketpulse import RANK_DISCLOSURE, REPLAY_DISCLOSURE
 from marketpulse.calc import compute_snapshots
+from marketpulse.quality import HORIZON_FOOTNOTE
 from marketpulse.product import (
     CLASSIFICATION_NOTE,
     DEFAULT_CHART_SESSIONS,
@@ -264,3 +265,23 @@ def test_brief_unbroken_when_null_baseline_missing() -> None:
     assert "†" not in text
     # Same as calling without the new kwarg (sprint-002 call shape).
     assert text == render_brief(snap, dates[-1])
+
+
+def test_brief_includes_horizon_footnote_when_market_row_present() -> None:
+    """spec 005 DO-3: B+C fixed note on quality line when market_row exists."""
+    import pandas as pd
+
+    snap, dates = _snap_ok()
+    market_row = pd.Series(
+        {
+            "date": dates[-1],
+            "rank_persistence_20": 0.21,
+            "rank_churn": 4.0,
+            "rank_churn_pct": float("nan"),
+            "dispersion": 0.06,
+            "dispersion_pct": float("nan"),
+        }
+    )
+    out = render_brief(snap, dates[-1], market_row=market_row, null_baseline=None)
+    assert HORIZON_FOOTNOTE in out
+    assert "持續性" in out

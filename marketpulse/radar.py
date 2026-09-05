@@ -446,7 +446,7 @@ def render_radar_html(
   h1 {{ font-size: 1.6rem; margin: 0 0 4px; }}
   .sub {{ color: #555; margin: 0 0 16px; font-size: 0.95rem; }}
   .quality {{ font-family: "SF Mono", Menlo, monospace; font-size: 0.82rem;
-             margin-bottom: 10px; }}
+             margin-bottom: 10px; white-space: pre-line; }}
   .wrap {{ overflow-x: auto; }}
   table {{ border-collapse: collapse; width: 100%; font-size: 0.92rem; }}
   th, td {{ padding: 8px 10px; text-align: right; border-bottom: 1px solid #eee; }}

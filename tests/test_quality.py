@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from marketpulse.quality import (
+    HORIZON_FOOTNOTE,
     MARKET_COLUMNS,
     NULL_METHOD_VERSION,
     STALE_MARKER,
@@ -147,6 +148,7 @@ def test_quality_line_shows_numbers_only_no_verdict() -> None:
 
 def test_quality_line_handles_missing_row() -> None:
     assert "n/a" in quality_line(None)
+    assert HORIZON_FOOTNOTE not in quality_line(None)
 
 
 def test_future_session_does_not_change_earlier_days() -> None:
@@ -413,6 +415,22 @@ def test_quality_line_null_baseline_absent_matches_sprint002() -> None:
     assert "虛無" not in line
     assert STALE_MARKER not in line
     assert line.startswith("持續性 ")
+    assert HORIZON_FOOTNOTE in line
+
+
+def test_quality_line_always_appends_horizon_footnote_with_market_row() -> None:
+    """spec 005 DO-3: fixed B+C note always when market_row present, even
+    without a null baseline (scale reading, not a null digit)."""
+    row = _sample_market_row()
+    line = quality_line(row, null_baseline=None)
+    assert HORIZON_FOOTNOTE in line
+    assert line.endswith(HORIZON_FOOTNOTE)
+    assert HORIZON_FOOTNOTE == "月尺度：可偵測≠穩定；短端遠強於長端；凍結成分偏高估（D6）。"
+    as_of = row["date"]
+    with_null = quality_line(
+        row, null_baseline=_null_payload(sample_end=as_of), snapshot_as_of=as_of
+    )
+    assert with_null.endswith(HORIZON_FOOTNOTE)
 
 
 def test_quality_line_null_baseline_present_appends_numbers_only() -> None:
