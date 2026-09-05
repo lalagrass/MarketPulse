@@ -126,10 +126,34 @@ def brief_state(rank: object, rank_delta_5: object) -> str:
     return STATE_LAGGING
 
 
-def _fmt_rank_hash(value: float | None) -> str:
+RANK_TRIPLET_SEP = "·"  # middle dot; single-width in _vislen and monospace
+RANK_TRIPLET_HEADER = f"Rank R5{RANK_TRIPLET_SEP}R20{RANK_TRIPLET_SEP}R60"
+
+
+def _fmt_rank_num(value: object) -> str:
     if value is None or pd.isna(value):
-        return "#n/a"
-    return f"#{int(value)}"
+        return "n/a"
+    return str(int(value))
+
+
+def fmt_rank_triplet(rank_rs5: object, rank: object, rank_rs60: object) -> str:
+    """R5{sep}R20{sep}R60 in one cell, short-to-long window (spec 002 DO-2
+    acceptance 5 / unresolved question 2). The information is in the
+    relationship between the three, read by proximity - not in any one
+    number, so they are never split into separate columns.
+
+    `rank` (RS20-based) is the primary, contract-R1 ranking; R5/R60 are
+    context, not equal-status rankings, so only `rank` keeps the `#`
+    prefix (plain text has no bold). No arrow or direction mark is ever
+    added here - that would collapse the three numbers back into a single
+    verdict, which is exactly what R1/D10 forbid. The reader sees the raw
+    shape (e.g. "1·#3·7" vs "7·#3·1") and draws their own conclusion.
+    """
+    return (
+        f"{_fmt_rank_num(rank_rs5)}{RANK_TRIPLET_SEP}"
+        f"#{_fmt_rank_num(rank)}{RANK_TRIPLET_SEP}"
+        f"{_fmt_rank_num(rank_rs60)}"
+    )
 
 
 def _fmt_signed_pct_col(value: float | None) -> str:
@@ -207,9 +231,12 @@ def render_brief(snapshot: pd.DataFrame, as_of: date, market_row: pd.Series | No
         lines.append(state)
         for rec in block.itertuples(index=False):
             mark = status_mark(rec.status)
+            rank_triplet = fmt_rank_triplet(
+                getattr(rec, "rank_rs5", None), rec.rank, getattr(rec, "rank_rs60", None)
+            )
             lines.append(
                 f"{mark}{_ljust(str(rec.theme_name), NAME_WIDTH)} "
-                f"{_fmt_rank_hash(rec.rank):<3}  "
+                f"{rank_triplet:<9}  "
                 f"Δ5 {_fmt_delta(rec.rank_delta_5)}  "
                 f"RS20 {_fmt_signed_pct_col(rec.rs20)}"
             )
@@ -312,6 +339,43 @@ def render_timeline(snapshot: pd.DataFrame, path: Path) -> Path:
         footer += f"\n{MISSING_NOTE} Hollow markers / trailing * = incomplete that session."
     fig.text(0.01, 0.01, footer, fontsize=8, wrap=True)
     fig.subplots_adjust(left=0.07, right=0.68, top=0.88, bottom=0.16)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=140)
+    plt.close(fig)
+    return path
+
+
+def render_persistence_chart(market: pd.DataFrame, path: Path, k: int = 20) -> Path:
+    """Plot rank_persistence_k over time (spec 002 DO-1 acceptance 4).
+
+    Fixed y-axis [-1, 1] with a zero line, since the statistic is bounded
+    there by construction - this is not a data-driven axis choice. No
+    verdict is drawn on the chart itself; reading it is left to the viewer
+    (contract D10).
+    """
+    column = f"rank_persistence_{k}"
+    frame = market.loc[market[column].notna(), ["date", column]].sort_values("date")
+    if frame.empty:
+        raise ValueError(f"no non-null {column} rows to chart")
+
+    fig, ax = plt.subplots(figsize=(12, 4.5))
+    ax.plot(
+        pd.to_datetime(frame["date"]),
+        frame[column],
+        color="#4C78A8",
+        linewidth=1.2,
+    )
+    ax.axhline(0, color="#999", linewidth=1, linestyle="--")
+    ax.set_ylim(-1, 1)
+    ax.set_ylabel(f"rank_persistence_{k}")
+    ax.set_xlabel("Date")
+    ax.set_title(
+        f"Rank Persistence (k={k}) — Spearman corr. of today's rank vs. T-{k}",
+        loc="left",
+        pad=10,
+    )
+    ax.grid(True, axis="y", linestyle=":", alpha=0.4)
+    fig.subplots_adjust(left=0.08, right=0.97, top=0.85, bottom=0.15)
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=140)
     plt.close(fig)

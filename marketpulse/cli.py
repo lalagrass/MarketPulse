@@ -28,9 +28,15 @@ from marketpulse.product import (
     default_chart_path,
     effective_rank_period,
     render_brief,
+    render_persistence_chart,
     render_timeline,
 )
-from marketpulse.quality import MARKET_COLUMNS, compute_market_quality
+from marketpulse.quality import (
+    MARKET_COLUMNS,
+    NULL_TEST_ITER,
+    compute_market_quality,
+    persistence_null_test,
+)
 from marketpulse.radar import RADAR_HTML_NAME, render_radar, write_radar_html
 from marketpulse.themes import load_themes
 
@@ -272,6 +278,36 @@ def analyze(
 ) -> None:
     """Compute equal-weight theme return, RS20, rank, value share, breadth."""
     _run_analyze(data_dir, themes_path)
+
+
+@app.command(name="validate-signal")
+def validate_signal(
+    k: int = typer.Option(20, help="lag in trading sessions"),
+    n_iter: int = typer.Option(NULL_TEST_ITER, help="null-distribution draws"),
+    seed: int = typer.Option(0, help="RNG seed (fixed default: reproducible by default)"),
+    data_dir: Path = typer.Option(DEFAULT_DATA),
+    reports_dir: Path = typer.Option(DEFAULT_REPORTS),
+) -> None:
+    """Circular-shift null test: is rank_persistence_k distinguishable from
+    noise? A one-off diagnostic (spec 002 DO-1) - not part of `refresh`, since
+    it doesn't change day to day the way the daily snapshot does. Reports
+    numbers only; no "signal"/"noise" verdict (contract D10)."""
+    snapshot = _load_snapshot(data_dir)
+    result = persistence_null_test(snapshot, k=k, n_iter=n_iter, seed=seed)
+    typer.echo(
+        f"k={result['k']}  observed={result['observed']:.4f}  "
+        f"n_days_used={result['n_days_used']}  "
+        f"null_mean={result['null_mean']:.4f}  null_std={result['null_std']:.4f}  "
+        f"percentile={result['percentile']:.1f}  n_iter={result['n_iter']}  seed={result['seed']}"
+    )
+    market = _load_market_daily(data_dir)
+    column = f"rank_persistence_{k}"
+    if column not in market.columns or market[column].notna().sum() == 0:
+        typer.echo(f"no {column} in market_daily.parquet; run analyze first")
+        raise typer.Exit(code=1)
+    dest = reports_dir / f"persistence_{k}.png"
+    render_persistence_chart(market, dest, k=k)
+    typer.echo(str(dest))
 
 
 @app.command()

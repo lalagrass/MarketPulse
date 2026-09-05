@@ -16,7 +16,17 @@ from marketpulse.momentum import (
     MomentumEvidence,
     momentum_evidence,
 )
-from marketpulse.product import NAME_WIDTH, _fmt_signed_pct, _fmt_signed_pct_col, _ljust, status_mark
+from marketpulse.product import (
+    NAME_WIDTH,
+    RANK_TRIPLET_HEADER,
+    RANK_TRIPLET_SEP,
+    _fmt_rank_num,
+    _fmt_signed_pct,
+    _fmt_signed_pct_col,
+    _ljust,
+    fmt_rank_triplet,
+    status_mark,
+)
 from marketpulse.quality import quality_line
 
 ROT_RISING = "Rising"
@@ -138,7 +148,7 @@ def render_radar(snapshot: pd.DataFrame, as_of: date, market_row: pd.Series | No
         "",
         f"{_ljust('Sector', NAME_WIDTH)} "
         f"{'1D':>7}  {'5D':>7}  {'20D':>7}  {'RS20':>7}  "
-        f"{'Breadth':>7}  {'Volume':>6}  {'Rank':<4}  Rot  Momentum",
+        f"{'Breadth':>7}  {'Volume':>6}  {RANK_TRIPLET_HEADER:<15}  Rot  Momentum",
         "-" * 100,
     ]
     for rec in day.itertuples(index=False):
@@ -149,6 +159,9 @@ def render_radar(snapshot: pd.DataFrame, as_of: date, market_row: pd.Series | No
         vol = rec.volume_ratio if hasattr(rec, "volume_ratio") else None
         delta = rec.rank_delta_1 if hasattr(rec, "rank_delta_1") else None
         mom = momentum_evidence(snapshot, rec)
+        rank_triplet = fmt_rank_triplet(
+            getattr(rec, "rank_rs5", None), rec.rank, getattr(rec, "rank_rs60", None)
+        )
         lines.append(
             f"{mark}{_ljust(str(rec.theme_name), NAME_WIDTH)} "
             f"{_fmt_signed_pct_col(ret1)}  "
@@ -157,7 +170,7 @@ def render_radar(snapshot: pd.DataFrame, as_of: date, market_row: pd.Series | No
             f"{_fmt_signed_pct_col(rec.rs20)}  "
             f"{_fmt_breadth(above, rec.member_count):>7}  "
             f"{_fmt_x(vol):>6}  "
-            f"{_fmt_rank(rec.rank):<4}  "
+            f"{rank_triplet:<15}  "
             f"{rotation_mark(delta):<3}  "
             f"{_fmt_mom_ascii(mom.state)}"
         )
@@ -316,6 +329,11 @@ def render_radar_html(
         mark = rotation_mark(getattr(rec, "rank_delta_1", None))
         mom = momentum_evidence(snapshot, rec)
         mom_class = mom.state.lower()
+        rank_triplet_html = (
+            f"{html.escape(_fmt_rank_num(getattr(rec, 'rank_rs5', None)))}"
+            f"{RANK_TRIPLET_SEP}<strong>{html.escape(_fmt_rank_num(rec.rank))}</strong>"
+            f"{RANK_TRIPLET_SEP}{html.escape(_fmt_rank_num(getattr(rec, 'rank_rs60', None)))}"
+        )
         rows.append(
             "<tr>"
             f'<td class="name"><a href="{href}">{name}</a></td>'
@@ -325,7 +343,7 @@ def render_radar_html(
             f"{_html_pct(rec.rs20)}"
             f"<td>{html.escape(_fmt_breadth(getattr(rec, 'above_count', None), rec.member_count))}</td>"
             f"<td>{html.escape(_fmt_x(getattr(rec, 'volume_ratio', None)).strip())}</td>"
-            f'<td class="rank">{html.escape(_fmt_rank(rec.rank))}</td>'
+            f'<td class="rank">{rank_triplet_html}</td>'
             f'<td class="{rot_class}">{html.escape(mark)} {html.escape(rot)}</td>'
             f'<td class="mom {mom_class}">{html.escape(mom.label)}</td>'
             "</tr>"
@@ -429,7 +447,8 @@ def render_radar_html(
   th:first-child, td:first-child, td.name {{ text-align: left; }}
   th {{ font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase;
        color: #666; border-bottom: 1px solid #ccc; }}
-  td.rank {{ font-weight: 700; font-size: 1.05rem; }}
+  td.rank {{ font-size: 1.05rem; }}
+  td.rank strong {{ font-weight: 700; }}
   td.mom {{ white-space: nowrap; font-weight: 600; }}
   a {{ color: #123; text-decoration: none; }}
   a:hover {{ text-decoration: underline; }}
@@ -474,7 +493,7 @@ def render_radar_html(
   <thead>
     <tr>
       <th>Sector</th><th>1D</th><th>5D</th><th>20D</th>
-      <th>RS20</th><th>Breadth</th><th>Volume</th><th>Rank</th>
+      <th>RS20</th><th>Breadth</th><th>Volume</th><th>{html.escape(RANK_TRIPLET_HEADER)}</th>
       <th>Rotation</th><th>Momentum</th>
     </tr>
   </thead>
