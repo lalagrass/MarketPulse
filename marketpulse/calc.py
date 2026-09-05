@@ -323,11 +323,18 @@ def compute_snapshots(
             else pd.Series(np.nan, index=close.index)
         )
         share = theme_tv / market_tv
+        # min_count=1: an all-NaN row (e.g. before SMA20 exists) must stay
+        # NaN, not collapse to 0 the way sum(skipna=True) alone would
+        # (spec 005 DO-2). Mixed True/False still counts via skipna.
         above_count = (
-            above[above_cols].sum(axis=1, skipna=True)
+            above[above_cols].sum(axis=1, skipna=True, min_count=1)
             if above_cols
             else pd.Series(0, index=close.index)
         )
+        if above_cols:
+            # Object-dtype bool/NaN frames can yield None from min_count; coerce
+            # so downstream parquet / equality treat missing as float NaN.
+            above_count = pd.to_numeric(above_count, errors="coerce")
         breadth = (
             above[above_cols].mean(axis=1, skipna=True)
             if above_cols

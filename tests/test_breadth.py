@@ -62,3 +62,58 @@ def test_breadth_excludes_members_without_sma20_history() -> None:
     # UP: 120 > mean(100*19 + 120)=101 → True; FLAT: 100 > 100 → False.
     assert last["breadth"] == pytest.approx(1 / 2)
     assert last["above_count"] == 1
+
+
+def test_above_count_all_nan_row_is_nan_not_zero() -> None:
+    """spec 005 DO-2: before any member has SMA20, above is all-NaN and
+    above_count must be NaN — not the false 0 that sum(skipna=True) yields."""
+    import math
+
+    import pandas as pd
+
+    dates = session_dates(10)  # well under SMA20=20
+    flat = [100.0] * 10
+    themes = ThemeSet(
+        classification_version="test",
+        taxonomy_frozen_at="2026-01-01",
+        notes="test",
+        themes=(Theme("mix", "Mix", ("A", "B")),),
+    )
+    bars = make_bars(
+        dates,
+        {"A": flat, "B": flat, "TPX": flat},
+        twse=("A", "B"),
+        tpex=("TPX",),
+    )
+    index = make_index(dates, [1000.0] * 10)
+    snap = compute_snapshots(bars, index, themes, thin_min=1)
+    # Every session here lacks SMA20 → above all NaN → above_count NaN.
+    assert snap["above_count"].isna().all()
+    last = snap[snap["date"] == dates[-1]].iloc[0]
+    assert math.isnan(float(last["above_count"]))
+    assert pd.isna(last["breadth"])
+
+
+def test_above_count_mixed_true_false_still_counts() -> None:
+    """spec 005 DO-2: mixed non-NaN above values still skipna-sum as before."""
+    dates = session_dates(21)
+    flat = [100.0] * 21
+    up = [100.0] * 20 + [120.0]
+    down = [100.0] * 20 + [80.0]
+    themes = ThemeSet(
+        classification_version="test",
+        taxonomy_frozen_at="2026-01-01",
+        notes="test",
+        themes=(Theme("mix", "Mix", ("UP", "FLAT", "DOWN")),),
+    )
+    bars = make_bars(
+        dates,
+        {"UP": up, "FLAT": flat, "DOWN": down, "TPX": flat},
+        twse=("UP", "FLAT", "DOWN"),
+        tpex=("TPX",),
+    )
+    index = make_index(dates, [1000.0] * 21)
+    snap = compute_snapshots(bars, index, themes, thin_min=1)
+    last = snap[snap["date"] == dates[-1]].set_index("theme_id").loc["mix"]
+    # UP True, FLAT False, DOWN False → above_count == 1
+    assert last["above_count"] == 1
