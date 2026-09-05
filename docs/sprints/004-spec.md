@@ -23,9 +23,19 @@
 
 1. ~~**sprint 003 的四條分支先併進 `dev`。**~~ **本項作廢——規劃端寫錯了，2026-09-05 當日更正。**
    寫這份 spec 時只看了 `git rev-list --count dev..<branch>`（顯示各分支領先 31–40 個 commit），
-   就推論成果未併。**實際查證後：`git diff dev <branch> -- marketpulse/ tests/` 對四條分支全部為空**
-   ——003 的產品碼與測試早就在 `dev` 上（commit `4ea9a02`、`c33ed68`、`d5b53c1`、`eb8f94d`、`12a7573`）。
-   那 31–40 個 commit 是**分支自己的歷史**，不是未併的成果。
+   就推論成果未併。**實際查證：**四條是一條線性鏈（`uncertainty → do4 → do5 → do6`），
+   **鏈尾 `do6` 對 `dev` 的 `marketpulse/`＋`tests/` diff 為空**，其餘三條是 `do6` 的祖先。
+   003 的產品碼與測試早就在 `dev` 上——`4ea9a02` 把整條鏈**合併成單一 commit** 落下，
+   所以沒有一條能 fast-forward。那 31–40 個 commit 是**分支自己的歷史**，不是未併的成果。
+
+   **（二次更正 2026-09-05，由實作端擋下並回報。）**本項初版寫「`git diff dev <branch>` 對四條分支
+   **全部**為空」——**錯的，只有 `do6` 是**。其餘三條的 diff 分別是 493／372／211 行，
+   內容全是 `dev` 後來修訂過的舊版本（`uncertainty` 缺 DO-4 的位移範圍修正、`do4` 再缺 DO-5 的
+   `MIN_RETAINED_FRACTION` 護欄、`do5` 再缺 DO-6 的 `NULL_METHOD_VERSION`）加一個過期 fixture。
+   錯在只驗了鏈尾就寫成四條都驗過。**正確判準是「鏈尾對 `dev` 為空 ＋ 其餘三條是鏈尾的祖先」**
+   （`merge-base --is-ancestor` 通過，`rev-list --count do6..<branch>` 全為 0），
+   不是「四條各自對 `dev` 為空」——後者在 `dev` 用合併 commit 落地時本來就不可能成立。
+   **結論不變：沒有一條帶著 `dev` 缺的東西。**
    分支上唯一與 `dev` 不同的文件是**舊一輪的版本**（還寫著已被 DO-4/DO-5 撤回的
    「百分位 81、與雜訊不可區分」）。**併它們會讓文件倒退。**
    **更正後的前提：`dev` 就是基準，直接從 `dev` 開 004 分支。無前置動作。**
