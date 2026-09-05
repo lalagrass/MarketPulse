@@ -1,6 +1,6 @@
 # Sprint 005 — 尺度可複核：Rank-IC ＋ above_count ＋ B＋C 短註
 
-狀態：待實作
+狀態：已完成 2026-09-06
 契約：CLAUDE.md 與 docs/coding-contract.md 全數適用
 層次：第一層（數學）＋ 一格使用／工程
 

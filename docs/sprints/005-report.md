@@ -72,3 +72,48 @@
 ## 帽子切換（誠實）
 
 同一代理先寫本報告／spec（PO），再實作（tech lead），最後用 evidence 做 PO 驗收＋retro。skill 原設計分家；本輪依使用者明示覆寫，並在 retro 檢討代價。
+
+---
+
+## PO 驗收（2026-09-06，同一代理·規劃帽）
+
+物證來源：`005-evidence.md`；本機複跑 `uv run pytest` → **140 passed**；`rank-ic`／`brief` 輸出與 evidence 一致。
+
+| DO | 判定 | 說明 |
+|---|---|---|
+| DO-1 Rank-IC | **通過** | 3×3 表、決定性測試、合成 ±1／近 0；未掛 refresh；未寫 null JSON |
+| DO-2 above_count | **通過** | 全 NaN→NaN；混合列仍計數；`min_count=1` |
+| DO-3 B＋C 短註 | **通過** | 字面鎖定；brief 第二行可見；radar `pre-line` |
+
+### 第三類（spec 沒要求）
+
+- radar CSS `white-space: pre-line` — 合理，否則 HTML 吃掉換行。
+
+### 沒做到／偏差
+
+- 無功能缺口。forward excess 實作選「T+h 當日的 `rs_h`」＝窗 (T, T+h]，與 spec 一致。
+- evidence 初稿 commit 表寫「*(this commit)*」；實際 hash `c17b1e4`。
+
+### UNKNOWN-1 關閉（數字到了）
+
+```text
+k\h     5        20       60
+5    +0.034    +0.084    +0.071
+20   +0.099    +0.140    +0.161
+60   +0.085    +0.140    +0.195
+```
+
+（n≈287–397；se≈0.018–0.022）
+
+**物證：**對角線隨天期上升；短→短近 0，長→長約 +0.20。  
+**詮釋（三種讀法）：**  
+A「長窗 RS 比較有前向內容」— 成立條件：接受 11 theme、restated 成分下的小樣本 IC。  
+B「IC 小，不能當預測產品」— +0.2 仍弱；與「不做策略／不依 IC 改 primary」一致。  
+C「與 persistence 不矛盾」— persistence 量的是名次自相關衰減；IC 量的是 RS 與未來超額。短端名次穩≠短端有預測力。  
+**PO 傾向：B＋C。** 不升格 Brief 長文；不改 primary。選錯代價：寫成 A 會滑向「改主窗／做輪動策略」。
+
+### 驗收決定
+
+1. 005 三項 DO **接受**；分支留 `sprint/005-horizon-ic`，**不自動 merge**（等明示）。  
+2. 橫斷面「換 rank」維持結案。  
+3. UNKNOWN-2（短註是否誤導）回頭日 2026-09-13 仍有效。

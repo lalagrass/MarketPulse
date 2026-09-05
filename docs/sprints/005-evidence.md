@@ -11,7 +11,7 @@ As of: 2026-09-06 02:31 CST
 | DO-1 | `d9479ed` | feat(quality): rank-ic forward IC matrix CLI |
 | DO-2 | `9ac4ef7` | fix(calc): above_count NaN when all members NaN |
 | DO-3 | `aa6b563` | feat(product): B+C horizon footnote on quality_line |
-| docs | *(this commit)* | docs: 005-evidence |
+| docs | `c17b1e4` | docs: 005-evidence |
 
 Full hashes:
 
@@ -19,6 +19,7 @@ Full hashes:
 - `d9479ed9dfd8a2fa869bdc28c939a6106d7ecb80`
 - `9ac4ef724f4e7bb1e681d4e970484eb5d568d406`
 - `aa6b563dd9011e64b41280fc04a929556370d6c5`
+- `c17b1e4` (evidence; full hash on git log)
 
 ## pytest
 

@@ -49,4 +49,4 @@ Cowork  下一輪階段 0           → 對照 spec 驗收，寫 NNN-report.md
 | `002` | 長尺度持續性檢定、多時間窗 RS 並列 | 已完成 2026-09-05 |
 | `003` | 虛無基準進 Brief、資料窗回補至三年、工程債一格 | 已完成 2026-09-05・成果已在 `dev` |
 | `004` | 第二層：支線／事件列／回頭日期，籃子強弱面板 | 待實作 |
-| `005` | 前向 Rank-IC；above_count NaN；B＋C 短註 | 進行中・`sprint/005-horizon-ic` |
+| `005` | 前向 Rank-IC；above_count NaN；B＋C 短註 | 已完成 2026-09-06・待 merge・`sprint/005-horizon-ic` |
