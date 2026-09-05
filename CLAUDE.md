@@ -12,26 +12,31 @@ MarketPulse is a **local Taiwan stock theme-rotation radar** that:
 - Produces daily briefs, rank timelines, and interactive sector radars
 - Supports historical replay for validation
 
-**Known limit of the signal (sprint 002, corrected sprint 003).** Rank
-persistence — mean over T of Spearman(rank[T], rank[T-k]) — is 0.945 at 1 day,
-0.773 at 5 days and 0.214 at 20 days (median 0.282). **Those observed figures
-stand.**
+**Known limit of the signal — measured, sprint 003.** Rank persistence is the
+mean over T of Spearman(rank[T], rank[T−k]). Against a circular-shift null on
+329 sessions (2025-05-02 → 2026-09-03, 61.5% of the shift circle retained):
 
-**Any statement about their significance does not.** The earlier claim
-("81st percentile, not distinguishable from noise") came from a circular-shift
-null whose sampling range included the degenerate self-comparison and its
-neighbourhood, biasing every reported percentile downward (sprint 003 DO-4).
-The corrected test **refuses to run on this sample**: 161 calendar sessions
-become 141 after warm-up rows drop out, and at L=60 only 22 of 141 shifts (16%)
-survive — under the half-circle floor the test now requires (DO-5).
+```text
+k     observed   null            distance   percentile
+1     0.9346     0.0929 ± 0.0701   12.0 σ     100.0
+5     0.7297     0.0902 ± 0.0710    9.0 σ     100.0
+20    0.1613     0.0864 ± 0.0745    1.0 σ      84.6
+```
 
-**Current honest position: the 20-day rank ordering has not been validly tested
-against a null on this data.** The 1- and 5-day figures are large enough that no
-plausible null changes how you read them; the 20-day one is precisely the case
-that needs the test, and the test needs a longer sample (~236 sessions minimum
-at k=20; ~730 retains 84% of the shift circle). Until then, do not write copy,
-docs or UI that presents the 20-day rank ordering either as a stable structure
-**or as proven noise**. See `docs/sprints/003-spec.md` and `003-report.md`.
+**Read it as: the 1- and 5-day orderings are real by any standard; the 20-day
+ordering is one standard deviation above noise and does not reach any
+conventional threshold.** So the tool is a short-horizon instrument. Do not
+write copy, docs or UI that presents the 20-day rank ordering as a stable
+structure.
+
+Three things to keep straight about this number. It is **restated** — the
+2026-frozen `themes/v1.yaml` applied backwards over 2025 — which biases
+persistence upward (non-goals D6), so the true figure is likely lower.
+The percentile is internally consistent with the σ distance (1.0 σ ↔ 84.6),
+which the earlier contaminated versions were not — that consistency is how you
+tell the test is behaving. And an earlier claim of "81st percentile" reached
+the same conclusion through an invalid null; the conclusion survived, the
+evidence for it did not. See `docs/sprints/003-report.md`.
 
 **Scope boundaries:**
 - MVP does NOT invent new indicators—it reuses pandas, pandas-ta-classic, and established patterns

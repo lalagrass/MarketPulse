@@ -382,21 +382,34 @@ k=5    0.773
 k=20   0.282     observed 0.2141 vs null 0.0409 +/- 0.2948 -> percentile 81.0
 ```
 
-*[CORRECTED 2026-09-05, sprint 003 DO-4/DO-5.]* The percentile line above is
-**withdrawn**. The circular-shift null that produced it sampled shifts from a
-range whose lower bound was the degenerate self-comparison (`s = k`, where the
-partner index equals the current index and the correlation is exactly 1.0), so
-its null had a fat right tail by construction and every percentile it reported
-was biased downward. The corrected test refuses to run on this sample at all:
-after warm-up rows drop out only 141 sessions remain, and at L=60 just 22 of
-141 shifts (16%) survive, below the half-circle floor now required.
+*[SUPERSEDED 2026-09-05, sprint 003 DO-4/DO-5/backfill.]* The percentile line
+above was withdrawn: the null that produced it sampled shifts from a range
+whose lower bound was the degenerate self-comparison (`s = k`, where the
+partner index equals the current index and the correlation is exactly 1.0),
+giving it a fat right tail by construction and biasing every percentile
+downward.
 
-**The observed persistence figures stand; the significance claim does not.**
-RS60 still honestly describes what happened over the last 60 days. Whether a
-month-scale rank *ordering* is a stable structure is now **untested** — neither
-confirmed nor refuted — and needs a longer sample (~236 sessions minimum at
-k=20). The figure also rests on hindsight-frozen membership (non-goals D6),
-which most likely biases it upward.
+**Measured result, corrected test, 329 sessions (2025-05-02 → 2026-09-03),
+61.5% of the shift circle retained:**
+
+```text
+k     observed   null              distance   percentile   n_days_used
+1     0.9346     0.0929 ± 0.0701     12.0 σ      100.0          308
+5     0.7297     0.0902 ± 0.0710      9.0 σ      100.0          304
+20    0.1613     0.0864 ± 0.0745       1.0 σ      84.6           289
+```
+
+The 1- and 5-day orderings are real by any standard. **The 20-day ordering is
+one standard deviation above noise and clears no conventional threshold.** RS60
+still honestly describes what happened over the last 60 days; a month-scale
+rank *ordering* is not a structure you can lean on.
+
+Two properties of this measurement matter as much as the numbers. The
+percentile is **internally consistent** with the σ distance (1.0 σ ↔ 84.6, and
+a normal null puts 1.0 σ at 84.1) — the contaminated versions were not, and
+that inconsistency is what exposed them. And the figure is **restated**: the
+2026-frozen membership applied backwards over 2025 (non-goals D6), which biases
+persistence upward, so the true value is likely lower still.
 
 Full result: `docs/sprints/002-report.md`. Whether the primary ranking window
 should therefore change is an **open product decision**, not a settled one —
