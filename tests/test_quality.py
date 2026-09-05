@@ -8,9 +8,12 @@ import pytest
 
 from marketpulse.quality import (
     MARKET_COLUMNS,
+    STALE_MARKER,
     compute_market_quality,
+    load_null_baseline,
     persistence_null_test,
     quality_line,
+    write_null_baseline,
 )
 
 THEME_IDS = [f"t{i:02d}" for i in range(1, 12)]
@@ -261,3 +264,92 @@ def test_null_test_shift_sampling_excludes_near_zero_and_near_n() -> None:
     trimmed_too_short = snapshot.loc[snapshot["date"] < _pn_dates()[2 * k]]
     with pytest.raises(ValueError):
         persistence_null_test(trimmed_too_short, k=k, n_iter=10, seed=1)
+
+
+# --- null baseline beside quality_line (spec 003 DO-1) ---------------------
+
+
+def _sample_market_row() -> pd.Series:
+    snapshot = _fixture_snapshot()
+    market = compute_market_quality(snapshot)
+    return market.loc[market["date"] == _dates()[REVERSE_AT]].iloc[0]
+
+
+def _null_payload(*, sample_end: date, k: int = 20) -> dict:
+    return {
+        "generated_at": "2026-09-05T00:00:00Z",
+        "sample_start": "2026-01-05",
+        "sample_end": sample_end.isoformat(),
+        "by_k": {
+            str(k): {
+                "k": k,
+                "observed": 0.2141,
+                "null_mean": 0.0409,
+                "null_std": 0.2948,
+                "percentile": 81.0,
+                "n_days_used": 121,
+                "n_iter": 1000,
+                "seed": 0,
+                "sample_start": "2026-01-05",
+                "sample_end": sample_end.isoformat(),
+            }
+        },
+    }
+
+
+def test_quality_line_null_baseline_absent_matches_sprint002() -> None:
+    row = _sample_market_row()
+    assert quality_line(row) == quality_line(row, null_baseline=None)
+    # Exact sprint-002 shape: no 虛無, no stale marker.
+    line = quality_line(row)
+    assert "虛無" not in line
+    assert STALE_MARKER not in line
+    assert line.startswith("持續性 ")
+
+
+def test_quality_line_null_baseline_present_appends_numbers_only() -> None:
+    row = _sample_market_row()
+    as_of = row["date"]
+    payload = _null_payload(sample_end=as_of)
+    line = quality_line(row, null_baseline=payload, snapshot_as_of=as_of)
+    assert "虛無" in line
+    assert "p81" in line
+    assert STALE_MARKER not in line
+    for banned in ("不顯著", "弱", "noise", "僅供參考", "OK", "NG"):
+        assert banned not in line
+
+
+def test_quality_line_null_baseline_stale_marks_with_dagger() -> None:
+    row = _sample_market_row()
+    as_of = row["date"]
+    stale_end = as_of - timedelta(days=1)
+    payload = _null_payload(sample_end=stale_end)
+    line = quality_line(row, null_baseline=payload, snapshot_as_of=as_of)
+    assert STALE_MARKER in line
+    assert STALE_MARKER == "†"
+    # Marker sits on the persistence token, before the null reference.
+    assert f"{STALE_MARKER} 虛無" in line
+
+
+def test_write_and_load_null_baseline_roundtrip(tmp_path) -> None:
+    path = tmp_path / "processed" / "signal_quality_null.json"
+    result = {
+        "k": 20,
+        "observed": 0.21,
+        "null_mean": 0.04,
+        "null_std": 0.29,
+        "percentile": 80.0,
+        "n_days_used": 100,
+        "n_iter": 1000,
+        "seed": 0,
+    }
+    write_null_baseline(
+        path,
+        result,
+        sample_start=date(2026, 1, 2),
+        sample_end=date(2026, 9, 3),
+    )
+    loaded = load_null_baseline(path)
+    assert loaded is not None
+    assert loaded["sample_end"] == "2026-09-03"
+    assert loaded["by_k"]["20"]["observed"] == 0.21
