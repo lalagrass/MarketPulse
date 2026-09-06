@@ -496,11 +496,17 @@ def quality_line(
     so pairing them would spend two of the three slots on one thing. The 20
     lag gives the line three genuinely different scales instead.
 
-    When ``null_baseline`` (from validate-signal) is present, appends the
-    k=20 null reference as pure numbers. If its sample_end differs from
-    ``snapshot_as_of`` (or market_row's date), appends STALE_MARKER (†) after
-    the observed persistence — visible, not silent. Missing file / None
-    baseline keeps the numeric line without 虛無.
+    When ``null_baseline`` (from validate-signal) is present, the persistence
+    digit is that k=20 entry's ``observed`` (mean over T of corr(...)), not
+    the daily ``rank_persistence_20``. null_mean / null_std / sigma /
+    n_ge_observed come from the same entry (spec 009 DO-1). Daily
+    rank_persistence_20 stays in market_daily.parquet; it is not printed
+    here. If the entry's sample_end differs from ``snapshot_as_of`` (or
+    market_row's date), appends STALE_MARKER (†) after the observed
+    persistence — the marker now means "this whole set was measured through
+    sample_end, which is not as_of". Missing file / None baseline keeps the
+    numeric line without 虛無 (the persistence slot then still uses the
+    daily value; spec 009 open question 1).
 
     Whenever ``market_row`` is present, appends HORIZON_FOOTNOTE on the next
     line (spec 005 DO-3 default: show even without a null baseline — it is a
@@ -511,7 +517,6 @@ def quality_line(
         # Still allow a stale/present null marker only when there is something
         # to attach to; without a row there is no persistence digit.
         return base
-    persistence = _fmt_corr(market_row.get("rank_persistence_20"))
     churn = market_row.get("rank_churn")
     churn_text = "n/a" if churn is None or pd.isna(churn) else f"{int(round(float(churn)))}"
     churn_pct = _fmt_pct(market_row.get("rank_churn_pct"))
@@ -520,12 +525,14 @@ def quality_line(
 
     entry = _null_entry_for_display(null_baseline, DISPLAY_NULL_K)
     if entry is None:
+        persistence = _fmt_corr(market_row.get("rank_persistence_20"))
         body = (
             f"持續性 {persistence}   "
             f"換手 {churn_text} ({churn_pct})   "
             f"離散 {dispersion_text} ({dispersion_pct})"
         )
     else:
+        persistence = _fmt_corr(entry.get("observed"))
         as_of = snapshot_as_of
         if as_of is None:
             as_of = _parse_iso_date(market_row.get("date"))

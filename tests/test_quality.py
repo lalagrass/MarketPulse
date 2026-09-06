@@ -519,6 +519,30 @@ def test_null_entry_for_display_rejects_entry_from_other_sample() -> None:
     assert _null_entry_for_display(payload, k=20) is None
 
 
+def test_quality_line_persistence_digit_equals_entry_observed() -> None:
+    """Sprint 009 DO-1 acceptance 2: the printed persistence number IS the
+    baseline entry's ``observed``. The daily rank_persistence_20 is a
+    different statistic (and here, a different sign) — a contradiction
+    between the digit and the σ is structurally impossible, not a glance."""
+    from marketpulse.quality import _fmt_corr, _null_entry_for_display
+
+    row = _sample_market_row()
+    as_of = row["date"]
+    payload = _null_payload(sample_end=as_of)
+    payload["by_k"]["20"]["observed"] = 0.1404
+    entry = _null_entry_for_display(payload, k=20)
+    assert entry is not None
+    shown = _fmt_corr(entry["observed"])
+    daily = _fmt_corr(row["rank_persistence_20"])
+    assert shown != daily  # .14 vs the fixture's -1.00 at the rank flip
+
+    line = quality_line(row, null_baseline=payload, snapshot_as_of=as_of)
+    token = line.split("持續性 ", 1)[1].split()[0].rstrip(STALE_MARKER)
+    assert token == shown
+    assert token == _fmt_corr(0.1404)
+    assert daily not in line.split("\n", 1)[0]
+
+
 def test_quality_line_matching_method_version_unaffected_by_DO_6() -> None:
     """DO-6 acceptance 2: behaviour is unchanged when method_version
     matches - the DO-1 present/stale tests above already cover this since
