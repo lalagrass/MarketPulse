@@ -1,6 +1,6 @@
 # Sprint 006 — 給 IC 表一個參照點
 
-狀態：待實作
+狀態：已完成 2026-09-06
 契約：CLAUDE.md 與 docs/coding-contract.md 全數適用
 層次：第一層（數學）＋ 一格 ENG
 起因：`docs/sprints/005-review.md` R1–R7。**先讀那份，再讀這份。**
