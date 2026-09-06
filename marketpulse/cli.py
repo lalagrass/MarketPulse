@@ -31,7 +31,12 @@ from marketpulse.data import (
     validate_normalized,
     write_normalized,
 )
-from marketpulse.narratives import load_as_of
+from marketpulse.narratives import (
+    DEFAULT_NARRATIVES_DIR,
+    NarrativeOverlay,
+    load_as_of,
+    load_as_of_lenient,
+)
 from marketpulse.product import (
     chart_window,
     default_chart_path,
@@ -52,7 +57,7 @@ from marketpulse.quality import (
     write_null_baseline,
 )
 from marketpulse.radar import RADAR_HTML_NAME, render_radar, write_radar_html
-from marketpulse.themes import load_themes
+from marketpulse.themes import ThemeSet, load_themes
 
 app = typer.Typer(no_args_is_help=True, help="MarketPulse: Taiwan theme-rotation radar")
 
@@ -158,6 +163,30 @@ def _market_row(market: pd.DataFrame, as_of: date) -> pd.Series | None:
 
 def _load_null_baseline(data_dir: Path) -> dict | None:
     return load_null_baseline(null_baseline_path(data_dir))
+
+
+def _empty_theme_set() -> ThemeSet:
+    return ThemeSet(classification_version="", taxonomy_frozen_at="", notes="", themes=())
+
+
+def _load_overlay(
+    as_of: date,
+    narratives_dir: Path,
+    themes_path: Path,
+) -> NarrativeOverlay:
+    snapshot, error = load_as_of_lenient(as_of, narratives_dir)
+    if not themes_path.exists():
+        return NarrativeOverlay(snapshot=snapshot, themes=_empty_theme_set(), error=error)
+    try:
+        themes = load_themes(themes_path)
+    except Exception as exc:
+        extra = f"narrative 讀取失敗：{exc}"
+        return NarrativeOverlay(
+            snapshot=snapshot,
+            themes=_empty_theme_set(),
+            error=error or extra,
+        )
+    return NarrativeOverlay(snapshot=snapshot, themes=themes, error=error)
 
 
 def format_ops_status(
@@ -283,6 +312,9 @@ def _run_radar(
     as_of: date,
     reports_dir: Path,
     output: Path | None = None,
+    *,
+    show_narratives: bool = True,
+    overlay: NarrativeOverlay | None = None,
 ) -> Path:
     themes = load_themes(themes_path)
     bars, index = read_normalized(data_dir)
@@ -296,6 +328,8 @@ def _run_radar(
         dest,
         market_row,
         null_baseline=_load_null_baseline(data_dir),
+        show_narratives=show_narratives,
+        overlay=overlay,
     )
     return dest
 
@@ -418,16 +452,26 @@ def rank_ic_cmd(
 def brief(
     as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default = latest snapshot date"),
     data_dir: Path = typer.Option(DEFAULT_DATA),
+    themes_path: Path = typer.Option(DEFAULT_THEMES),
+    narratives_dir: Path = typer.Option(DEFAULT_NARRATIVES_DIR),
+    show_narratives: bool = typer.Option(
+        True,
+        "--narratives/--no-narratives",
+        help="include read-only narrative lists; off restores layer-1-only output",
+    ),
 ) -> None:
     snapshot = _load_snapshot(data_dir)
     day = _parse_date(as_of) if as_of else max(snapshot["date"])
     market_row = _market_row(_load_market_daily(data_dir), day)
+    overlay = _load_overlay(day, narratives_dir, themes_path) if show_narratives else None
     typer.echo(
         render_brief(
             snapshot,
             day,
             market_row,
             null_baseline=_load_null_baseline(data_dir),
+            show_narratives=show_narratives,
+            overlay=overlay,
         ),
         nl=False,
     )
@@ -438,19 +482,42 @@ def radar(
     as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default = latest snapshot date"),
     data_dir: Path = typer.Option(DEFAULT_DATA),
     themes_path: Path = typer.Option(DEFAULT_THEMES),
+    narratives_dir: Path = typer.Option(DEFAULT_NARRATIVES_DIR),
     output: Path | None = typer.Option(None, help="HTML path; default reports/radar.html"),
     open_browser: bool = typer.Option(False, "--open", help="open the HTML radar in a browser"),
+    show_narratives: bool = typer.Option(
+        True,
+        "--narratives/--no-narratives",
+        help="include read-only 敘事 column; off restores layer-1-only output",
+    ),
 ) -> None:
     """Sector ranking table + stock drill-down HTML. Rank is still RS20."""
     snapshot = _load_snapshot(data_dir)
     day = _parse_date(as_of) if as_of else max(snapshot["date"])
     market_row = _market_row(_load_market_daily(data_dir), day)
     null_baseline = _load_null_baseline(data_dir)
+    overlay = _load_overlay(day, narratives_dir, themes_path) if show_narratives else None
     typer.echo(
-        render_radar(snapshot, day, market_row, null_baseline=null_baseline),
+        render_radar(
+            snapshot,
+            day,
+            market_row,
+            null_baseline=null_baseline,
+            show_narratives=show_narratives,
+            overlay=overlay,
+        ),
         nl=False,
     )
-    dest = _run_radar(snapshot, data_dir, themes_path, day, DEFAULT_REPORTS, output)
+    dest = _run_radar(
+        snapshot,
+        data_dir,
+        themes_path,
+        day,
+        DEFAULT_REPORTS,
+        output,
+        show_narratives=show_narratives,
+        overlay=overlay,
+    )
     typer.echo(str(dest))
     if open_browser:
         webbrowser.open(dest.resolve().as_uri())
@@ -490,6 +557,12 @@ def refresh(
     end: str | None = typer.Option(None, help="default = today"),
     data_dir: Path = typer.Option(DEFAULT_DATA),
     themes_path: Path = typer.Option(DEFAULT_THEMES),
+    narratives_dir: Path = typer.Option(DEFAULT_NARRATIVES_DIR),
+    show_narratives: bool = typer.Option(
+        True,
+        "--narratives/--no-narratives",
+        help="include read-only narrative lists and 敘事 column",
+    ),
 ) -> None:
     """Download trailing days, validate, analyze, Brief, latest chart, radar HTML."""
     hi = _parse_date(end) if end else date.today()
@@ -514,8 +587,16 @@ def refresh(
     day = max(snapshot["date"])
     market_row = _market_row(_load_market_daily(data_dir), day)
     null_baseline = _load_null_baseline(data_dir)
+    overlay = _load_overlay(day, narratives_dir, themes_path) if show_narratives else None
     typer.echo(
-        render_brief(snapshot, day, market_row, null_baseline=null_baseline),
+        render_brief(
+            snapshot,
+            day,
+            market_row,
+            null_baseline=null_baseline,
+            show_narratives=show_narratives,
+            overlay=overlay,
+        ),
         nl=False,
     )
     dest, effective = _run_chart(
@@ -531,10 +612,25 @@ def refresh(
         typer.echo(REPLAY_DISCLOSURE)
         typer.echo(RANK_DISCLOSURE)
     typer.echo(
-        render_radar(snapshot, day, market_row, null_baseline=null_baseline),
+        render_radar(
+            snapshot,
+            day,
+            market_row,
+            null_baseline=null_baseline,
+            show_narratives=show_narratives,
+            overlay=overlay,
+        ),
         nl=False,
     )
-    radar_path = _run_radar(snapshot, data_dir, themes_path, day, DEFAULT_REPORTS)
+    radar_path = _run_radar(
+        snapshot,
+        data_dir,
+        themes_path,
+        day,
+        DEFAULT_REPORTS,
+        show_narratives=show_narratives,
+        overlay=overlay,
+    )
     typer.echo(str(radar_path))
     typer.echo(format_ops_status(data_dir, chart_path=dest, effective=effective))
 

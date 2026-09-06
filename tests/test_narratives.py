@@ -12,6 +12,9 @@ from marketpulse.narratives import (
     STAGE_OPEN,
     history,
     load_as_of,
+    load_as_of_lenient,
+    theme_mention_dates,
+    weak_rank_threshold,
 )
 from marketpulse.narratives import coverage_report as narrative_coverage_report
 from marketpulse.themes import load_themes
@@ -434,3 +437,54 @@ def test_do1_new_2026_09_06_sample_file_parses() -> None:
     }
     assert len(asic.log) == 1
     assert set(asic.log[0].bears_on) == {"mediatek_asic_share", "xpu_not_squeezing_gpu"}
+
+
+# ── sprint 007 DO-1: theme mention dates (inverse of coverage_report) ──
+
+
+def test_weak_rank_threshold_is_ceil_half() -> None:
+    assert weak_rank_threshold(11) == 6
+    assert weak_rank_threshold(10) == 5
+    assert weak_rank_threshold(1) == 1
+    assert weak_rank_threshold(0) == 0
+
+
+def test_theme_mention_dates_real_snapshot_uses_coverage_report() -> None:
+    """2330 hits foundry_advanced (covered). 2454 hits nothing (uncovered).
+    optical_cpo names nothing (unknown) — matching narrative_id to theme_id
+    is not coverage."""
+    themes = load_themes(REPO_ROOT / "themes" / "v1.yaml")
+    snapshot = load_as_of(date(2026, 9, 6), REPO_ROOT / "narratives")
+    dates = theme_mention_dates(snapshot, themes)
+    assert dates["foundry_advanced"] == date(2026, 9, 6)
+    assert dates["optical_cpo"] is None
+    assert dates["memory"] is None
+    assert dates["ai_server"] is None
+    assert all(
+        (tid == "foundry_advanced") == (when is not None) for tid, when in dates.items()
+    )
+
+
+def test_theme_mention_dates_pit_empty_when_snapshots_postdate_as_of() -> None:
+    themes = load_themes(REPO_ROOT / "themes" / "v1.yaml")
+    snapshot = load_as_of(date(2026, 9, 3), REPO_ROOT / "narratives")
+    assert snapshot.snapshot_date is None
+    dates = theme_mention_dates(snapshot, themes)
+    assert all(when is None for when in dates.values())
+
+
+def test_load_as_of_lenient_broken_file_returns_message(tmp_path: Path) -> None:
+    (tmp_path / "2026-09-06.yaml").write_text("this is not: [valid yaml: {{", encoding="utf-8")
+    snapshot, error = load_as_of_lenient(date(2026, 9, 6), tmp_path)
+    assert snapshot.narratives == ()
+    assert snapshot.snapshot_date is None
+    assert error is not None
+    assert error.startswith("narrative 讀取失敗：")
+
+
+def test_load_as_of_lenient_missing_dir_is_empty(tmp_path: Path) -> None:
+    missing = tmp_path / "no-such"
+    snapshot, error = load_as_of_lenient(date(2026, 9, 6), missing)
+    assert error is None
+    assert snapshot.narratives == ()
+    assert snapshot.snapshot_date is None

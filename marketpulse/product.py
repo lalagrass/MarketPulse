@@ -12,6 +12,16 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from marketpulse import RANK_DISCLOSURE, REPLAY_DISCLOSURE
+from marketpulse.narratives import (
+    EMPTY_LIST,
+    GAP_LIST_LIMIT,
+    STRONG_RANK_MAX,
+    TITLE_COVERED_WEAK,
+    TITLE_STRONG_UNCOVERED,
+    NarrativeOverlay,
+    theme_mention_dates,
+    weak_rank_threshold,
+)
 from marketpulse.quality import quality_line
 
 THEME_ORDER = [
@@ -208,11 +218,55 @@ def format_end_label(rec) -> str:
     )
 
 
+def _mention_lookup(overlay: NarrativeOverlay | None) -> dict[str, date | None]:
+    if overlay is None:
+        return {}
+    return theme_mention_dates(overlay.snapshot, overlay.themes)
+
+
+def _theme_is_covered(theme_id: str, mentions: dict[str, date | None]) -> bool:
+    return mentions.get(theme_id) is not None
+
+
+def _fmt_gap_row(theme_name: object, rank: object) -> str:
+    rank_s = "n/a" if rank is None or pd.isna(rank) else str(int(rank))
+    return f"{theme_name}  #{rank_s}"
+
+
+def render_gap_lists(day: pd.DataFrame, overlay: NarrativeOverlay | None) -> str:
+    """強但沒人講 / 有人講但弱. Max 5 rows each; empty prints （無）, never omitted."""
+    mentions = _mention_lookup(overlay)
+    ranked = day.dropna(subset=["rank"]).copy()
+    n_themes = int(day["theme_id"].nunique()) if not day.empty else 0
+    weak_cut = weak_rank_threshold(n_themes)
+    strong_rows: list[str] = []
+    weak_rows: list[str] = []
+    if not ranked.empty:
+        ranked = ranked.sort_values(["rank", "theme_id"], na_position="last")
+        for rec in ranked.itertuples(index=False):
+            rank_i = int(rec.rank)
+            covered = _theme_is_covered(str(rec.theme_id), mentions)
+            if rank_i <= STRONG_RANK_MAX and not covered:
+                strong_rows.append(_fmt_gap_row(rec.theme_name, rec.rank))
+            if covered and rank_i >= weak_cut:
+                weak_rows.append(_fmt_gap_row(rec.theme_name, rec.rank))
+    lines = [TITLE_STRONG_UNCOVERED]
+    lines.extend(strong_rows[:GAP_LIST_LIMIT] or [EMPTY_LIST])
+    lines.append("")
+    lines.append(TITLE_COVERED_WEAK)
+    lines.extend(weak_rows[:GAP_LIST_LIMIT] or [EMPTY_LIST])
+    lines.append("")
+    return "\n".join(lines)
+
+
 def render_brief(
     snapshot: pd.DataFrame,
     as_of: date,
     market_row: pd.Series | None = None,
     null_baseline: dict | None = None,
+    *,
+    show_narratives: bool = True,
+    overlay: NarrativeOverlay | None = None,
 ) -> str:
     day = snapshot.loc[snapshot["date"] == as_of].copy()
     if day.empty:
@@ -250,6 +304,11 @@ def render_brief(
                 f"thrust {_fmt_signed_pct_col(rec.value_thrust)}  "
                 f"breadth {_fmt_pct(rec.breadth)}"
             )
+        lines.append("")
+    if show_narratives:
+        if overlay is not None and overlay.error:
+            lines.extend([overlay.error, ""])
+        lines.append(render_gap_lists(day, overlay).rstrip("\n"))
         lines.append("")
     statuses = set(str(s) for s in day["status"])
     if "MISSING_DATA" in statuses:

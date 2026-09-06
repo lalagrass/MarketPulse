@@ -16,6 +16,12 @@ from marketpulse.momentum import (
     MomentumEvidence,
     momentum_evidence,
 )
+from marketpulse.narratives import (
+    NARRATIVE_COL_HEADER,
+    NARRATIVE_MISSING,
+    NarrativeOverlay,
+    theme_mention_dates,
+)
 from marketpulse.product import (
     NAME_WIDTH,
     RANK_TRIPLET_HEADER,
@@ -132,15 +138,38 @@ def radar_day(snapshot: pd.DataFrame, as_of: date) -> pd.DataFrame:
     return day.sort_values(["rank", "theme_id"], na_position="last")
 
 
+def _narrative_date_label(
+    theme_id: object,
+    overlay: NarrativeOverlay | None,
+) -> str:
+    if overlay is None:
+        return NARRATIVE_MISSING
+    mentions = theme_mention_dates(overlay.snapshot, overlay.themes)
+    mentioned = mentions.get(str(theme_id))
+    if mentioned is None:
+        return NARRATIVE_MISSING
+    return mentioned.isoformat()
+
+
 def render_radar(
     snapshot: pd.DataFrame,
     as_of: date,
     market_row: pd.Series | None = None,
     null_baseline: dict | None = None,
+    *,
+    show_narratives: bool = True,
+    overlay: NarrativeOverlay | None = None,
 ) -> str:
     day = radar_day(snapshot, as_of)
     if day.empty:
         return f"MarketPulse — {as_of.isoformat()}\n\nNo snapshot for this date.\n"
+    header = (
+        f"{_ljust('Sector', NAME_WIDTH)} "
+        f"{'1D':>7}  {'5D':>7}  {'20D':>7}  {'RS20':>7}  "
+        f"{'Breadth':>7}  {'Volume':>6}  {RANK_TRIPLET_HEADER:<15}  Rot  Momentum"
+    )
+    if show_narratives:
+        header = f"{header}  {NARRATIVE_COL_HEADER}"
     lines = [
         f"MarketPulse — {as_of.isoformat()}",
         quality_line(market_row, null_baseline=null_baseline, snapshot_as_of=as_of),
@@ -151,10 +180,8 @@ def render_radar(
         "Rotation: ↑ Rising  ↓ Falling  → Stable  (vs previous session)",
         "Momentum: Strong  Improving  Stable  Weakening  Weak  (5D / Breadth / Volume / Rank Δ5)",
         "",
-        f"{_ljust('Sector', NAME_WIDTH)} "
-        f"{'1D':>7}  {'5D':>7}  {'20D':>7}  {'RS20':>7}  "
-        f"{'Breadth':>7}  {'Volume':>6}  {RANK_TRIPLET_HEADER:<15}  Rot  Momentum",
-        "-" * 100,
+        header,
+        "-" * (100 if not show_narratives else 114),
     ]
     for rec in day.itertuples(index=False):
         mark = status_mark(rec.status)
@@ -167,7 +194,7 @@ def render_radar(
         rank_triplet = fmt_rank_triplet(
             getattr(rec, "rank_rs5", None), rec.rank, getattr(rec, "rank_rs60", None)
         )
-        lines.append(
+        row = (
             f"{mark}{_ljust(str(rec.theme_name), NAME_WIDTH)} "
             f"{_fmt_signed_pct_col(ret1)}  "
             f"{_fmt_signed_pct_col(ret5)}  "
@@ -179,6 +206,11 @@ def render_radar(
             f"{rotation_mark(delta):<3}  "
             f"{_fmt_mom_ascii(mom.state)}"
         )
+        if show_narratives:
+            row = f"{row}  {_narrative_date_label(rec.theme_id, overlay)}"
+        lines.append(row)
+    if show_narratives and overlay is not None and overlay.error:
+        lines.extend(["", overlay.error])
     lines.extend(["", REPLAY_DISCLOSURE, RANK_DISCLOSURE])
     return "\n".join(lines) + "\n"
 
@@ -323,6 +355,9 @@ def render_radar_html(
     as_of: date,
     market_row: pd.Series | None = None,
     null_baseline: dict | None = None,
+    *,
+    show_narratives: bool = True,
+    overlay: NarrativeOverlay | None = None,
 ) -> str:
     day = radar_day(snapshot, as_of)
     rows = []
@@ -352,8 +387,12 @@ def render_radar_html(
             f'<td class="rank">{rank_triplet_html}</td>'
             f'<td class="{rot_class}">{html.escape(mark)} {html.escape(rot)}</td>'
             f'<td class="mom {mom_class}">{html.escape(mom.label)}</td>'
-            "</tr>"
         )
+        if show_narratives:
+            rows[-1] += (
+                f"<td>{html.escape(_narrative_date_label(rec.theme_id, overlay))}</td>"
+            )
+        rows[-1] += "</tr>"
         members = stocks.loc[stocks["theme_id"] == rec.theme_id] if not stocks.empty else stocks
         stock_blocks = []
         for role in ROLE_ORDER:
@@ -432,7 +471,16 @@ def render_radar_html(
             "</section>"
         )
 
-    table_body = "".join(rows) if rows else "<tr><td colspan='10'>No snapshot for this date.</td></tr>"
+    n_cols = 11 if show_narratives else 10
+    table_body = (
+        "".join(rows)
+        if rows
+        else f"<tr><td colspan='{n_cols}'>No snapshot for this date.</td></tr>"
+    )
+    narrative_th = f"<th>{html.escape(NARRATIVE_COL_HEADER)}</th>" if show_narratives else ""
+    error_p = ""
+    if show_narratives and overlay is not None and overlay.error:
+        error_p = f"<p class='sub'>{html.escape(overlay.error)}</p>"
     return f"""<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -500,7 +548,7 @@ def render_radar_html(
     <tr>
       <th>Sector</th><th>1D</th><th>5D</th><th>20D</th>
       <th>RS20</th><th>Breadth</th><th>Volume</th><th>{html.escape(RANK_TRIPLET_HEADER)}</th>
-      <th>Rotation</th><th>Momentum</th>
+      <th>Rotation</th><th>Momentum</th>{narrative_th}
     </tr>
   </thead>
   <tbody>
@@ -508,6 +556,7 @@ def render_radar_html(
   </tbody>
 </table>
 </div>
+{error_p}
 {"".join(sections)}
 <p class="foot">{html.escape(REPLAY_DISCLOSURE)}<br/>{html.escape(RANK_DISCLOSURE)}</p>
 </body>
@@ -522,10 +571,21 @@ def write_radar_html(
     path: Path,
     market_row: pd.Series | None = None,
     null_baseline: dict | None = None,
+    *,
+    show_narratives: bool = True,
+    overlay: NarrativeOverlay | None = None,
 ) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        render_radar_html(snapshot, stocks, as_of, market_row, null_baseline=null_baseline),
+        render_radar_html(
+            snapshot,
+            stocks,
+            as_of,
+            market_row,
+            null_baseline=null_baseline,
+            show_narratives=show_narratives,
+            overlay=overlay,
+        ),
         encoding="utf-8",
     )
     return path

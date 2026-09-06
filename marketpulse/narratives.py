@@ -15,6 +15,7 @@ No narrative strength / RS20 / rank / chart lives here (contract R3).
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
@@ -49,6 +50,15 @@ COVERAGE_UNCOVERED = "uncovered"
 COVERAGE_UNKNOWN = "unknown"
 
 DEFAULT_NARRATIVES_DIR = Path("narratives")
+
+# Display copy locked by spec 007. Do not rewrite from the numbers (D10).
+TITLE_STRONG_UNCOVERED = "強但沒人講"
+TITLE_COVERED_WEAK = "有人講但弱"
+NARRATIVE_COL_HEADER = "敘事"
+NARRATIVE_MISSING = "—"
+EMPTY_LIST = "（無）"
+GAP_LIST_LIMIT = 5
+STRONG_RANK_MAX = 3
 
 # `revisit` is required — a story with no date to come back to rots quietly
 # (sprint 004 DO-1, mirrors the skill's UNKNOWN rule). Snapshots written
@@ -104,6 +114,15 @@ class NarrativeVersion:
 
     snapshot_date: date
     narrative: Narrative
+
+
+@dataclass(frozen=True)
+class NarrativeOverlay:
+    """Read-only PIT view for display. Never written back to narratives/."""
+
+    snapshot: NarrativeSnapshot
+    themes: ThemeSet
+    error: str | None = None
 
 
 def _as_date(value: object) -> date:
@@ -294,3 +313,56 @@ def coverage_report(snapshot: NarrativeSnapshot, themes: ThemeSet) -> dict[str, 
         else:
             report[narrative.narrative_id] = COVERAGE_PARTIAL
     return report
+
+
+def load_as_of_lenient(
+    as_of: date,
+    narratives_dir: Path = DEFAULT_NARRATIVES_DIR,
+) -> tuple[NarrativeSnapshot, str | None]:
+    """load_as_of that never raises: a broken file becomes an empty snapshot
+    plus one message. Layer 1 still has to print (spec 007 DO-1 acceptance 4).
+    """
+    empty = NarrativeSnapshot(snapshot_date=None, narratives=())
+    try:
+        return load_as_of(as_of, narratives_dir), None
+    except Exception as exc:
+        return empty, f"narrative 讀取失敗：{exc}"
+
+
+def weak_rank_threshold(n_themes: int) -> int:
+    """rank >= ceil(n_themes / 2). Spec 007 unresolved question 2; do not tune."""
+    if n_themes <= 0:
+        return 0
+    return math.ceil(n_themes / 2)
+
+
+def theme_mention_dates(
+    snapshot: NarrativeSnapshot,
+    themes: ThemeSet,
+) -> dict[str, date | None]:
+    """theme_id → snapshot_date of the PIT snapshot if that theme is mentioned.
+
+    Coverage is the inverse of coverage_report(): a narrative whose named
+    symbols sit in no theme (uncovered) or that names nothing (unknown)
+    mentions no theme. Remaining narratives mention a theme when their
+    named_symbols intersect that theme's members — the same membership
+    test coverage_report uses. inferred_symbols and branch baskets are
+    not consulted; coverage_report does not look at them either.
+
+    Date shown is the snapshot_date of this PIT snapshot (spec 007:
+    latest snapshot_date <= as_of), not first_noted and not a log date.
+    """
+    dates: dict[str, date | None] = {theme.theme_id: None for theme in themes.themes}
+    if snapshot.snapshot_date is None or not snapshot.narratives:
+        return dates
+    report = coverage_report(snapshot, themes)
+    members = {theme.theme_id: set(theme.members) for theme in themes.themes}
+    for narrative in snapshot.narratives:
+        status = report.get(narrative.narrative_id)
+        if status in (COVERAGE_UNCOVERED, COVERAGE_UNKNOWN, None):
+            continue
+        named = set(narrative.named_symbols)
+        for theme_id, theme_members in members.items():
+            if named & theme_members:
+                dates[theme_id] = snapshot.snapshot_date
+    return dates

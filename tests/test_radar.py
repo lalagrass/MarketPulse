@@ -13,6 +13,13 @@ from marketpulse.calc import (
     compute_snapshots,
     compute_stock_metrics,
 )
+from marketpulse.narratives import (
+    NARRATIVE_COL_HEADER,
+    NARRATIVE_MISSING,
+    Narrative,
+    NarrativeOverlay,
+    NarrativeSnapshot,
+)
 from marketpulse.radar import (
     ROT_FALLING,
     ROT_RISING,
@@ -277,3 +284,62 @@ def test_format_rank_history_html_renders_dates_and_ranks() -> None:
 def test_format_rank_history_html_empty_history() -> None:
     out = _format_rank_history_html([])
     assert "No historical data available." in out
+
+
+def test_radar_narrative_column_after_momentum_and_flag_off() -> None:
+    dates = session_dates(21)
+    bars = make_bars(
+        dates,
+        {
+            "AAA": [100.0] * 20 + [120.0],
+            "BBB": [100.0] * 21,
+            "CCC": [100.0] * 20 + [110.0],
+        },
+        twse=("AAA", "BBB"),
+        tpex=("CCC",),
+    )
+    snap = compute_snapshots(bars, make_index(dates, [1000.0] * 21), two_theme_set(), thin_min=1)
+    overlay = NarrativeOverlay(
+        snapshot=NarrativeSnapshot(
+            snapshot_date=dates[-1],
+            narratives=(
+                Narrative(
+                    narrative_id="hit",
+                    name="hit",
+                    first_noted=dates[-1],
+                    source="self",
+                    source_ref="x",
+                    stance="new",
+                    named_symbols=("AAA",),
+                    inferred_symbols=(),
+                    note="",
+                ),
+            ),
+        ),
+        themes=two_theme_set(),
+    )
+    on = render_radar(snap, dates[-1], show_narratives=True, overlay=overlay)
+    off = render_radar(snap, dates[-1], show_narratives=False, overlay=overlay)
+    off_none = render_radar(snap, dates[-1], show_narratives=False, overlay=None)
+    assert off == off_none
+    assert NARRATIVE_COL_HEADER not in off
+    assert NARRATIVE_COL_HEADER in on
+    header = [ln for ln in on.splitlines() if NARRATIVE_COL_HEADER in ln][0]
+    assert header.index("Momentum") < header.index(NARRATIVE_COL_HEADER)
+    assert dates[-1].isoformat() in on
+    # beta members are BBB, CCC; AAA is only in alpha → beta is —
+    last = snap[snap["date"] == dates[-1]].set_index("theme_id")
+    alpha_line = [ln for ln in on.splitlines() if "Alpha" in ln][0]
+    beta_line = [ln for ln in on.splitlines() if "Beta" in ln][0]
+    assert dates[-1].isoformat() in alpha_line
+    assert beta_line.rstrip().endswith(NARRATIVE_MISSING)
+    assert last.loc["alpha", "rank"] == 1
+    html = render_radar_html(
+        snap, pd.DataFrame(), dates[-1], show_narratives=True, overlay=overlay
+    )
+    html_off = render_radar_html(
+        snap, pd.DataFrame(), dates[-1], show_narratives=False, overlay=overlay
+    )
+    assert f"<th>{NARRATIVE_COL_HEADER}</th>" in html
+    assert f"<th>{NARRATIVE_COL_HEADER}</th>" not in html_off
+    assert dates[-1].isoformat() in html

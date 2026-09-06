@@ -8,6 +8,14 @@ import pandas as pd
 from marketpulse import RANK_DISCLOSURE, REPLAY_DISCLOSURE
 from marketpulse.calc import compute_snapshots
 from marketpulse.quality import HORIZON_FOOTNOTE
+from marketpulse.narratives import (
+    EMPTY_LIST,
+    TITLE_COVERED_WEAK,
+    TITLE_STRONG_UNCOVERED,
+    Narrative,
+    NarrativeOverlay,
+    NarrativeSnapshot,
+)
 from marketpulse.product import (
     CLASSIFICATION_NOTE,
     DEFAULT_CHART_SESSIONS,
@@ -24,6 +32,7 @@ from marketpulse.product import (
     render_timeline,
     status_mark,
 )
+from marketpulse.themes import Theme, ThemeSet
 from tests.conftest import make_bars, make_index, session_dates, two_theme_set
 
 
@@ -285,3 +294,136 @@ def test_brief_includes_horizon_footnote_when_market_row_present() -> None:
     out = render_brief(snap, dates[-1], market_row=market_row, null_baseline=None)
     assert HORIZON_FOOTNOTE in out
     assert "持續性" in out
+
+
+def _eleven_day() -> pd.DataFrame:
+    names = [
+        ("t01", "主題一", 1),
+        ("t02", "主題二", 2),
+        ("t03", "主題三", 3),
+        ("t04", "主題四", 4),
+        ("t05", "主題五", 5),
+        ("t06", "主題六", 6),
+        ("t07", "主題七", 7),
+        ("t08", "主題八", 8),
+        ("t09", "主題九", 9),
+        ("t10", "主題十", 10),
+        ("t11", "主題十一", 11),
+    ]
+    return pd.DataFrame([_theme_row(tid, name, rank, 0) for tid, name, rank in names])
+
+
+def _overlay(themes: ThemeSet, named: dict[str, tuple[str, ...]], day: date) -> NarrativeOverlay:
+    narratives = tuple(
+        Narrative(
+            narrative_id=nid,
+            name=nid,
+            first_noted=day,
+            source="self",
+            source_ref="x",
+            stance="new",
+            named_symbols=symbols,
+            inferred_symbols=(),
+            note="",
+        )
+        for nid, symbols in named.items()
+    )
+    return NarrativeOverlay(
+        snapshot=NarrativeSnapshot(snapshot_date=day, narratives=narratives),
+        themes=themes,
+    )
+
+
+def test_brief_gap_lists_no_narratives_top_three_and_empty_weak() -> None:
+    snap = _eleven_day()
+    text = render_brief(snap, date(2026, 8, 31), overlay=None)
+    assert TITLE_STRONG_UNCOVERED in text
+    assert TITLE_COVERED_WEAK in text
+    strong, rest = text.split(TITLE_STRONG_UNCOVERED, 1)[1].split(TITLE_COVERED_WEAK, 1)
+    assert "主題一  #1" in strong
+    assert "主題二  #2" in strong
+    assert "主題三  #3" in strong
+    assert "主題四  #4" not in strong
+    assert EMPTY_LIST in rest.split(REPLAY_DISCLOSURE, 1)[0]
+
+
+def test_brief_gap_lists_rank_boundary_three_vs_four() -> None:
+    """rank=3 uncovered is in 強但沒人講; rank=4 uncovered is not (spec 007)."""
+    snap = _eleven_day()
+    text = render_brief(snap, date(2026, 8, 31), overlay=None)
+    strong = text.split(TITLE_STRONG_UNCOVERED, 1)[1].split(TITLE_COVERED_WEAK, 1)[0]
+    assert "主題三  #3" in strong
+    assert "主題四  #4" not in strong
+
+
+def test_brief_gap_lists_covered_and_uncovered() -> None:
+    themes = ThemeSet(
+        classification_version="test",
+        taxonomy_frozen_at="2026-01-01",
+        notes="",
+        themes=tuple(Theme(f"t{i:02d}", f"主題{i}", (f"S{i:02d}",)) for i in range(1, 12)),
+    )
+    # t01 rank 1 covered → not 強但沒人講. t06 rank 6 covered → 有人講但弱.
+    # t11 rank 11 covered → 有人講但弱. t03 rank 3 uncovered → 強但沒人講.
+    overlay = _overlay(
+        themes,
+        {"n_top": ("S01",), "n_mid": ("S06",), "n_last": ("S11",)},
+        date(2026, 8, 31),
+    )
+    text = render_brief(_eleven_day(), date(2026, 8, 31), overlay=overlay)
+    strong = text.split(TITLE_STRONG_UNCOVERED, 1)[1].split(TITLE_COVERED_WEAK, 1)[0]
+    weak = text.split(TITLE_COVERED_WEAK, 1)[1].split(REPLAY_DISCLOSURE, 1)[0]
+    assert "主題一  #1" not in strong
+    assert "主題二  #2" in strong
+    assert "主題三  #3" in strong
+    assert "主題六  #6" in weak
+    assert "主題十一  #11" in weak
+    assert "主題五  #5" not in weak  # covered would need rank >= 6; t05 is uncovered anyway
+
+
+def test_brief_show_narratives_false_ignores_overlay_byte_identical() -> None:
+    themes = ThemeSet(
+        classification_version="test",
+        taxonomy_frozen_at="2026-01-01",
+        notes="",
+        themes=(Theme("t01", "主題一", ("S01",)),),
+    )
+    overlay = _overlay(themes, {"n": ("S01",)}, date(2026, 8, 31))
+    snap = _eleven_day()
+    off_none = render_brief(snap, date(2026, 8, 31), show_narratives=False, overlay=None)
+    off_overlay = render_brief(
+        snap, date(2026, 8, 31), show_narratives=False, overlay=overlay
+    )
+    assert off_none == off_overlay
+    assert TITLE_STRONG_UNCOVERED not in off_none
+    assert TITLE_COVERED_WEAK not in off_none
+    on = render_brief(snap, date(2026, 8, 31), show_narratives=True, overlay=overlay)
+    assert TITLE_STRONG_UNCOVERED in on
+    assert off_none != on
+
+
+def test_brief_broken_narrative_prints_message_and_keeps_layer1(tmp_path) -> None:
+    (tmp_path / "2026-09-06.yaml").write_text("{ not yaml", encoding="utf-8")
+    from marketpulse.narratives import load_as_of_lenient
+    from marketpulse.themes import load_themes
+    from pathlib import Path
+
+    themes = load_themes(Path(__file__).resolve().parents[1] / "themes" / "v1.yaml")
+    snapshot, error = load_as_of_lenient(date(2026, 8, 31), tmp_path)
+    overlay = NarrativeOverlay(snapshot=snapshot, themes=themes, error=error)
+    snap = _eleven_day()
+    text = render_brief(snap, date(2026, 8, 31), overlay=overlay)
+    assert error is not None
+    assert error in text
+    assert "主題一" in text
+    assert "RS20" in text
+    assert TITLE_STRONG_UNCOVERED in text
+    assert EMPTY_LIST in text.split(TITLE_COVERED_WEAK, 1)[1]
+
+
+def test_brief_empty_block_is_not_omitted() -> None:
+    snap = _eleven_day()
+    text = render_brief(snap, date(2026, 8, 31), overlay=None)
+    weak_block = text.split(TITLE_COVERED_WEAK, 1)[1]
+    first = weak_block.strip().splitlines()[0]
+    assert first == EMPTY_LIST
