@@ -94,6 +94,42 @@ def test_above_count_all_nan_row_is_nan_not_zero() -> None:
     assert pd.isna(last["breadth"])
 
 
+def test_above_count_members_absent_from_above_is_nan_like_breadth() -> None:
+    """spec 006 DO-3: when no theme member is in the above columns,
+    above_count must be NaN — same as breadth — not a false 0."""
+    import math
+
+    import pandas as pd
+
+    dates = session_dates(21)
+    up = [100.0] * 20 + [120.0]
+    flat = [100.0] * 21
+    themes = ThemeSet(
+        classification_version="test",
+        taxonomy_frozen_at="2026-01-01",
+        notes="test",
+        themes=(
+            Theme("mix", "Mix", ("UP",)),
+            Theme("ghost", "Ghost", ("NOSUCH",)),
+        ),
+    )
+    bars = make_bars(
+        dates,
+        {"UP": up, "TPX": flat},
+        twse=("UP",),
+        tpex=("TPX",),
+    )
+    index = make_index(dates, [1000.0] * 21)
+    snap = compute_snapshots(bars, index, themes, thin_min=1)
+    ghost = snap[snap["theme_id"] == "ghost"]
+    assert not ghost.empty
+    assert ghost["above_count"].isna().all()
+    assert ghost["breadth"].isna().all()
+    last = ghost[ghost["date"] == dates[-1]].iloc[0]
+    assert math.isnan(float(last["above_count"]))
+    assert pd.isna(last["breadth"])
+
+
 def test_above_count_mixed_true_false_still_counts() -> None:
     """spec 005 DO-2: mixed non-NaN above values still skipna-sum as before."""
     dates = session_dates(21)

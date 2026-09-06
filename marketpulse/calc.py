@@ -329,7 +329,7 @@ def compute_snapshots(
         above_count = (
             above[above_cols].sum(axis=1, skipna=True, min_count=1)
             if above_cols
-            else pd.Series(0, index=close.index)
+            else pd.Series(np.nan, index=close.index)
         )
         if above_cols:
             # Object-dtype bool/NaN frames can yield None from min_count; coerce

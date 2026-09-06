@@ -407,10 +407,12 @@ def _null_payload(
     }
 
 
-def test_quality_line_null_baseline_absent_matches_sprint002() -> None:
+def test_quality_line_without_null_baseline_still_has_horizon_footnote() -> None:
+    """No 虛無 digits when the baseline file is absent; the fixed B+C
+    footnote still appears (spec 005 DO-3). Not a bit-identical match to
+    the sprint-002 line, which had no footnote."""
     row = _sample_market_row()
     assert quality_line(row) == quality_line(row, null_baseline=None)
-    # Exact sprint-002 shape: no 虛無, no stale marker.
     line = quality_line(row)
     assert "虛無" not in line
     assert STALE_MARKER not in line
