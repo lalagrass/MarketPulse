@@ -37,6 +37,14 @@ RANK_N20 = 20
 # not a fitted value (contract D10).
 MAX_SESSION_GAP_BDAYS = 10
 
+# spec 011 DO-1. TWSE / TPEx ordinary-share daily limit. Not a tunable (D10).
+# List every close-to-close move whose |r| exceeds this; do not drop, adjust,
+# or invent extra filters. False positives (IPO first five days, tick rounding
+# that lands just over the line) are listed as-is.
+LIMIT_MOVE = 0.10
+LIMIT_WINDOW = 20
+NO_THEME = "—"
+
 
 class DataGapError(ValueError):
     """Raised before any rolling window is computed when the input data has a
@@ -111,6 +119,83 @@ def _pivot(bars: pd.DataFrame, column: str) -> pd.DataFrame:
 def n_day_return(prices: pd.DataFrame | pd.Series, n: int = RETURN_N) -> pd.DataFrame | pd.Series:
     """close[T] / close[T-n] - 1 over the trading-day index."""
     return prices / prices.shift(n) - 1
+
+
+def _symbol_theme_names(themes: ThemeSet | None) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    if themes is None:
+        return out
+    for theme in themes.themes:
+        for symbol in theme.members:
+            out.setdefault(str(symbol), []).append(theme.name)
+    return out
+
+
+def impossible_daily_returns(
+    bars: pd.DataFrame,
+    themes: ThemeSet | None = None,
+    *,
+    limit: float = LIMIT_MOVE,
+) -> pd.DataFrame:
+    """close-to-close single-day returns with |r| > the exchange daily limit.
+
+    Scans every (symbol, date) in ``bars``. Does not drop rows, adjust prices,
+    or change any snapshot number (spec 011 DO-1). Theme names are joined with
+    '、'; a symbol in no theme is ``NO_THEME``.
+    """
+    columns = ["date", "symbol", "name", "return_1", "themes"]
+    if bars is None or bars.empty:
+        return pd.DataFrame(columns=columns)
+    frame = bars.copy()
+    frame["date"] = _as_dates(frame["date"])
+    frame["symbol"] = frame["symbol"].astype(str)
+    frame = frame.sort_values(["symbol", "date"])
+    prev = frame.groupby("symbol", sort=False)["close"].shift(1)
+    frame["return_1"] = frame["close"] / prev - 1
+    hits = frame.loc[frame["return_1"].abs() > limit].copy()
+    if hits.empty:
+        return pd.DataFrame(columns=columns)
+    names = (
+        frame.dropna(subset=["name"])
+        .drop_duplicates("symbol", keep="last")
+        .set_index("symbol")["name"]
+        .astype(str)
+    )
+    hits["name"] = hits["symbol"].map(names).fillna(hits["symbol"])
+    mapping = _symbol_theme_names(themes)
+    hits["themes"] = hits["symbol"].map(
+        lambda s: "、".join(mapping[s]) if s in mapping else NO_THEME
+    )
+    hits = hits.sort_values(["date", "symbol"]).reset_index(drop=True)
+    return hits.loc[:, columns]
+
+
+def format_impossible_returns(hits: pd.DataFrame) -> str:
+    """Ugly on purpose: every row, date · symbol · magnitude · theme (A1/A2)."""
+    n = 0 if hits is None or hits.empty else len(hits)
+    lines = [f"impossible daily returns (|close-to-close| > {LIMIT_MOVE:.0%}): {n}"]
+    if n == 0:
+        return lines[0]
+    for rec in hits.itertuples(index=False):
+        ret = rec.return_1
+        mag = "n/a" if ret is None or pd.isna(ret) else f"{float(ret) * 100:+.1f}%"
+        lines.append(
+            f"  {rec.date.isoformat()}  {rec.symbol}  {rec.name}  {mag}  {rec.themes}"
+        )
+    return "\n".join(lines)
+
+
+def impossible_returns_in_window(
+    hits: pd.DataFrame,
+    sessions: Iterable[date],
+    as_of: date,
+    n: int = LIMIT_WINDOW,
+) -> pd.DataFrame:
+    """Rows whose date is among the last ``n`` sessions on or before as_of."""
+    window = [d for d in sorted(set(sessions)) if d <= as_of][-n:]
+    if hits is None or hits.empty or not window:
+        return pd.DataFrame(columns=["date", "symbol", "name", "return_1", "themes"])
+    return hits.loc[hits["date"].isin(window)].copy()
 
 
 def sma(series: pd.DataFrame | pd.Series, n: int = SMA_N) -> pd.DataFrame | pd.Series:

@@ -13,7 +13,14 @@ if TYPE_CHECKING:  # avoid a runtime import cycle (cli imports radar)
     from marketpulse.cli import OpsStatus
 
 from marketpulse import RANK_DISCLOSURE, REPLAY_DISCLOSURE
-from marketpulse.calc import ROLE_FOLLOWER, ROLE_LAGGARD, ROLE_LEADER
+from marketpulse.calc import (
+    LIMIT_MOVE,
+    LIMIT_WINDOW,
+    ROLE_FOLLOWER,
+    ROLE_LAGGARD,
+    ROLE_LEADER,
+    impossible_returns_in_window,
+)
 from marketpulse.momentum import (
     DIR_MARK,
     MOM_UNKNOWN,
@@ -54,6 +61,15 @@ RADAR_MOM_NOTE = (
     "Rotation = 相對前一交易日的名次。"
     " Momentum = 5D / Breadth / Volume / Rank Δ5 的方向，不是分數。"
 )
+
+
+def format_limit_window_line(count: int, n: int = LIMIT_WINDOW) -> str:
+    """A4: trailing-n session count of |close-to-close| > LIMIT_MOVE. Always
+    printed when the caller handed us a scan result — including 0."""
+    return (
+        f"不可能的單日報酬：近 {n} 個交易日 {count} 筆"
+        f"（交易所單日 ±{LIMIT_MOVE:.0%}）"
+    )
 
 ROLE_ORDER = (ROLE_LEADER, ROLE_FOLLOWER, ROLE_LAGGARD)
 
@@ -171,6 +187,7 @@ def render_radar(
     *,
     show_narratives: bool = True,
     overlay: NarrativeOverlay | None = None,
+    limit_breaks: pd.DataFrame | None = None,
 ) -> str:
     day = radar_day(snapshot, as_of)
     if day.empty:
@@ -185,6 +202,14 @@ def render_radar(
     lines = [
         f"MarketPulse — {as_of.isoformat()}",
         quality_line(market_row, null_baseline=null_baseline, snapshot_as_of=as_of),
+    ]
+    if limit_breaks is not None:
+        window = impossible_returns_in_window(
+            limit_breaks, snapshot["date"], as_of, LIMIT_WINDOW
+        )
+        lines.append(format_limit_window_line(len(window), LIMIT_WINDOW))
+    lines.extend(
+        [
         "",
         "Sector Rotation",
         RADAR_NOTE,
@@ -198,7 +223,8 @@ def render_radar(
         # (The 100 for the narratives-off case is dev's own value — leaving
         # it alone keeps 007's sha1 intact.)
         "-" * (100 if not show_narratives else _vislen(header)),
-    ]
+        ]
+    )
     for rec in day.itertuples(index=False):
         mark = status_mark(rec.status)
         ret1 = rec.return_1 if hasattr(rec, "return_1") else None
@@ -401,6 +427,7 @@ def render_radar_html(
     show_narratives: bool = True,
     overlay: NarrativeOverlay | None = None,
     freshness: "OpsStatus | None" = None,
+    limit_breaks: pd.DataFrame | None = None,
 ) -> str:
     day = radar_day(snapshot, as_of)
     rows = []
@@ -530,6 +557,14 @@ def render_radar_html(
         if freshness_text
         else ""
     )
+    limit_p = ""
+    if limit_breaks is not None:
+        window = impossible_returns_in_window(
+            limit_breaks, snapshot["date"], as_of, LIMIT_WINDOW
+        )
+        limit_p = (
+            f'\n  <p class="sub">{html.escape(format_limit_window_line(len(window), LIMIT_WINDOW))}</p>'
+        )
     return f"""<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -588,7 +623,7 @@ def render_radar_html(
 <header id="top">
   <h1>MarketPulse</h1>
   <p class="sub">Sector Rotation · {html.escape(as_of.isoformat())}</p>{freshness_p}
-  <p class="sub quality">{html.escape(quality_line(market_row, null_baseline=null_baseline, snapshot_as_of=as_of))}</p>
+  <p class="sub quality">{html.escape(quality_line(market_row, null_baseline=null_baseline, snapshot_as_of=as_of))}</p>{limit_p}
   <p class="sub">{html.escape(RADAR_NOTE)}</p>
   <p class="sub">{html.escape(RADAR_MOM_NOTE)}</p>
 </header>
@@ -624,6 +659,7 @@ def write_radar_html(
     show_narratives: bool = True,
     overlay: NarrativeOverlay | None = None,
     freshness: "OpsStatus | None" = None,
+    limit_breaks: pd.DataFrame | None = None,
 ) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -636,6 +672,7 @@ def write_radar_html(
             show_narratives=show_narratives,
             overlay=overlay,
             freshness=freshness,
+            limit_breaks=limit_breaks,
         ),
         encoding="utf-8",
     )

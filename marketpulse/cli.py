@@ -17,6 +17,8 @@ from marketpulse.calc import (
     check_data_gaps,
     compute_snapshots,
     compute_stock_metrics,
+    format_impossible_returns,
+    impossible_daily_returns,
     replay_snapshots,
     snapshots_equal,
 )
@@ -268,10 +270,21 @@ def format_ops_status(
     return "\n".join(lines)
 
 
-def _run_validate(data_dir: Path) -> None:
+def _limit_breaks(data_dir: Path, themes_path: Path) -> pd.DataFrame:
+    bars, _index = read_normalized(data_dir)
+    themes = load_themes(themes_path) if themes_path.exists() else None
+    return impossible_daily_returns(bars, themes)
+
+
+def _run_validate(data_dir: Path, themes_path: Path | None = None) -> None:
     bars, index = normalize_all(data_dir)
     write_normalized(data_dir, bars, index)
     typer.echo(coverage_report(bars, index))
+    themes = None
+    path = themes_path if themes_path is not None else DEFAULT_THEMES
+    if path.exists():
+        themes = load_themes(path)
+    typer.echo(format_impossible_returns(impossible_daily_returns(bars, themes)))
     issues = validate_normalized(bars, index)
     if issues:
         typer.echo("ISSUES:")
@@ -360,12 +373,15 @@ def _run_radar(
     *,
     show_narratives: bool = True,
     overlay: NarrativeOverlay | None = None,
+    limit_breaks: pd.DataFrame | None = None,
 ) -> Path:
     themes = load_themes(themes_path)
     bars, index = read_normalized(data_dir)
     stocks = compute_stock_metrics(bars, index, themes, as_of)
     market_row = _market_row(_load_market_daily(data_dir), as_of)
     dest = output if output is not None else reports_dir / RADAR_HTML_NAME
+    if limit_breaks is None:
+        limit_breaks = impossible_daily_returns(bars, themes)
     write_radar_html(
         snapshot,
         stocks,
@@ -376,6 +392,7 @@ def _run_radar(
         show_narratives=show_narratives,
         overlay=overlay,
         freshness=ops_status(data_dir),
+        limit_breaks=limit_breaks,
     )
     return dest
 
@@ -395,9 +412,10 @@ def download(
 @app.command()
 def validate(
     data_dir: Path = typer.Option(DEFAULT_DATA),
+    themes_path: Path = typer.Option(DEFAULT_THEMES),
 ) -> None:
     """Parse raw JSON, write parquet, print coverage. Never silently drop rows."""
-    _run_validate(data_dir)
+    _run_validate(data_dir, themes_path)
 
 
 @app.command()
@@ -544,6 +562,7 @@ def radar(
     market_row = _market_row(_load_market_daily(data_dir), day)
     null_baseline = _load_null_baseline(data_dir)
     overlay = _load_overlay(day, narratives_dir, themes_path) if show_narratives else None
+    breaks = _limit_breaks(data_dir, themes_path)
     typer.echo(
         render_radar(
             snapshot,
@@ -552,6 +571,7 @@ def radar(
             null_baseline=null_baseline,
             show_narratives=show_narratives,
             overlay=overlay,
+            limit_breaks=breaks,
         ),
         nl=False,
     )
@@ -564,6 +584,7 @@ def radar(
         output,
         show_narratives=show_narratives,
         overlay=overlay,
+        limit_breaks=breaks,
     )
     typer.echo(str(dest))
     if open_browser:
@@ -626,7 +647,7 @@ def refresh(
         typer.echo(f"downloaded {len(frame)} weekday requests")
     else:
         typer.echo(f"already current through {hi.isoformat()}; skip download")
-    _run_validate(data_dir)
+    _run_validate(data_dir, themes_path)
     snapshot = _run_analyze(data_dir, themes_path)
     if snapshot.empty:
         typer.echo("no snapshot rows")
@@ -635,6 +656,7 @@ def refresh(
     market_row = _market_row(_load_market_daily(data_dir), day)
     null_baseline = _load_null_baseline(data_dir)
     overlay = _load_overlay(day, narratives_dir, themes_path) if show_narratives else None
+    breaks = _limit_breaks(data_dir, themes_path)
     typer.echo(
         render_brief(
             snapshot,
@@ -667,6 +689,7 @@ def refresh(
             null_baseline=null_baseline,
             show_narratives=show_narratives,
             overlay=overlay,
+            limit_breaks=breaks,
         ),
         nl=False,
     )
@@ -678,6 +701,7 @@ def refresh(
         DEFAULT_REPORTS,
         show_narratives=show_narratives,
         overlay=overlay,
+        limit_breaks=breaks,
     )
     typer.echo(str(radar_path))
     typer.echo(format_ops_status(data_dir, chart_path=dest, effective=effective))
