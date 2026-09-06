@@ -480,7 +480,7 @@ def render_radar_html(
     narrative_th = f"<th>{html.escape(NARRATIVE_COL_HEADER)}</th>" if show_narratives else ""
     error_p = ""
     if show_narratives and overlay is not None and overlay.error:
-        error_p = f"<p class='sub'>{html.escape(overlay.error)}</p>"
+        error_p = f"\n<p class='sub'>{html.escape(overlay.error)}</p>"
     return f"""<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -555,8 +555,7 @@ def render_radar_html(
     {table_body}
   </tbody>
 </table>
-</div>
-{error_p}
+</div>{error_p}
 {"".join(sections)}
 <p class="foot">{html.escape(REPLAY_DISCLOSURE)}<br/>{html.escape(RANK_DISCLOSURE)}</p>
 </body>
