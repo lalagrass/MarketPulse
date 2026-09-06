@@ -177,3 +177,74 @@ narrative 檔是 09-04 與 09-06。PIT 規則（`snapshot_date <= as_of`）因�
    → 建議：spec 模板的「契約紅線」一節應明確標出哪幾條是從上一輪延續的。
 3. **F4 的指令不完整。**「改成從表頭算」聽起來精確，但表頭不是最寬的列。
    我用一個聽起來可測的說法，掩蓋了我沒想清楚欄寬這件事。
+
+---
+
+# 補做驗收（addendum A／B，2026-09-06）
+
+驗收對象：`63b2de6`。`199 passed`（規劃端不跑測試，引自 evidence）。
+
+## A — gate 改成 `has_snapshot_files` ✓
+
+規劃端讀過 diff：`NarrativeOverlay` 加布林欄位、`_load_overlay` 三個返回點都設值、
+`_snapshot_files()` 補上 `exists()` 守衛、三個區塊的條件從 `snapshot.narratives`
+改成 `overlay.has_snapshot_files`。三種狀態各有測試。**B1 結案。**
+
+實測 Acceptance 2 的輸出正是 B1 想要的：有檔但 PIT 濾空時，
+`分類外代號`／`故事進度`／`最近事件` 三個標題都在、各印 `（無）`。
+
+## B — refresh 跑了，但有一處物證與述說不符
+
+### 對得上的
+
+`data/raw/{TWSE,TPEx}/20260904.json` 存在（mtime 2026-09-06 04:15）；
+`theme_daily.parquet`、`market_daily.parquet`、`rotation_latest.png` 同為 04:15。
+下載與 analyze 確實跑過。B.3 的逐條對照與 F7 的推算一致，
+且**沒有為了對上或對不上而動任何程式碼或資料**——這點值得記一筆。
+
+### **B5（新）— `reports/radar.html` 沒有被更新**
+
+```text
+data/snapshots/theme_daily.parquet   2026-09-06 04:15   新
+reports/rotation_latest.png          2026-09-06 04:15   新
+reports/radar.html                   2026-09-05 10:30   舊
+```
+
+該檔內容為 `MarketPulse — 2026-09-03`，且 `grep -c 敘事` 回 **0**
+——**連 007 的敘事欄都沒有，是 007 併入之前的產物。**
+
+`cli.refresh` 的順序是 analyze → brief → chart → radar ASCII →
+`_run_radar()` 寫 `DEFAULT_REPORTS / radar.html` → ops status，
+而 `DEFAULT_REPORTS = Path("reports")` 是相對 CWD。
+**chart 寫進了 repo 的 `reports/`，相鄰下一步的 radar HTML 沒有。**
+evidence 引用的 refresh 輸出在 `wrote data/snapshots/theme_daily.parquet` 之後
+以 `...` 省略，而被省掉的正是 radar 路徑行與 ops status 行——成功的 refresh 會印那兩行。
+
+**規劃端從磁碟分不出兩種可能，需實作端回答：**
+
+1. `refresh` 在 chart 之後、寫 radar HTML 之前中止；或
+2. 未跑完整條 refresh，radar 由 `--output /tmp/...` 另外渲染
+   （007／008 evidence 一貫的紀律，本次可能沿用了）。
+
+B.3 的「radar 先進製程列 `敘事` = 2026-09-04」本身可能為真（來自一次臨時渲染），
+但**它不是 `reports/radar.html` 的內容**，而 `radar --open` 打開的就是那個檔。
+
+**連帶：007 與 008 都改動了 radar，而使用者實際會打開的那個檔案，
+從未包含過任何一輪的改動。**這是 F7（「交付的東西使用者摸不到」）在
+radar 這一側的獨立實例，成因不同——F7 是 PIT，這一條是產物沒重生成。
+
+**動作：**重跑一次完整的 `uv run marketpulse refresh`（CWD = repo 根目錄），
+確認結尾印出 radar 路徑與 ops status，並確認 `reports/radar.html`
+的標題日期變成 `2026-09-04`、含 `敘事` 欄。若 refresh 會中止，那是本身要修的 bug。
+
+## 規劃端自己造成的問題（續 008-report 第七節）
+
+4. **addendum A 驗收條件 1 不可能成立，是我寫的。**我要求
+   「brief／radar ASCII／radar HTML 對 `dev@051798b` 三份 diff 皆空」，
+   但 F3（`972a127`）**就是故意**把 radar ASCII 的分隔線從 114 改成 110 的，
+   而且是我自己在本報告第一節驗收通過的。實作端照實回報差一行、指出成因是 F3、
+   並且**沒有為了滿足條件而把 F3 改回去**——處理方式正確。
+   **這是同一家族的第三次**（B1 的兩條互斥、F4 的「對表頭」不完整、本條）：
+   **我反覆寫出「聽起來可測、實際上與同輪其他要求衝突」的驗收條件。**
+   → 建議寫進 skill：驗收條件寫完之後，逐條對照本輪其他 DO 檢查有無互斥，
+   特別是任何「逐字元相同」類的條件——本輪三次全部出在那個句型上。
