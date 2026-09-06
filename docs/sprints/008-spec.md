@@ -1,0 +1,212 @@
+# Sprint 008 — 讓故事說得出自己在講哪個主題，以及它走到哪一步
+
+狀態：待實作
+契約：CLAUDE.md 與 docs/coding-contract.md 全數適用
+層次：第二層（故事）＋ 顯示 ＋ 一格工程
+起因：`docs/sprints/007-report.md` 的 F2／F1／F3／B2；**加上 PO 2026-09-06 的產品意圖**——
+「第二層的故事脈絡應該要能持續演進更新，不論是明朗的成熟故事靜待財報更新，
+或是還不明朗的、標的還在慢慢開圖。」
+**階段 1／2 跳過**：範圍由 007 驗收與該意圖共同決定，Q9 已結案。
+
+## Appetite
+
+- 模組：`marketpulse/narratives.py`、`product.py`、`radar.py`、`cli.py` 與對應測試。不新增模組檔。
+- 相依：**不新增任何套件。**gazetteer（`pyahocorasick`）是 009 的事。
+- 資料：不回補、**不改 `themes/v1.yaml`**、不改既有 narrative 檔的既有欄位。
+- 層：只動第二層與顯示。**第一層數字一個都不改。**
+- Schema：**明示解除 007 的「narrative schema 不動」**（見規則帳），
+  但**只允許加一個可選欄位**，既有欄位語意一律不動。
+- 超出即為下一輪：gazetteer、`narrate add`、改主題成分、momentum、品質行、任何熱度／爆發偵測。
+
+## 目標
+
+讓一則故事在畫面上說得出兩件事：**我在講哪個主題**，以及**我從上次到現在動了什麼**。
+
+## 規則質疑（本輪這一條）
+
+```text
+條文：narrative schema 不動（004 定型後不再更動）
+起因：007-spec Appetite「不改 narrative schema（004 的 schema 原封不動）」
+物證：007 全程確實沒動 schema；而 F2 的三分之二直接源於 schema 沒有
+      「這則故事在講哪個主題」的欄位——只能靠代號反推。
+      `optical_cpo` 的 stage 已是 mapped（標的已收斂）卻 named_symbols 為空，
+      是這個缺口最直接的證據
+詮釋：那是 007 的**單輪 Appetite 上限**，不是規則。但寫成祈使句，
+      下一輪讀到它的 agent 分不出「這輪不做」與「永遠不做」
+決定：確認為單輪 Appetite，非規則；008 明示解除，限縮為「只加可選欄位」
+重看：008 驗收後
+```
+
+## PO 的前提決定
+
+1. **F2 走「narrative 可直接寫 `theme_ids`」**（2026-09-06 拍板）。否決：擴主題成分
+   （動到第一層歷史數字，且 D6／Q5 的 as-of 成分未做）、覆蓋改看 `inferred_symbols`＋籃子
+   （`covered`／`unknown` 界線更糊）。**改選別條則 DO-1 整項重寫，DO-2／3 不受影響。**
+2. **「持續演進」用既有 004 schema 的讀取端解決，不重新設計 schema。**
+   `stage`／`log`／`branches`／`history()` 都已經存在且資料真的在累積
+   （09-04 → 09-06：`asic_xpu` 長出兩條支線、`optical_cpo` 從隱含 open 變 mapped）。
+   缺的是顯示端，不是結構。
+3. **寫入摩擦仍不碰。**007 PO 前提 4 的條件「先確認回饋迴路有效」尚未成立
+   （007 答案是「有效但會誤報」）。修對之後才輪到 009。
+4. 007 已併入 `dev@051798b`。008 自該點開分支。
+
+## 要做的
+
+### DO-1 — `theme_ids`：還沒開圖也說得出在講哪個主題　[L2・交付]
+
+**背景。**007-report F2：真實三則 narrative 只有 `nvhbm`（`2330` → `foundry_advanced`）
+對得上主題。`optical_cpo` 的 `named_symbols` 空（判 `unknown`），`asic_xpu` 的 `2454`
+**不在 11 個主題的任何成分裡**（判 `uncovered`）。後果：光通訊/CPO 排 #1 卻出現在
+「強但沒人講」。**這同時是 `stage=open`（標的未收斂）那個狀態缺的表達方式**——
+在代號還沒開圖之前，故事仍然說得出自己在哪一片霧裡。
+
+**做什麼。**
+
+- schema 加可選欄位 `theme_ids: [<theme_id>, ...]`（`Narrative` 新欄位，預設空 tuple）。
+  **不動 `named_symbols`／`inferred_symbols` 的語意**——它們仍是代號紀錄，用途不同。
+- **覆蓋判定優先序固定：`theme_ids` 明示 > `named_symbols` 比對。**
+  不合併、不加權、不投票。有 `theme_ids` 就用它，沒有才退回現行邏輯。
+- `coverage_report()` 新增一個狀態值表示「由 `theme_ids` 明示」，**與既有四態並列，
+  不覆寫**。既有四態的判定邏輯一行都不改。
+- 新增顯示區塊 **`分類外代號`**：`named_symbols` 裡不屬於任何主題成分的代號，
+  列 `narrative_id · 代號`。**這是分類缺口的顯示，不是自動修**——不要把 `2454`
+  自動塞進任何主題。無則印 `（無）`，區塊不省略。
+- **PIT 不變。**`theme_ids` 寫在有日期的快照裡，PIT 自動成立。
+
+**驗收條件。**
+
+1. `optical_cpo` 加 `theme_ids: [optical_cpo]` 後，**光通訊/CPO 不再出現在「強但沒人講」**。
+   evidence 貼前後兩份完整輸出。
+2. `nvhbm` 不加 `theme_ids` 時，仍由 `2330` 判為覆蓋 `foundry_advanced`（退回路徑沒壞）。
+3. `asic_xpu` 的 `2454` 出現在 `分類外代號`。
+4. 未知 `theme_id`（不在 `themes/v1.yaml`）**必須在畫面上看得見**，不得靜默忽略。
+   是否 raise 見未決問題 1——**先量現有檔案會不會踩到，再問。**
+5. 沒有任何 narrative 帶 `theme_ids` 時，全部輸出與 `dev@051798b` 逐字元相同。
+   **這與 007 驗收條件 2 是不同的一條**：007 驗「關掉開關」，這裡驗「開關開著但沒人用新欄位」。
+6. 測試涵蓋：明示、空值退回、未知 `theme_id`、分類外代號、
+   `theme_ids` 與 `named_symbols` 並存（明示優先）。
+
+**會動到的檔案。**`narratives.py`、`product.py`、對應測試。
+
+**本項不做。**不改 `themes/v1.yaml`、不自動歸類分類外代號、不做覆蓋率分數、不著色、
+不依覆蓋改變任何排序、不廢除 `named_symbols`。
+
+### DO-2 — 演進要看得見：`stage` 與「上次到現在動了什麼」　[L2・交付]
+
+**背景。**`stage`（`open`／`mapped`／`parked`）與 `history()`（`narratives.py:266`）都已存在，
+**顯示端是零**：`stage` 除了自己被解析之外沒有任何讀取者，`history()` 的唯一呼叫者是它自己的
+單元測試。而演進資料真的在累積：09-04 → 09-06 之間 `asic_xpu` 從 0 條支線長到 2 條加 1 筆 log、
+`optical_cpo` 從隱含 `open` 變 `mapped`。**這跟 007 修掉的 `revisit` 是同一個病**——
+欄位有、資料有、沒人看。
+
+**做什麼。**brief 新增一段，標題字面鎖定 **`故事進度`**，每則 narrative 一行：
+
+- `narrative_id · stage · 主題或代號數 · 上次變動日期`
+- **「上次變動」用 `history()` 算**：比對 PIT 內相鄰兩份快照的同一則 narrative，
+  取最後一次任一欄位有差異的 `snapshot_date`。只有一份快照時印 `—`。
+- 另列最多 3 行 **`最近事件`**：PIT 內 `log` 的最新三筆，格式 `narrative_id · 日期 · text 前 40 字`。
+- 無 narrative 時整段印 `（無）`，**區塊不省略**。
+
+**明確的邊界：**只陳述**事實與日期**，不做任何趨勢判斷。
+**不得**出現熱度、爆發、加速、轉強、箭頭、顏色、分數、排序權重。
+「哪則故事正在變熱」是 burst detection，已於 007 DO-3 從 backlog 刪除，本輪不做。
+
+**驗收條件。**
+
+1. `故事進度` 與 `最近事件` 兩個字串出現在 brief；三則真實 narrative 各有一行。
+2. `optical_cpo` 顯示 `mapped`、`asic_xpu` 與 `nvhbm` 顯示 `open`（對得上 YAML）。
+3. 「上次變動日期」在 09-04→09-06 這組真實資料上，`asic_xpu` 與 `optical_cpo` 為
+   `2026-09-06`（兩者都變過），`nvhbm` 依實際差異判定——**回報實際算出的值，
+   不要為了好看調規則。**
+4. 只有一份快照時印 `—`，不 raise。
+5. **不寫任何檔案**：測試斷言 `narratives/*.yaml` 的 mtime 與 bytes 不變（沿用 007 的做法）。
+6. `--no-narratives` 時本段完全不出現，輸出與 `dev@051798b` 逐字元相同。
+
+**會動到的檔案。**`narratives.py`、`product.py`、對應測試。
+
+**本項不做。**不改 `stage` 的值、不自動推進 `stage`、不寫檔、不做熱度／爆發／趨勢判斷、
+不進 radar（brief 先做一個地方就好）。
+
+### DO-3 — 007 留下的三個洞 ＋ 一筆未結的更正　[ENG・使用]
+
+1. **F1 靜默失敗**（`cli.py::_load_overlay`）：`themes_path` 不存在時回空 `ThemeSet`
+   且 `error=None`，畫面無訊息卻照樣印出「強但沒人講」前三名。壞 YAML 那條會印訊息，
+   這條不會。**改成同樣走 `overlay.error`。**
+2. **B2 敘事欄語意**：現在印的是 PIT 快照本身的 `snapshot_date`，所有被提及的主題印同一個值，
+   是穿日期外衣的布林。**改成真正的「該主題最近一次被提及的日期」**——掃
+   `snapshot_date <= as_of` 的全部快照。現在只有兩份檔，成本是零；晚改成本更高。
+3. **F3 分隔線寬度**：`radar.py` 開新欄時寫死 `"-" * 114`，表頭實際顯示寬度是 110。
+   **改成從表頭算。**（關掉時的 `100` 是 `dev` 既有值，**不要動**——動了 007 的 sha1 就對不上。）
+4. **006-review B4 未結**：`docs/sprints/005-report.md:108` 仍寫「對角線隨天期上升」，
+   而 006 已證明那是對 0 讀出來的假象（`(60,20)` 裸值 +0.1402 → +0.37σ；
+   `(20,20)` 裸值 +0.1404 → +2.57σ）。**在 005-report 裡明白更正**，不要悄悄改掉。
+
+**驗收條件。**四項各有 diff；`uv run pytest` 全綠；
+第 2 項要有「兩份快照、不同主題、不同日期」的測試證明欄位真的會出現不同日期；
+第 3 項貼實際表頭與分隔線對齊的輸出。
+
+**會動到的檔案。**`cli.py`、`narratives.py`、`radar.py`、`docs/sprints/005-report.md`、對應測試。
+
+## 兔子洞
+
+- **DO-2 是本輪最容易長歪的地方。**「看得出一個脈絡正在轉強」是 HMW 問句，不是本輪的驗收條件。
+  一旦開始比較兩則故事誰動得多，就是在做熱度分數。**只陳述事實與日期。**
+- **不要順手廢掉 `named_symbols`。**`theme_ids` 是新的宣告路徑；`named_symbols` 是
+  「來源自己講出來的代號」，是 `分類外代號` 那段的唯一來源。
+- **不要自動修分類缺口。**`2454` 該不該進主題是 PO 的分類決定，改 `themes/v1.yaml`
+  會重算第一層所有歷史數字（綁 D6／Q5），是另一輪。
+- **不要順手自動推進 `stage`。**004 已定：`stage` 由人寫。自動推進需要門檻，門檻就是把手。
+- **DO-2 掃全部快照時不要做快取層。**現在只有兩個檔。過早抽象是契約 #6。
+
+## 本輪明確不做
+
+- **中文公司名 → 代號的 gazetteer**（`pyahocorasick` BSD-3；官方 ISIN 表凍結進 repo）→ **009**。
+  前提是 DO-1／DO-2 先讓回饋迴路不再誤報。順序反過來，摩擦降了但清單還在說謊。
+- `narrate add` 互動指令、速記檔入口 → 009
+- 熱度／爆發／`stage` 自動推進 → 007 DO-3 已從 backlog 刪，不要復活
+- 改 `themes/v1.yaml` 成分（`2454` 等）→ 綁 D6／Q5
+- momentum 標籤、品質行 → backlog（007 已附物證）
+- 006-review A1／A2、`n_iter` 一名兩義、guard-fail 格 `n=` 位置 → backlog
+- 換 primary、composite、Elo、RRG、as-of 成分、雙池、burst、PTT
+
+## 這裡容易踩到的契約紅線
+
+- **不可污染原則（R3）不變**：`theme_ids` 與 `故事進度` 都是只讀顯示，不改任何第一層數字。
+- **不做綜合評分**：`theme_ids` 與 `named_symbols` 是**優先序**，不是加權、不是投票。
+  `故事進度` 不得出現任何分數或排序。
+- **不用未來資料**：`theme_ids`、`stage`、`log` 都在有日期的快照裡，PIT 自動成立。
+- **D10**：所有新文案固定，不依數字改寫。
+- **不新增相依**：本輪 `import` 一個新套件就是超出 Appetite。
+
+## 權限邊界
+
+- 分支：`sprint/008-<slug>`，自 `dev@051798b`。
+- 可碰：上列模組、`tests/`、`docs/sprints/008-*`、`docs/sprints/005-report.md`（僅 DO-3.4）、
+  `narratives/2026-09-06.yaml`（**僅為驗收條件 1 加 `theme_ids`，不改其他欄位**）。
+- 不可碰：`themes/v1.yaml`、第一層計算（`calc.py`／`quality.py`／`momentum.py`）、
+  `persistence_null_test`、`compute_rank_ic`／`rank_ic_null_test`、`show_narratives=False` 的輸出。
+- **不 merge。**
+- 分支切換請在 Mac 上做——規劃端的 VM 不能 `checkout`。
+
+## 回報時必須附的物證 → `docs/sprints/008-evidence.md`
+
+- 每項 DO 的全長 commit hash
+- `uv run pytest` 的實際摘要行（不是「全部通過」）
+- `git diff dev --stat`
+- **DO-1 最重要的一張**：真實三則 narrative 加 `theme_ids` 前 vs 後，
+  「強但沒人講」／「有人講但弱」／`分類外代號` 三段完整輸出對照
+- DO-1：未知 `theme_id` 的實際訊息；驗收條件 5 的比對指令與空 diff
+- **DO-2 最重要的一張**：真實 09-04／09-06 兩份快照上 `故事進度` 與 `最近事件` 的完整輸出，
+  加上「上次變動日期」三則各自實際算出的值
+- DO-2：只有一份快照時的輸出；mtime 不變的斷言名
+- DO-3：四項各自 diff；第 2 項那個「不同主題不同日期」測試的實際輸出；
+  第 3 項的表頭＋分隔線實際字串
+
+## 留給實作者的未決問題
+
+1. **未知 `theme_id` 該 raise 還是印訊息？**預設：**載入不 raise**（避免犯 F1 的相反錯誤——
+   一個 typo 讓整份 brief 炸掉），改在畫面印一行明確訊息。
+   **先量：現有兩個 narrative 檔加上 `theme_ids` 之後會不會踩到，再回報。**
+2. **DO-2「上次變動」的比對粒度？**預設：整個 `Narrative` 物件的任一欄位有差異就算變動。
+   若這讓三則全部同一天、資訊量為零，**先回報實際結果再問**，不要自己改成只比某幾個欄位。
+3. **`故事進度` 與 `最近事件` 放哪？**預設：兩張清單之後、`到期重看` 之前。
