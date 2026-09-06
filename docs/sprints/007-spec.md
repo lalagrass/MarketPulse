@@ -1,6 +1,6 @@
 # Sprint 007 — 讓寫下來的故事出現在每天看的地方
 
-狀態：待實作
+狀態：已完成 2026-09-06（`sprint/007-narrative-loop`，未併）
 契約：CLAUDE.md 與 docs/coding-contract.md 全數適用
 層次：第二層（故事）＋ 顯示 ＋ 一格工程
 起因：階段 1 三個彼此看不到的角色收斂到同一件事；`docs/sprints/006-review.md` 的殘留

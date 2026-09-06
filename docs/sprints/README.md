@@ -51,4 +51,4 @@ Cowork  下一輪階段 0           → 對照 spec 驗收，寫 NNN-report.md
 | `004` | 第二層：支線／事件列／回頭日期，籃子強弱面板 | 已完成 2026-09-05・成果已在 `dev` |
 | `005` | 前向 Rank-IC；above_count NaN；B＋C 短註 | 已完成 2026-09-06・已在 `dev` |
 | `006` | IC 每格配循環位移虛無（取代 se）；(20,20) 標註；above_count 空路徑 | 已完成 2026-09-06・已在 `dev` |
-| `007` | 敘事覆蓋進 brief／radar、revisit 到期提示、文件矛盾掃除 | 待實作・`sprint/007-narrative-loop` |
+| `007` | 敘事覆蓋進 brief／radar、revisit 到期提示、文件矛盾掃除 | 已完成 2026-09-06・`sprint/007-narrative-loop` **未併**，見 `007-report.md` |
