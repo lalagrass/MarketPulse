@@ -496,10 +496,13 @@ def _eleven_theme_set() -> ThemeSet:
     )
 
 
-def _overlay_with(narratives: tuple[Narrative, ...]) -> NarrativeOverlay:
+def _overlay_with(
+    narratives: tuple[Narrative, ...], *, has_files: bool = True
+) -> NarrativeOverlay:
     return NarrativeOverlay(
         snapshot=NarrativeSnapshot(snapshot_date=date(2026, 8, 31), narratives=narratives),
         themes=_eleven_theme_set(),
+        has_snapshot_files=has_files,
     )
 
 
@@ -618,7 +621,9 @@ def test_do2_brief_shows_story_progress_between_lists_and_revisit(tmp_path) -> N
 
     ndir = _do2_dir(tmp_path)
     overlay = NarrativeOverlay(
-        snapshot=load_as_of(date(2026, 8, 31), ndir), themes=_eleven_theme_set()
+        snapshot=load_as_of(date(2026, 8, 31), ndir),
+        themes=_eleven_theme_set(),
+        has_snapshot_files=True,
     )
     text = render_brief(
         _eleven_day(), date(2026, 8, 31), overlay=overlay, narratives_dir=ndir
@@ -646,7 +651,9 @@ def test_do2_brief_no_narratives_flag_off_identical(tmp_path) -> None:
 
     ndir = _do2_dir(tmp_path)
     overlay = NarrativeOverlay(
-        snapshot=load_as_of(date(2026, 8, 31), ndir), themes=_eleven_theme_set()
+        snapshot=load_as_of(date(2026, 8, 31), ndir),
+        themes=_eleven_theme_set(),
+        has_snapshot_files=True,
     )
     off_overlay = render_brief(
         _eleven_day(), date(2026, 8, 31), show_narratives=False,
@@ -655,6 +662,65 @@ def test_do2_brief_no_narratives_flag_off_identical(tmp_path) -> None:
     off_none = render_brief(_eleven_day(), date(2026, 8, 31), show_narratives=False)
     assert off_overlay == off_none
     assert TITLE_STORY_PROGRESS not in off_none
+
+
+# ── sprint 008 addendum A: gate the three blocks on "dir has files" ──
+
+
+def _overlay_files_present_pit_empty() -> NarrativeOverlay:
+    """State 2: narratives/ has a snapshot file, but as_of predates it so the
+    PIT filter kept nothing."""
+    return NarrativeOverlay(
+        snapshot=NarrativeSnapshot(snapshot_date=None, narratives=()),
+        themes=_eleven_theme_set(),
+        has_snapshot_files=True,
+    )
+
+
+def test_addendum_a_state1_no_files_blocks_absent() -> None:
+    """State 1: no snapshot file → all three blocks absent (byte-identity
+    path). Covers overlay=None and an overlay with has_snapshot_files=False."""
+    for overlay in (
+        None,
+        NarrativeOverlay(
+            snapshot=NarrativeSnapshot(snapshot_date=None, narratives=()),
+            themes=_eleven_theme_set(),
+            has_snapshot_files=False,
+        ),
+    ):
+        text = render_brief(_eleven_day(), date(2026, 8, 31), overlay=overlay)
+        assert TITLE_OUT_OF_CLASSIFICATION not in text
+        assert TITLE_STORY_PROGRESS not in text
+        assert TITLE_RECENT_EVENTS not in text
+
+
+def test_addendum_a_state1_empty_overlay_matches_no_overlay_byte_for_byte() -> None:
+    a = render_brief(_eleven_day(), date(2026, 8, 31), overlay=None)
+    b = render_brief(
+        _eleven_day(),
+        date(2026, 8, 31),
+        overlay=NarrativeOverlay(
+            snapshot=NarrativeSnapshot(snapshot_date=None, narratives=()),
+            themes=_eleven_theme_set(),
+            has_snapshot_files=False,
+        ),
+    )
+    assert a == b
+
+
+def test_addendum_a_state2_files_present_pit_empty_headers_with_placeholder() -> None:
+    """State 2: file present, PIT empty → all three headers appear, each
+    printing （無） (故事進度 is （無）, not zero lines)."""
+    text = render_brief(
+        _eleven_day(), date(2026, 8, 31), overlay=_overlay_files_present_pit_empty()
+    )
+    for title in (TITLE_OUT_OF_CLASSIFICATION, TITLE_STORY_PROGRESS, TITLE_RECENT_EVENTS):
+        assert title in text
+        block = text.split(title, 1)[1].lstrip("\n")
+        assert block.splitlines()[0] == EMPTY_LIST
+    # placement unchanged: 分類外代號 with the lists, 故事進度 before 到期重看
+    assert text.index(TITLE_COVERED_WEAK) < text.index(TITLE_OUT_OF_CLASSIFICATION)
+    assert text.index(TITLE_STORY_PROGRESS) < text.index(TITLE_REVISIT_DUE)
 
 
 def test_brief_render_does_not_change_narratives_mtime_or_bytes() -> None:

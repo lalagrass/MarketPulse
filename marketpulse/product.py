@@ -265,11 +265,12 @@ def render_gap_lists(day: pd.DataFrame, overlay: NarrativeOverlay | None) -> str
     lines.append(TITLE_COVERED_WEAK)
     lines.extend(weak_rows[:GAP_LIST_LIMIT] or [EMPTY_LIST])
     lines.append("")
-    # 分類外代號 (spec 008 DO-1): named_symbols that sit in no theme. Only
-    # shown once a narrative snapshot is actually loaded — with no narratives
-    # there is nothing to classify, and the brief stays byte-identical to the
-    # pre-008 output (DO-1 acceptance 5).
-    if overlay is not None and overlay.snapshot.narratives:
+    # 分類外代號 (spec 008 DO-1 / addendum A): named_symbols in no theme.
+    # Shown whenever narratives/ holds any snapshot file — even if the PIT
+    # filter kept nothing, the header appears with （無） so a reader is not
+    # left wondering if the feature broke. With no file at all the block is
+    # absent and the brief stays byte-identical to dev@051798b.
+    if overlay is not None and overlay.has_snapshot_files:
         lines.append(TITLE_OUT_OF_CLASSIFICATION)
         pairs = out_of_classification_symbols(overlay.snapshot, overlay.themes)
         lines.extend(
@@ -348,10 +349,12 @@ def render_brief(
         narrative_snap = (
             overlay.snapshot if overlay is not None else NarrativeSnapshot(None, ())
         )
-        # 故事進度 / 最近事件 (spec 008 DO-2): after the two lists, before
-        # 到期重看 (unresolved Q3 default). Gated on a loaded snapshot so the
-        # brief stays byte-identical to dev@051798b when no narratives exist.
-        if narrative_snap.narratives:
+        # 故事進度 / 最近事件 (spec 008 DO-2 / addendum A): after the two
+        # lists, before 到期重看 (Q3 default). Gated on narratives/ holding a
+        # snapshot file — with a file present but the PIT filter empty, both
+        # headers still print with （無）; with no file the section is absent
+        # and the brief stays byte-identical to dev@051798b.
+        if overlay is not None and overlay.has_snapshot_files:
             story_dir = narratives_dir or DEFAULT_NARRATIVES_DIR
             lines.append("")
             lines.append(

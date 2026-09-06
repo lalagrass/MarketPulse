@@ -34,6 +34,7 @@ from marketpulse.data import (
 from marketpulse.narratives import (
     DEFAULT_NARRATIVES_DIR,
     NarrativeOverlay,
+    has_snapshot_files,
     load_as_of,
     load_as_of_lenient,
     theme_last_mention_dates,
@@ -176,6 +177,7 @@ def _load_overlay(
     themes_path: Path,
 ) -> NarrativeOverlay:
     snapshot, error = load_as_of_lenient(as_of, narratives_dir)
+    has_files = has_snapshot_files(narratives_dir)
     if not themes_path.exists():
         # DO-3 F1: a missing themes_path was silently returning error=None,
         # so the brief printed "強但沒人講" with no message at all — unlike
@@ -184,6 +186,7 @@ def _load_overlay(
             snapshot=snapshot,
             themes=_empty_theme_set(),
             error=error or f"themes 讀取失敗：找不到 {themes_path}",
+            has_snapshot_files=has_files,
         )
     try:
         themes = load_themes(themes_path)
@@ -193,11 +196,16 @@ def _load_overlay(
             snapshot=snapshot,
             themes=_empty_theme_set(),
             error=error or extra,
+            has_snapshot_files=has_files,
         )
     mention_dates = theme_last_mention_dates(as_of, themes, narratives_dir)
     resolved = {tid: d for tid, d in mention_dates.items() if d is not None}
     return NarrativeOverlay(
-        snapshot=snapshot, themes=themes, error=error, mention_dates=resolved
+        snapshot=snapshot,
+        themes=themes,
+        error=error,
+        mention_dates=resolved,
+        has_snapshot_files=has_files,
     )
 
 

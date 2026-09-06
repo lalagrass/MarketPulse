@@ -146,6 +146,11 @@ class NarrativeOverlay:
     # None means "not computed" — display falls back to the single-snapshot
     # theme_mention_dates(). Not part of PIT correctness, just the label.
     mention_dates: dict[str, date] | None = None
+    # Sprint 008 addendum A: does narratives/ hold at least one snapshot file?
+    # The 分類外代號 / 故事進度 / 最近事件 blocks gate on THIS, not on whether
+    # the PIT filter kept any narrative — so a dir with files but an early
+    # as_of still shows the headers with （無） rather than vanishing.
+    has_snapshot_files: bool = False
 
 
 def _as_date(value: object) -> date:
@@ -248,7 +253,16 @@ def _parse_snapshot_file(path: Path) -> tuple[date, tuple[Narrative, ...]]:
 
 
 def _snapshot_files(narratives_dir: Path) -> list[Path]:
+    if not narratives_dir.exists():
+        return []
     return sorted(narratives_dir.glob("*.yaml"))
+
+
+def has_snapshot_files(narratives_dir: Path = DEFAULT_NARRATIVES_DIR) -> bool:
+    """True if narratives_dir holds at least one dated snapshot file (spec
+    008 addendum A). Independent of the PIT filter — a file dated after
+    as_of still counts."""
+    return bool(_snapshot_files(narratives_dir))
 
 
 def _pit_filter(narrative: Narrative, as_of: date) -> Narrative:
