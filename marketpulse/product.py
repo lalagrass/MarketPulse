@@ -25,6 +25,7 @@ from marketpulse.narratives import (
     NarrativeOverlay,
     NarrativeSnapshot,
     out_of_classification_symbols,
+    render_pending_snapshots,
     render_revisit_due,
     render_story_progress,
     theme_mention_dates,
@@ -341,6 +342,14 @@ def render_brief(
                 lines.append("")
         lines.append(render_gap_lists(day, overlay).rstrip("\n"))
         lines.append("")
+        # 尚未生效 (spec 009 DO-2): after 分類外代號, before 故事進度
+        # (open question 2 default). Same gate as addendum A — a dir with
+        # files still shows the header when PIT kept nothing; no file at
+        # all keeps the brief byte-identical to the no-narratives path.
+        if overlay is not None and overlay.has_snapshot_files:
+            story_dir = narratives_dir or DEFAULT_NARRATIVES_DIR
+            lines.append(render_pending_snapshots(as_of, story_dir).rstrip("\n"))
+            lines.append("")
     statuses = set(str(s) for s in day["status"])
     if "MISSING_DATA" in statuses:
         lines.extend([MISSING_NOTE, ""])

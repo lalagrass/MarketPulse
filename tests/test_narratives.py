@@ -25,6 +25,8 @@ from marketpulse.narratives import (
     load_as_of,
     load_as_of_lenient,
     out_of_classification_symbols,
+    pending_snapshots,
+    render_pending_snapshots,
     parse_revisit_date,
     render_revisit_due,
     render_story_progress,
@@ -900,3 +902,147 @@ def test_do3_b2_last_mention_takes_latest_when_theme_recurs(tmp_path: Path) -> N
     dates = theme_last_mention_dates(date(2026, 9, 6), _themes_ab(), tmp_path)
     assert dates["t_a"] == date(2026, 9, 6)
     assert dates["t_b"] is None
+
+
+# ── sprint 009 DO-2: pending snapshots (filesystem fact, not PIT) ──
+
+
+def test_do2_pending_snapshots_lists_date_and_filename_only(tmp_path: Path) -> None:
+    from marketpulse.narratives import PENDING_PIT_NOTE, TITLE_PENDING
+
+    _write(
+        tmp_path,
+        "2026-09-04.yaml",
+        """
+        snapshot_date: 2026-09-04
+        narratives:
+          - narrative_id: now
+            name: now
+            first_noted: 2026-09-01
+            source: self
+            source_ref: x
+            stance: new
+            named_symbols: []
+            inferred_symbols: []
+            note: n/a
+        """,
+    )
+    _write(
+        tmp_path,
+        "2026-09-06.yaml",
+        """
+        snapshot_date: 2026-09-06
+        narratives:
+          - narrative_id: future
+            name: future
+            first_noted: 2026-09-01
+            source: self
+            source_ref: x
+            stance: new
+            named_symbols: ["SHOULD_NOT_BE_READ"]
+            inferred_symbols: []
+            note: this body must not affect coverage
+        """,
+    )
+    as_of = date(2026, 9, 4)
+    assert pending_snapshots(as_of, tmp_path) == [
+        (date(2026, 9, 6), "2026-09-06.yaml")
+    ]
+    text = render_pending_snapshots(as_of, tmp_path)
+    assert text.splitlines()[0] == TITLE_PENDING
+    assert text.splitlines()[1] == "2026-09-06 · 2026-09-06.yaml"
+    assert text.splitlines()[2] == PENDING_PIT_NOTE.format(as_of="2026-09-04")
+    assert "SHOULD_NOT_BE_READ" not in text
+    assert "future" not in text.splitlines()[1]
+
+
+def test_do2_pending_snapshots_empty_prints_placeholder(tmp_path: Path) -> None:
+    from marketpulse.narratives import TITLE_PENDING
+
+    _write(
+        tmp_path,
+        "2026-09-04.yaml",
+        """
+        snapshot_date: 2026-09-04
+        narratives: []
+        """,
+    )
+    text = render_pending_snapshots(date(2026, 9, 4), tmp_path)
+    assert text.splitlines() == [TITLE_PENDING, EMPTY_LIST]
+
+
+def test_do2_pending_file_does_not_change_coverage_byte_for_byte(tmp_path: Path) -> None:
+    """Acceptance 2: a snapshot_date > as_of file must not change
+    coverage_report / theme_mention_dates / theme_last_mention_dates /
+    story_last_changed / load_as_of. The pending list is the only new
+    surface that can see it."""
+    _write(
+        tmp_path,
+        "2026-09-04.yaml",
+        """
+        snapshot_date: 2026-09-04
+        narratives:
+          - narrative_id: story
+            name: story
+            first_noted: 2026-09-01
+            source: self
+            source_ref: x
+            stance: new
+            named_symbols: ["A01"]
+            inferred_symbols: []
+            note: n/a
+        """,
+    )
+    themes = _themes_ab()
+    as_of = date(2026, 9, 4)
+    before_snap = load_as_of(as_of, tmp_path)
+    before = {
+        "coverage": narrative_coverage_report(before_snap, themes),
+        "mentions": theme_mention_dates(before_snap, themes),
+        "last": theme_last_mention_dates(as_of, themes, tmp_path),
+        "changed": story_last_changed("story", as_of, tmp_path),
+        "ids": tuple(n.narrative_id for n in before_snap.narratives),
+        "snap_date": before_snap.snapshot_date,
+    }
+
+    _write(
+        tmp_path,
+        "2026-09-06.yaml",
+        """
+        snapshot_date: 2026-09-06
+        narratives:
+          - narrative_id: story
+            name: story
+            first_noted: 2026-09-01
+            source: self
+            source_ref: x
+            stance: new
+            revisit: 2026-10-01
+            theme_ids: [t_b]
+            named_symbols: ["B01"]
+            inferred_symbols: []
+            note: would flip coverage if leaked
+        """,
+    )
+    after_snap = load_as_of(as_of, tmp_path)
+    after = {
+        "coverage": narrative_coverage_report(after_snap, themes),
+        "mentions": theme_mention_dates(after_snap, themes),
+        "last": theme_last_mention_dates(as_of, themes, tmp_path),
+        "changed": story_last_changed("story", as_of, tmp_path),
+        "ids": tuple(n.narrative_id for n in after_snap.narratives),
+        "snap_date": after_snap.snapshot_date,
+    }
+    assert after == before
+    assert str(after["coverage"]) == str(before["coverage"])
+    assert pending_snapshots(as_of, tmp_path) == [
+        (date(2026, 9, 6), "2026-09-06.yaml")
+    ]
+
+
+def test_do2_pending_real_narratives_dir_as_of_latest_price_day() -> None:
+    """Live files: as_of=2026-09-04 (latest price day as of this sprint)
+    sees 2026-09-06.yaml and not 2026-09-04.yaml."""
+    as_of = date(2026, 9, 4)
+    found = pending_snapshots(as_of, REPO_ROOT / "narratives")
+    assert found == [(date(2026, 9, 6), "2026-09-06.yaml")]

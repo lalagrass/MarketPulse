@@ -63,11 +63,14 @@ TITLE_REVISIT_CONDITIONAL = "條件型（無法判斷是否到期）"
 TITLE_OUT_OF_CLASSIFICATION = "分類外代號"  # sprint 008 DO-1
 TITLE_STORY_PROGRESS = "故事進度"  # sprint 008 DO-2
 TITLE_RECENT_EVENTS = "最近事件"  # sprint 008 DO-2
+TITLE_PENDING = "尚未生效"  # sprint 009 DO-2
 UNKNOWN_THEME_ID_NOTE = "未知 theme_id（不在 themes/v1.yaml）"  # sprint 008 DO-1
 NARRATIVE_COL_HEADER = "敘事"
 NARRATIVE_MISSING = "—"
 EMPTY_LIST = "（無）"
 GAP_LIST_LIMIT = 5
+PENDING_LIMIT = 3  # sprint 009 DO-2
+PENDING_PIT_NOTE = "（快照日期晚於最新價量日 {as_of}，依 PIT 規則尚未納入）"
 CLAIM_PREVIEW_LEN = 30
 STRONG_RANK_MAX = 3
 REVISIT_SEP = " · "
@@ -263,6 +266,64 @@ def has_snapshot_files(narratives_dir: Path = DEFAULT_NARRATIVES_DIR) -> bool:
     008 addendum A). Independent of the PIT filter — a file dated after
     as_of still counts."""
     return bool(_snapshot_files(narratives_dir))
+
+
+def _snapshot_date_only(path: Path) -> date | None:
+    """Read snapshot_date from a YAML file and ignore everything else.
+
+    Spec 009 DO-2: the pending list is a filesystem fact. It must not
+    inspect narrative bodies, named_symbols, theme_ids, or log entries.
+    """
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return None
+    if not isinstance(payload, dict) or payload.get("snapshot_date") is None:
+        return None
+    try:
+        return _as_date(payload["snapshot_date"])
+    except (TypeError, ValueError):
+        return None
+
+
+def pending_snapshots(
+    as_of: date,
+    narratives_dir: Path = DEFAULT_NARRATIVES_DIR,
+) -> list[tuple[date, str]]:
+    """``(snapshot_date, filename)`` for files with snapshot_date > as_of.
+
+    Newest-not-required: sorted by snapshot_date then name, capped at
+    PENDING_LIMIT. Does not parse narratives (spec 009 DO-2 / R2).
+    """
+    found: list[tuple[date, str]] = []
+    for path in _snapshot_files(narratives_dir):
+        snapshot_date = _snapshot_date_only(path)
+        if snapshot_date is None or snapshot_date <= as_of:
+            continue
+        found.append((snapshot_date, path.name))
+    found.sort()
+    return found[:PENDING_LIMIT]
+
+
+def render_pending_snapshots(
+    as_of: date,
+    narratives_dir: Path = DEFAULT_NARRATIVES_DIR,
+) -> str:
+    """`尚未生效` block. Pure notice: date · filename, plus a fixed why.
+
+    Empty prints （無）; the block is never omitted by this function (the
+    caller gates on has_snapshot_files). Never writes, never feeds a
+    coverage / mention / story-progress decision.
+    """
+    items = pending_snapshots(as_of, narratives_dir)
+    lines = [TITLE_PENDING]
+    if items:
+        for snapshot_date, name in items:
+            lines.append(f"{snapshot_date.isoformat()}{REVISIT_SEP}{name}")
+        lines.append(PENDING_PIT_NOTE.format(as_of=as_of.isoformat()))
+    else:
+        lines.append(EMPTY_LIST)
+    return "\n".join(lines)
 
 
 def _pit_filter(narrative: Narrative, as_of: date) -> Narrative:
