@@ -426,13 +426,15 @@ def test_quality_line_always_appends_horizon_footnote_with_market_row() -> None:
     row = _sample_market_row()
     line = quality_line(row, null_baseline=None)
     assert HORIZON_FOOTNOTE in line
-    assert line.endswith(HORIZON_FOOTNOTE)
+    # spec 010 DO-1 item 3 appends D6_GLOSS after HORIZON_FOOTNOTE, so the
+    # note is no longer the last line — its unconditional presence is what
+    # spec 005 DO-3 protects, not its position.
     assert HORIZON_FOOTNOTE == "月尺度：可偵測≠穩定；短端遠強於長端；凍結成分偏高估（D6）。"
     as_of = row["date"]
     with_null = quality_line(
         row, null_baseline=_null_payload(sample_end=as_of), snapshot_as_of=as_of
     )
-    assert with_null.endswith(HORIZON_FOOTNOTE)
+    assert HORIZON_FOOTNOTE in with_null
 
 
 def test_quality_line_null_baseline_present_appends_numbers_only() -> None:
@@ -554,6 +556,156 @@ def test_quality_line_matching_method_version_unaffected_by_DO_6() -> None:
     assert payload["by_k"]["20"]["method_version"] == NULL_METHOD_VERSION
     line = quality_line(row, null_baseline=payload, snapshot_as_of=as_of)
     assert "虛無" in line
+
+
+# --- spec 010 DO-1: quality line rewritten to read (display only) ----------
+
+
+def test_do1_a1_entry_none_prints_no_baseline_not_a_persistence_digit() -> None:
+    """A1: with no usable null baseline, the persistence slot says `無基準`
+    and carries no persistence number at all — not the lone daily
+    rank_persistence_20 (the no-corroboration value 008 B6 removed)."""
+    from marketpulse.quality import NO_BASELINE_TEXT, _fmt_corr
+
+    row = _sample_market_row()
+    # row["rank_persistence_20"] is the fixture's -1.00 at the rank flip.
+    daily_digit = _fmt_corr(row["rank_persistence_20"])
+    line = quality_line(row, null_baseline=None)
+    first = line.split("\n", 1)[0]
+    assert first == f"持續性 {NO_BASELINE_TEXT}"
+    assert NO_BASELINE_TEXT in line
+    assert daily_digit not in line
+    # no digits at all in the persistence segment
+    assert not any(ch.isdigit() for ch in first)
+    # a rejected-method baseline routes through the same `entry is None` path
+    as_of = row["date"]
+    rejected = _null_payload(sample_end=as_of, method_version=NULL_METHOD_VERSION + 1)
+    assert (
+        quality_line(row, null_baseline=rejected, snapshot_as_of=as_of).split("\n", 1)[0]
+        == f"持續性 {NO_BASELINE_TEXT}"
+    )
+
+
+def test_do1_a2_missing_market_row_unchanged_by_this_sprint() -> None:
+    """A2: market_row=None still returns exactly the original three-n/a line,
+    with nothing appended — no footnote, no D6 gloss, no dagger note."""
+    assert quality_line(None) == "持續性 n/a   換手 n/a   離散 n/a"
+    assert quality_line(None, null_baseline=_null_payload(sample_end=date(2026, 9, 3))) == (
+        "持續性 n/a   換手 n/a   離散 n/a"
+    )
+    assert HORIZON_FOOTNOTE not in quality_line(None)
+    assert "\n" not in quality_line(None)
+
+
+def test_do1_a3_display_only_compute_layer_output_unchanged() -> None:
+    """A3 (unit half): DO-1 is display only. compute_market_quality still
+    returns MARKET_COLUMNS with the rolling-window percentile NaN during
+    warm-up, and quality_line echoes the market_row it is handed without
+    recomputing anything (hand-set churn/dispersion appear verbatim)."""
+    snapshot = _fixture_snapshot(N_DAYS)
+    market = compute_market_quality(snapshot)
+    assert list(market.columns) == MARKET_COLUMNS
+    # _percentile keeps min_periods == PERCENTILE_WINDOW: NaN before 60 sessions.
+    assert market["dispersion_pct"].isna().all()  # only 25 sessions in the fixture
+
+    row = pd.Series(
+        {
+            "date": date(2026, 3, 2),
+            "rank_persistence_20": 0.99,
+            "rank_churn": 7.0,
+            "rank_churn_pct": 0.42,
+            "dispersion": 0.1234,
+            "dispersion_pct": 0.07,
+        }
+    )
+    line = quality_line(row, null_baseline=None)
+    assert "換手 7（" in line
+    assert "第 42 百分位" in line
+    assert "離散 12.3pp（" in line
+    assert "第 7 百分位" in line
+
+
+def test_do1_percentile_gloss_names_the_window_and_direction() -> None:
+    """DO-1 item 1: each parenthetical percentile is written as a position in
+    the trailing 60 sessions, with a direction, and no conditional wording."""
+    from marketpulse.quality import (
+        CHURN_PCT_DIRECTION,
+        DISPERSION_PCT_DIRECTION,
+        PERCENTILE_WINDOW_LABEL,
+    )
+
+    row = pd.Series(
+        {
+            "date": date(2026, 3, 2),
+            "rank_persistence_20": 0.2,
+            "rank_churn": 9.0,
+            "rank_churn_pct": 0.9,
+            "dispersion": 0.158,
+            "dispersion_pct": 0.18,
+        }
+    )
+    line = quality_line(row, null_baseline=None)
+    assert PERCENTILE_WINDOW_LABEL == "近 60 個交易日"
+    assert f"換手 9（{PERCENTILE_WINDOW_LABEL}第 90 百分位；{CHURN_PCT_DIRECTION}）" in line
+    assert (
+        f"離散 15.8pp（{PERCENTILE_WINDOW_LABEL}第 18 百分位；{DISPERSION_PCT_DIRECTION}）"
+        in line
+    )
+    # no threshold / conditional warning wording leaked in (D10)
+    for banned in ("低於", "高於", "若", "超過", "以下時", "才", "警"):
+        assert banned not in line
+
+
+def test_do1_dagger_note_present_only_when_persistence_group_is_stale() -> None:
+    """DO-1 item 2: the † on the persistence digit now has a footnote line
+    explaining it was measured through baseline sample_end, not today."""
+    from marketpulse.quality import DAGGER_NOTE_TEMPLATE
+
+    row = _sample_market_row()
+    as_of = row["date"]
+    stale_end = as_of - timedelta(days=1)
+    stale_line = quality_line(
+        row, null_baseline=_null_payload(sample_end=stale_end), snapshot_as_of=as_of
+    )
+    assert DAGGER_NOTE_TEMPLATE.format(sample_end=stale_end.isoformat()) in stale_line
+
+    fresh_line = quality_line(
+        row, null_baseline=_null_payload(sample_end=as_of), snapshot_as_of=as_of
+    )
+    assert "baseline sample_end" not in fresh_line
+    assert STALE_MARKER not in fresh_line
+
+
+def test_do1_d6_gloss_follows_the_horizon_footnote() -> None:
+    """DO-1 item 3: the bare （D6）in HORIZON_FOOTNOTE is now resolved on
+    screen by a plain-language line right after it."""
+    from marketpulse.quality import D6_GLOSS
+
+    row = _sample_market_row()
+    line = quality_line(row, null_baseline=None)
+    assert D6_GLOSS in line
+    assert line.split("\n").index(D6_GLOSS) == line.split("\n").index(HORIZON_FOOTNOTE) + 1
+    assert "D6" in D6_GLOSS and "凍結成分" in D6_GLOSS
+
+
+def test_do1_oneline_keeps_metrics_on_one_line_footnotes_unchanged() -> None:
+    """spec 010 open question 1: `oneline` is layout only — the three metric
+    groups collapse to one physical line, the footnote lines do not move."""
+    row = _sample_market_row()
+    as_of = row["date"]
+    payload = _null_payload(sample_end=as_of)
+    expanded = quality_line(row, null_baseline=payload, snapshot_as_of=as_of)
+    compact = quality_line(row, null_baseline=payload, snapshot_as_of=as_of, oneline=True)
+    # compact: all three metric groups share line 0
+    assert compact.split("\n")[0].startswith("持續性 ")
+    assert "換手 " in compact.split("\n")[0] and "離散 " in compact.split("\n")[0]
+    # expanded: one group per line
+    assert expanded.split("\n")[0].startswith("持續性 ")
+    assert expanded.split("\n")[1].startswith("換手 ")
+    assert expanded.split("\n")[2].startswith("離散 ")
+    # identical footnote tail (HORIZON_FOOTNOTE + D6_GLOSS)
+    assert expanded.split("\n")[-2:] == compact.split("\n")[-2:]
+    assert HORIZON_FOOTNOTE in compact
 
 
 def test_write_null_baseline_stamps_current_method_version(tmp_path) -> None:

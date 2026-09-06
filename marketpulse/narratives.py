@@ -72,6 +72,10 @@ EMPTY_LIST = "（無）"
 GAP_LIST_LIMIT = 5
 PENDING_LIMIT = 3  # sprint 009 DO-2
 PENDING_PIT_NOTE = "（快照日期晚於最新價量日 {as_of}，依 PIT 規則尚未納入）"
+# spec 010 DO-3.2: PENDING_LIMIT / RECENT_EVENTS_LIMIT truncate silently; the
+# 4th item just vanishes. Say how many did not fit. The cap itself is unchanged.
+PENDING_OVERFLOW_NOTE = "還有 {n} 份"
+RECENT_EVENTS_OVERFLOW_NOTE = "還有 {n} 筆"
 CLAIM_PREVIEW_LEN = 30
 STRONG_RANK_MAX = 3
 REVISIT_SEP = " · "
@@ -291,10 +295,13 @@ def pending_snapshots(
     as_of: date,
     narratives_dir: Path = DEFAULT_NARRATIVES_DIR,
 ) -> list[tuple[date, str]]:
-    """``(snapshot_date, filename)`` for files with snapshot_date > as_of.
+    """``(snapshot_date, filename)`` for every file with snapshot_date > as_of,
+    sorted by snapshot_date then name.
 
-    Newest-not-required: sorted by snapshot_date then name, capped at
-    PENDING_LIMIT. Does not parse narratives (spec 009 DO-2 / R2).
+    Not capped — the display cap (PENDING_LIMIT) is applied by
+    render_pending_snapshots, which also needs the full count to report how
+    many did not fit (spec 010 DO-3.2). Does not parse narratives
+    (spec 009 DO-2 / R2).
     """
     found: list[tuple[date, str]] = []
     for path in _snapshot_files(narratives_dir):
@@ -303,7 +310,7 @@ def pending_snapshots(
             continue
         found.append((snapshot_date, path.name))
     found.sort()
-    return found[:PENDING_LIMIT]
+    return found
 
 
 def render_pending_snapshots(
@@ -319,8 +326,11 @@ def render_pending_snapshots(
     items = pending_snapshots(as_of, narratives_dir)
     lines = [TITLE_PENDING]
     if items:
-        for snapshot_date, name in items:
+        for snapshot_date, name in items[:PENDING_LIMIT]:
             lines.append(f"{snapshot_date.isoformat()}{REVISIT_SEP}{name}")
+        overflow = len(items) - PENDING_LIMIT
+        if overflow > 0:
+            lines.append(PENDING_OVERFLOW_NOTE.format(n=overflow))
         lines.append(PENDING_PIT_NOTE.format(as_of=as_of.isoformat()))
     else:
         lines.append(EMPTY_LIST)
@@ -723,6 +733,9 @@ def render_story_progress(
         f"{' '.join((text or '').split())[:EVENT_TEXT_PREVIEW_LEN]}"
         for when, nid, text in events[:RECENT_EVENTS_LIMIT]
     ]
+    events_overflow = len(events) - RECENT_EVENTS_LIMIT
+    if events_overflow > 0:
+        event_lines.append(RECENT_EVENTS_OVERFLOW_NOTE.format(n=events_overflow))
 
     def _block(title: str, lines: list[str]) -> list[str]:
         return [title, *(lines if lines else [EMPTY_LIST]), ""]
