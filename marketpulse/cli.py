@@ -472,6 +472,7 @@ def brief(
             null_baseline=_load_null_baseline(data_dir),
             show_narratives=show_narratives,
             overlay=overlay,
+            narratives_dir=narratives_dir,
         ),
         nl=False,
     )
@@ -596,6 +597,7 @@ def refresh(
             null_baseline=null_baseline,
             show_narratives=show_narratives,
             overlay=overlay,
+            narratives_dir=narratives_dir,
         ),
         nl=False,
     )

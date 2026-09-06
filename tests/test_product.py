@@ -12,8 +12,10 @@ from marketpulse.narratives import (
     EMPTY_LIST,
     TITLE_COVERED_WEAK,
     TITLE_OUT_OF_CLASSIFICATION,
+    TITLE_RECENT_EVENTS,
     TITLE_REVISIT_CONDITIONAL,
     TITLE_REVISIT_DUE,
+    TITLE_STORY_PROGRESS,
     TITLE_STRONG_UNCOVERED,
     UNKNOWN_THEME_ID_NOTE,
     Narrative,
@@ -577,6 +579,82 @@ def test_do1_no_narratives_adds_no_new_blocks() -> None:
     for text in (text_none, text_empty):
         assert TITLE_OUT_OF_CLASSIFICATION not in text
         assert UNKNOWN_THEME_ID_NOTE not in text
+
+
+# ── sprint 008 DO-2: 故事進度 / 最近事件 in the brief ──
+
+_DO2_SNAP = """
+snapshot_date: 2026-08-31
+narratives:
+  - narrative_id: s1
+    name: S1
+    first_noted: 2026-08-01
+    source: self
+    source_ref: x
+    stance: new
+    stage: mapped
+    revisit: 2026-10-15
+    named_symbols: ["S01"]
+    inferred_symbols: []
+    note: n/a
+    log:
+      - date: 2026-08-20
+        source_ref: r
+        kind: evidence
+        text: an event happened
+        bears_on: []
+"""
+
+
+def _do2_dir(tmp_path):
+    from pathlib import Path
+
+    (tmp_path / "2026-08-31.yaml").write_text(_DO2_SNAP, encoding="utf-8")
+    return Path(tmp_path)
+
+
+def test_do2_brief_shows_story_progress_between_lists_and_revisit(tmp_path) -> None:
+    from marketpulse.narratives import load_as_of
+
+    ndir = _do2_dir(tmp_path)
+    overlay = NarrativeOverlay(
+        snapshot=load_as_of(date(2026, 8, 31), ndir), themes=_eleven_theme_set()
+    )
+    text = render_brief(
+        _eleven_day(), date(2026, 8, 31), overlay=overlay, narratives_dir=ndir
+    )
+    assert TITLE_STORY_PROGRESS in text
+    assert TITLE_RECENT_EVENTS in text
+    assert "s1 · mapped · 1代號 · —" in text  # one snapshot only → —
+    assert "s1 · 2026-08-20 · an event happened" in text
+    # placement: after 有人講但弱, before 到期重看
+    assert text.index(TITLE_COVERED_WEAK) < text.index(TITLE_STORY_PROGRESS)
+    assert text.index(TITLE_STORY_PROGRESS) < text.index(TITLE_REVISIT_DUE)
+
+
+def test_do2_brief_no_narratives_omits_story_progress(tmp_path) -> None:
+    """DO-1 acceptance 5 / DO-2 read: with no narrative snapshot loaded, the
+    section does not appear (byte-identity path). The `（無）` placeholder is
+    the render-function's behaviour, unit-tested separately."""
+    text = render_brief(_eleven_day(), date(2026, 8, 31), overlay=None)
+    assert TITLE_STORY_PROGRESS not in text
+    assert TITLE_RECENT_EVENTS not in text
+
+
+def test_do2_brief_no_narratives_flag_off_identical(tmp_path) -> None:
+    from marketpulse.narratives import load_as_of
+
+    ndir = _do2_dir(tmp_path)
+    overlay = NarrativeOverlay(
+        snapshot=load_as_of(date(2026, 8, 31), ndir), themes=_eleven_theme_set()
+    )
+    off_overlay = render_brief(
+        _eleven_day(), date(2026, 8, 31), show_narratives=False,
+        overlay=overlay, narratives_dir=ndir,
+    )
+    off_none = render_brief(_eleven_day(), date(2026, 8, 31), show_narratives=False)
+    assert off_overlay == off_none
+    assert TITLE_STORY_PROGRESS not in off_none
 
 
 def test_brief_render_does_not_change_narratives_mtime_or_bytes() -> None:

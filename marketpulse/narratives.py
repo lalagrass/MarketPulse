@@ -534,3 +534,78 @@ def render_revisit_due(snapshot: NarrativeSnapshot, as_of: date) -> str:
     parts = _block(TITLE_REVISIT_DUE, due_lines)
     parts.extend(_block(TITLE_REVISIT_CONDITIONAL, cond_lines))
     return "\n".join(parts)
+
+
+def story_last_changed(
+    narrative_id: str,
+    as_of: date,
+    narratives_dir: Path = DEFAULT_NARRATIVES_DIR,
+) -> date | None:
+    """The snapshot_date of the last PIT snapshot on which this narrative
+    differed from its previous version (spec 008 DO-2 "上次變動").
+
+    Granularity, per spec unresolved question 2's default: the whole
+    Narrative object — any field differing between adjacent versions counts.
+    `history()` already applies the PIT trim (first_noted, log <= as_of), so
+    the comparison is between the versions a reader would actually have seen.
+    One version (or none) → None, rendered as `—`.
+    """
+    versions = history(narrative_id, as_of, narratives_dir)
+    if len(versions) < 2:
+        return None
+    last: date | None = None
+    for prev, cur in zip(versions, versions[1:]):
+        if cur.narrative != prev.narrative:
+            last = cur.snapshot_date
+    return last
+
+
+def _theme_or_symbol_count(narrative: Narrative) -> str:
+    """`故事進度`'s third field: how converged the story is. theme_ids if the
+    story declared them, else its named_symbols. Never both — they are a
+    priority, not a sum (contract: no composite)."""
+    if narrative.theme_ids:
+        return f"{len(narrative.theme_ids)}主題"
+    return f"{len(narrative.named_symbols)}代號"
+
+
+def render_story_progress(
+    snapshot: NarrativeSnapshot,
+    as_of: date,
+    narratives_dir: Path = DEFAULT_NARRATIVES_DIR,
+) -> str:
+    """`故事進度` + `最近事件` (spec 008 DO-2). Facts and dates only — no
+    heat / burst / acceleration / trend, no arrow, colour, score or ordering
+    weight. Read-only: never writes narratives/ and never advances `stage`.
+
+    - 故事進度: one line per narrative,
+      `narrative_id · stage · <n主題|n代號> · <上次變動日期|—>`
+    - 最近事件: the most recent RECENT_EVENTS_LIMIT PIT `log` entries across
+      all narratives, `narrative_id · date · text[:EVENT_TEXT_PREVIEW_LEN]`
+    """
+    progress: list[str] = []
+    for narrative in snapshot.narratives:
+        changed = story_last_changed(narrative.narrative_id, as_of, narratives_dir)
+        progress.append(
+            f"{narrative.narrative_id}{REVISIT_SEP}{narrative.stage}{REVISIT_SEP}"
+            f"{_theme_or_symbol_count(narrative)}{REVISIT_SEP}"
+            f"{changed.isoformat() if changed is not None else NARRATIVE_MISSING}"
+        )
+
+    events: list[tuple[date, str, str]] = []
+    for narrative in snapshot.narratives:
+        for entry in narrative.log:
+            events.append((entry.date, narrative.narrative_id, entry.text))
+    events.sort(key=lambda e: e[0], reverse=True)
+    event_lines = [
+        f"{nid}{REVISIT_SEP}{when.isoformat()}{REVISIT_SEP}"
+        f"{' '.join((text or '').split())[:EVENT_TEXT_PREVIEW_LEN]}"
+        for when, nid, text in events[:RECENT_EVENTS_LIMIT]
+    ]
+
+    def _block(title: str, lines: list[str]) -> list[str]:
+        return [title, *(lines if lines else [EMPTY_LIST]), ""]
+
+    parts = _block(TITLE_STORY_PROGRESS, progress)
+    parts.extend(_block(TITLE_RECENT_EVENTS, event_lines))
+    return "\n".join(parts).rstrip("\n")

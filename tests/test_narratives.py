@@ -12,9 +12,12 @@ from marketpulse.narratives import (
     COVERAGE_UNCOVERED,
     COVERAGE_UNKNOWN,
     EMPTY_LIST,
+    NARRATIVE_MISSING,
     STAGE_OPEN,
+    TITLE_RECENT_EVENTS,
     TITLE_REVISIT_CONDITIONAL,
     TITLE_REVISIT_DUE,
+    TITLE_STORY_PROGRESS,
     Branch,
     Narrative,
     NarrativeSnapshot,
@@ -24,6 +27,8 @@ from marketpulse.narratives import (
     out_of_classification_symbols,
     parse_revisit_date,
     render_revisit_due,
+    render_story_progress,
+    story_last_changed,
     theme_mention_dates,
     unknown_theme_ids,
     weak_rank_threshold,
@@ -711,3 +716,115 @@ def test_do1_optical_cpo_real_file_declares_its_theme() -> None:
     assert report["optical_cpo"] == COVERAGE_DECLARED
     assert report["nvhbm"] == COVERAGE_COVERED
     assert report["asic_xpu"] == COVERAGE_UNCOVERED
+
+
+# ── sprint 008 DO-2: 故事進度 / 最近事件 (facts and dates only) ──
+
+_SNAP_0904 = """
+snapshot_date: 2026-09-04
+narratives:
+  - narrative_id: s1
+    name: S1
+    first_noted: 2026-09-03
+    source: self
+    source_ref: x
+    stance: new
+    named_symbols: ["2454"]
+    inferred_symbols: []
+    note: first
+"""
+
+_SNAP_0906 = """
+snapshot_date: 2026-09-06
+narratives:
+  - narrative_id: s1
+    name: S1
+    first_noted: 2026-09-03
+    source: self
+    source_ref: x
+    stance: new
+    stage: mapped
+    revisit: 2026-10-15
+    named_symbols: ["2454"]
+    inferred_symbols: []
+    note: second
+    log:
+      - date: 2026-09-05
+        source_ref: EP694
+        kind: evidence
+        text: >
+          this is a fairly long event text that should be truncated to forty chars
+        bears_on: []
+"""
+
+
+def test_do2_story_last_changed_two_snapshots(tmp_path: Path) -> None:
+    _write(tmp_path, "2026-09-04.yaml", _SNAP_0904)
+    _write(tmp_path, "2026-09-06.yaml", _SNAP_0906)
+    assert story_last_changed("s1", date(2026, 9, 6), tmp_path) == date(2026, 9, 6)
+
+
+def test_do2_story_last_changed_single_snapshot_is_none(tmp_path: Path) -> None:
+    _write(tmp_path, "2026-09-04.yaml", _SNAP_0904)
+    assert story_last_changed("s1", date(2026, 9, 6), tmp_path) is None
+
+
+def test_do2_render_story_progress_two_snapshots(tmp_path: Path) -> None:
+    _write(tmp_path, "2026-09-04.yaml", _SNAP_0904)
+    _write(tmp_path, "2026-09-06.yaml", _SNAP_0906)
+    snap = load_as_of(date(2026, 9, 6), tmp_path)
+    text = render_story_progress(snap, date(2026, 9, 6), tmp_path)
+    assert TITLE_STORY_PROGRESS in text
+    assert TITLE_RECENT_EVENTS in text
+    assert "s1 · mapped · 1代號 · 2026-09-06" in text
+    event = [ln for ln in text.splitlines() if ln.startswith("s1 · 2026-09-05")][0]
+    # narrative_id · date · 40 chars of text, whitespace-collapsed
+    assert event == "s1 · 2026-09-05 · this is a fairly long event text that sh"
+
+
+def test_do2_render_story_progress_single_snapshot_prints_dash(tmp_path: Path) -> None:
+    _write(tmp_path, "2026-09-04.yaml", _SNAP_0904)
+    snap = load_as_of(date(2026, 9, 6), tmp_path)
+    text = render_story_progress(snap, date(2026, 9, 6), tmp_path)
+    assert f"s1 · open · 1代號 · {NARRATIVE_MISSING}" in text
+    # no log entries yet
+    recent = text.split(TITLE_RECENT_EVENTS, 1)[1]
+    assert EMPTY_LIST in recent
+
+
+def test_do2_render_story_progress_no_narratives_prints_placeholder() -> None:
+    text = render_story_progress(NarrativeSnapshot(None, ()), date(2026, 9, 6))
+    assert TITLE_STORY_PROGRESS in text and TITLE_RECENT_EVENTS in text
+    prog, recent = text.split(TITLE_RECENT_EVENTS, 1)
+    assert EMPTY_LIST in prog and EMPTY_LIST in recent
+
+
+def test_do2_story_progress_has_no_heat_or_trend_words(tmp_path: Path) -> None:
+    """兔子洞: facts and dates only — no 熱度 / 爆發 / 加速 / 轉強 / arrow / score."""
+    _write(tmp_path, "2026-09-04.yaml", _SNAP_0904)
+    _write(tmp_path, "2026-09-06.yaml", _SNAP_0906)
+    snap = load_as_of(date(2026, 9, 6), tmp_path)
+    text = render_story_progress(snap, date(2026, 9, 6), tmp_path)
+    for banned in ("熱", "爆發", "加速", "轉強", "↑", "↓", "→", "分數", "score"):
+        assert banned not in text
+
+
+def test_do2_render_story_progress_does_not_write_narratives() -> None:
+    """spec 008 DO-2 acceptance 5 (reuses 007's fingerprint approach)."""
+    n_dir = REPO_ROOT / "narratives"
+    before = _fingerprint(n_dir)
+    snap = load_as_of(date(2026, 9, 6), n_dir)
+    render_story_progress(snap, date(2026, 9, 6), n_dir)
+    story_last_changed("optical_cpo", date(2026, 9, 6), n_dir)
+    assert _fingerprint(n_dir) == before
+    assert before, "narratives/ should not be empty"
+
+
+def test_do2_real_snapshots_stage_and_change_date() -> None:
+    """Acceptance 2 + 3 on the real 09-04 / 09-06 files."""
+    n_dir = REPO_ROOT / "narratives"
+    snap = load_as_of(date(2026, 9, 6), n_dir)
+    stages = {n.narrative_id: n.stage for n in snap.narratives}
+    assert stages == {"asic_xpu": "open", "nvhbm": "open", "optical_cpo": "mapped"}
+    for nid in ("asic_xpu", "optical_cpo", "nvhbm"):
+        assert story_last_changed(nid, date(2026, 9, 6), n_dir) == date(2026, 9, 6)

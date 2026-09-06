@@ -13,6 +13,7 @@ import pandas as pd
 
 from marketpulse import RANK_DISCLOSURE, REPLAY_DISCLOSURE
 from marketpulse.narratives import (
+    DEFAULT_NARRATIVES_DIR,
     EMPTY_LIST,
     GAP_LIST_LIMIT,
     REVISIT_SEP,
@@ -25,6 +26,7 @@ from marketpulse.narratives import (
     NarrativeSnapshot,
     out_of_classification_symbols,
     render_revisit_due,
+    render_story_progress,
     theme_mention_dates,
     unknown_theme_ids,
     weak_rank_threshold,
@@ -285,6 +287,7 @@ def render_brief(
     *,
     show_narratives: bool = True,
     overlay: NarrativeOverlay | None = None,
+    narratives_dir: Path | None = None,
 ) -> str:
     day = snapshot.loc[snapshot["date"] == as_of].copy()
     if day.empty:
@@ -345,6 +348,15 @@ def render_brief(
         narrative_snap = (
             overlay.snapshot if overlay is not None else NarrativeSnapshot(None, ())
         )
+        # 故事進度 / 最近事件 (spec 008 DO-2): after the two lists, before
+        # 到期重看 (unresolved Q3 default). Gated on a loaded snapshot so the
+        # brief stays byte-identical to dev@051798b when no narratives exist.
+        if narrative_snap.narratives:
+            story_dir = narratives_dir or DEFAULT_NARRATIVES_DIR
+            lines.append("")
+            lines.append(
+                render_story_progress(narrative_snap, as_of, story_dir).rstrip("\n")
+            )
         lines.append("")
         lines.append(render_revisit_due(narrative_snap, as_of).rstrip("\n"))
     return "\n".join(lines) + "\n"
