@@ -36,6 +36,7 @@ from marketpulse.narratives import (
     NarrativeOverlay,
     load_as_of,
     load_as_of_lenient,
+    theme_last_mention_dates,
 )
 from marketpulse.product import (
     chart_window,
@@ -176,17 +177,28 @@ def _load_overlay(
 ) -> NarrativeOverlay:
     snapshot, error = load_as_of_lenient(as_of, narratives_dir)
     if not themes_path.exists():
-        return NarrativeOverlay(snapshot=snapshot, themes=_empty_theme_set(), error=error)
+        # DO-3 F1: a missing themes_path was silently returning error=None,
+        # so the brief printed "強但沒人講" with no message at all — unlike
+        # the broken-YAML path, which does say something. Route it the same.
+        return NarrativeOverlay(
+            snapshot=snapshot,
+            themes=_empty_theme_set(),
+            error=error or f"themes 讀取失敗：找不到 {themes_path}",
+        )
     try:
         themes = load_themes(themes_path)
     except Exception as exc:
-        extra = f"narrative 讀取失敗：{exc}"
+        extra = f"themes 讀取失敗：{exc}"
         return NarrativeOverlay(
             snapshot=snapshot,
             themes=_empty_theme_set(),
             error=error or extra,
         )
-    return NarrativeOverlay(snapshot=snapshot, themes=themes, error=error)
+    mention_dates = theme_last_mention_dates(as_of, themes, narratives_dir)
+    resolved = {tid: d for tid, d in mention_dates.items() if d is not None}
+    return NarrativeOverlay(
+        snapshot=snapshot, themes=themes, error=error, mention_dates=resolved
+    )
 
 
 def format_ops_status(

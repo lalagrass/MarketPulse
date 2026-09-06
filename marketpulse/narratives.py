@@ -141,6 +141,11 @@ class NarrativeOverlay:
     snapshot: NarrativeSnapshot
     themes: ThemeSet
     error: str | None = None
+    # Sprint 008 DO-3 B2: theme_id → the latest snapshot_date <= as_of that
+    # mentioned it, across every snapshot file (theme_last_mention_dates()).
+    # None means "not computed" — display falls back to the single-snapshot
+    # theme_mention_dates(). Not part of PIT correctness, just the label.
+    mention_dates: dict[str, date] | None = None
 
 
 def _as_date(value: object) -> date:

@@ -29,6 +29,7 @@ from marketpulse.narratives import (
     render_revisit_due,
     render_story_progress,
     story_last_changed,
+    theme_last_mention_dates,
     theme_mention_dates,
     unknown_theme_ids,
     weak_rank_threshold,
@@ -828,3 +829,74 @@ def test_do2_real_snapshots_stage_and_change_date() -> None:
     assert stages == {"asic_xpu": "open", "nvhbm": "open", "optical_cpo": "mapped"}
     for nid in ("asic_xpu", "optical_cpo", "nvhbm"):
         assert story_last_changed(nid, date(2026, 9, 6), n_dir) == date(2026, 9, 6)
+
+
+# ── sprint 008 DO-3 B2: theme_last_mention_dates scans every snapshot ──
+
+
+def test_do3_b2_last_mention_scans_all_snapshots(tmp_path: Path) -> None:
+    """Two snapshots, different themes mentioned on each → the column can now
+    show different dates, not one boolean-shaped snapshot_date."""
+    _write(
+        tmp_path,
+        "2026-09-04.yaml",
+        """
+        snapshot_date: 2026-09-04
+        narratives:
+          - narrative_id: n_a
+            name: A
+            first_noted: 2026-09-03
+            source: self
+            source_ref: x
+            stance: new
+            named_symbols: ["A01"]
+            inferred_symbols: []
+            note: n/a
+        """,
+    )
+    _write(
+        tmp_path,
+        "2026-09-06.yaml",
+        """
+        snapshot_date: 2026-09-06
+        narratives:
+          - narrative_id: n_b
+            name: B
+            first_noted: 2026-09-03
+            source: self
+            source_ref: x
+            stance: new
+            revisit: 2026-10-01
+            named_symbols: ["B01"]
+            inferred_symbols: []
+            note: n/a
+        """,
+    )
+    dates = theme_last_mention_dates(date(2026, 9, 6), _themes_ab(), tmp_path)
+    assert dates["t_a"] == date(2026, 9, 4)
+    assert dates["t_b"] == date(2026, 9, 6)
+
+
+def test_do3_b2_last_mention_takes_latest_when_theme_recurs(tmp_path: Path) -> None:
+    for d in ("2026-09-04", "2026-09-06"):
+        _write(
+            tmp_path,
+            f"{d}.yaml",
+            f"""
+            snapshot_date: {d}
+            narratives:
+              - narrative_id: n_a
+                name: A
+                first_noted: 2026-09-03
+                source: self
+                source_ref: x
+                stance: new
+                revisit: 2026-10-01
+                named_symbols: ["A01"]
+                inferred_symbols: []
+                note: n/a
+            """,
+        )
+    dates = theme_last_mention_dates(date(2026, 9, 6), _themes_ab(), tmp_path)
+    assert dates["t_a"] == date(2026, 9, 6)
+    assert dates["t_b"] is None

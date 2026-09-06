@@ -25,6 +25,7 @@ from marketpulse.radar import (
     ROT_RISING,
     ROT_STABLE,
     _format_rank_history_html,
+    _narrative_date_label,
     _rank_history,
     render_radar,
     render_radar_detail,
@@ -32,6 +33,7 @@ from marketpulse.radar import (
     rotation_mark,
     rotation_state,
 )
+from marketpulse.product import _vislen
 from marketpulse.themes import Theme, ThemeSet
 from tests.conftest import make_bars, make_index, session_dates, two_theme_set
 
@@ -343,3 +345,69 @@ def test_radar_narrative_column_after_momentum_and_flag_off() -> None:
     assert f"<th>{NARRATIVE_COL_HEADER}</th>" in html
     assert f"<th>{NARRATIVE_COL_HEADER}</th>" not in html_off
     assert dates[-1].isoformat() in html
+
+
+# ── sprint 008 DO-3 F3: the ASCII rule is measured from the header ──
+
+
+def test_do3_f3_separator_width_matches_header_display_width() -> None:
+    dates = session_dates(21)
+    bars = make_bars(
+        dates,
+        {"AAA": [100.0] * 20 + [120.0], "BBB": [100.0] * 21, "CCC": [100.0] * 20 + [110.0]},
+        twse=("AAA", "BBB"),
+        tpex=("CCC",),
+    )
+    snap = compute_snapshots(bars, make_index(dates, [1000.0] * 21), two_theme_set(), thin_min=1)
+
+    on = render_radar(snap, dates[-1], show_narratives=True)
+    lines = on.splitlines()
+    header = [ln for ln in lines if NARRATIVE_COL_HEADER in ln][0]
+    rule = lines[lines.index(header) + 1]
+    assert set(rule) == {"-"}
+    assert len(rule) == _vislen(header)  # measured, not a hand-typed 114
+    assert _vislen(header) == 110
+
+    off = render_radar(snap, dates[-1], show_narratives=False)
+    off_lines = off.splitlines()
+    off_header = [ln for ln in off_lines if ln.startswith("Sector ") and "1D" in ln][0]
+    off_rule = off_lines[off_lines.index(off_header) + 1]
+    assert len(off_rule) == 100  # dev's value, deliberately untouched (007 sha1)
+
+
+# ── sprint 008 DO-3 B2: 敘事 column shows the last-mentioned date ──
+
+
+def test_do3_b2_narrative_date_label_uses_mention_dates_when_present() -> None:
+    overlay = NarrativeOverlay(
+        snapshot=NarrativeSnapshot(snapshot_date=date(2026, 9, 6), narratives=()),
+        themes=ThemeSet("t", "2026-01-01", "", ()),
+        mention_dates={"alpha": date(2026, 9, 4)},
+    )
+    assert _narrative_date_label("alpha", overlay) == "2026-09-04"
+    assert _narrative_date_label("beta", overlay) == NARRATIVE_MISSING
+
+
+def test_do3_b2_narrative_date_label_falls_back_without_mention_dates() -> None:
+    """A hand-built overlay (no mention_dates) keeps the pre-008 behaviour:
+    the single PIT snapshot_date."""
+    overlay = NarrativeOverlay(
+        snapshot=NarrativeSnapshot(
+            snapshot_date=date(2026, 9, 6),
+            narratives=(
+                Narrative(
+                    narrative_id="n",
+                    name="n",
+                    first_noted=date(2026, 9, 1),
+                    source="self",
+                    source_ref="x",
+                    stance="new",
+                    named_symbols=("AAA",),
+                    inferred_symbols=(),
+                    note="",
+                ),
+            ),
+        ),
+        themes=ThemeSet("t", "2026-01-01", "", (Theme("alpha", "Alpha", ("AAA",)),)),
+    )
+    assert _narrative_date_label("alpha", overlay) == "2026-09-06"

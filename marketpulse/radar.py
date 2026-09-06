@@ -30,6 +30,7 @@ from marketpulse.product import (
     _fmt_signed_pct,
     _fmt_signed_pct_col,
     _ljust,
+    _vislen,
     fmt_rank_triplet,
     status_mark,
 )
@@ -142,10 +143,16 @@ def _narrative_date_label(
     theme_id: object,
     overlay: NarrativeOverlay | None,
 ) -> str:
+    """DO-3 B2: the date a theme was LAST mentioned, scanning every snapshot
+    (overlay.mention_dates, filled by _load_overlay). Falls back to the
+    single-PIT-snapshot theme_mention_dates() when mention_dates is absent
+    (e.g. a hand-built overlay in a test) — same as the pre-008 behaviour."""
     if overlay is None:
         return NARRATIVE_MISSING
-    mentions = theme_mention_dates(overlay.snapshot, overlay.themes)
-    mentioned = mentions.get(str(theme_id))
+    if overlay.mention_dates is not None:
+        mentioned = overlay.mention_dates.get(str(theme_id))
+    else:
+        mentioned = theme_mention_dates(overlay.snapshot, overlay.themes).get(str(theme_id))
     if mentioned is None:
         return NARRATIVE_MISSING
     return mentioned.isoformat()
@@ -181,7 +188,11 @@ def render_radar(
         "Momentum: Strong  Improving  Stable  Weakening  Weak  (5D / Breadth / Volume / Rank Δ5)",
         "",
         header,
-        "-" * (100 if not show_narratives else 114),
+        # DO-3 F3: the 敘事 column made the header wider; the rule was a
+        # hand-typed 114 that overshot the real display width. Measure it.
+        # (The 100 for the narratives-off case is dev's own value — leaving
+        # it alone keeps 007's sha1 intact.)
+        "-" * (100 if not show_narratives else _vislen(header)),
     ]
     for rec in day.itertuples(index=False):
         mark = status_mark(rec.status)

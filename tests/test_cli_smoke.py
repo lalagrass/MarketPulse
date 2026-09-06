@@ -51,10 +51,22 @@ def test_cli_analyze_brief_radar_smoke(tmp_path: Path, monkeypatch) -> None:
     assert (data_dir / "snapshots" / "theme_daily.parquet").exists()
     assert (data_dir / "snapshots" / "market_daily.parquet").exists()
 
-    result = runner.invoke(app, ["brief", "--data-dir", str(data_dir)])
+    result = runner.invoke(
+        app,
+        ["brief", "--data-dir", str(data_dir), "--themes-path", str(themes_path)],
+    )
     assert result.exit_code == 0, result.output
     assert "MarketPulse" in result.output
     assert "持續性" in result.output
+    assert "讀取失敗" not in result.output
+
+    # DO-3 F1: a missing themes_path is no longer silent.
+    missing = runner.invoke(
+        app,
+        ["brief", "--data-dir", str(data_dir), "--themes-path", str(tmp_path / "nope.yaml")],
+    )
+    assert missing.exit_code == 0, missing.output
+    assert "themes 讀取失敗" in missing.output
 
     radar_out = reports / "radar.html"
     result = runner.invoke(
