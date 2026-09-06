@@ -1,6 +1,6 @@
 # Sprint 009 — 讓門面的數字不再自相矛盾
 
-狀態：待實作
+狀態：已完成 2026-09-06
 契約：CLAUDE.md 與 docs/coding-contract.md 全數適用
 層次：第一層（正確性）＋ 第二層（使用）＋ 一格工程
 起因：`docs/sprints/008-report.md` 的 **B6**（品質行把兩個不同統計量並排）、
