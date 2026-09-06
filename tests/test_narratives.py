@@ -9,6 +9,7 @@ import pytest
 from marketpulse.narratives import (
     COVERAGE_COVERED,
     COVERAGE_DECLARED,
+    COVERAGE_PARTIAL,
     COVERAGE_UNCOVERED,
     COVERAGE_UNKNOWN,
     EMPTY_LIST,
@@ -25,6 +26,8 @@ from marketpulse.narratives import (
     load_as_of,
     load_as_of_lenient,
     out_of_classification_symbols,
+    pending_snapshots,
+    render_pending_snapshots,
     parse_revisit_date,
     render_revisit_due,
     render_story_progress,
@@ -900,3 +903,227 @@ def test_do3_b2_last_mention_takes_latest_when_theme_recurs(tmp_path: Path) -> N
     dates = theme_last_mention_dates(date(2026, 9, 6), _themes_ab(), tmp_path)
     assert dates["t_a"] == date(2026, 9, 6)
     assert dates["t_b"] is None
+
+
+# ── sprint 009 DO-2: pending snapshots (filesystem fact, not PIT) ──
+
+
+def test_do2_pending_snapshots_lists_date_and_filename_only(tmp_path: Path) -> None:
+    from marketpulse.narratives import PENDING_PIT_NOTE, TITLE_PENDING
+
+    _write(
+        tmp_path,
+        "2026-09-04.yaml",
+        """
+        snapshot_date: 2026-09-04
+        narratives:
+          - narrative_id: now
+            name: now
+            first_noted: 2026-09-01
+            source: self
+            source_ref: x
+            stance: new
+            named_symbols: []
+            inferred_symbols: []
+            note: n/a
+        """,
+    )
+    _write(
+        tmp_path,
+        "2026-09-06.yaml",
+        """
+        snapshot_date: 2026-09-06
+        narratives:
+          - narrative_id: future
+            name: future
+            first_noted: 2026-09-01
+            source: self
+            source_ref: x
+            stance: new
+            named_symbols: ["SHOULD_NOT_BE_READ"]
+            inferred_symbols: []
+            note: this body must not affect coverage
+        """,
+    )
+    as_of = date(2026, 9, 4)
+    assert pending_snapshots(as_of, tmp_path) == [
+        (date(2026, 9, 6), "2026-09-06.yaml")
+    ]
+    text = render_pending_snapshots(as_of, tmp_path)
+    assert text.splitlines()[0] == TITLE_PENDING
+    assert text.splitlines()[1] == "2026-09-06 · 2026-09-06.yaml"
+    assert text.splitlines()[2] == PENDING_PIT_NOTE.format(as_of="2026-09-04")
+    assert "SHOULD_NOT_BE_READ" not in text
+    assert "future" not in text.splitlines()[1]
+
+
+def test_do2_pending_snapshots_empty_prints_placeholder(tmp_path: Path) -> None:
+    from marketpulse.narratives import TITLE_PENDING
+
+    _write(
+        tmp_path,
+        "2026-09-04.yaml",
+        """
+        snapshot_date: 2026-09-04
+        narratives: []
+        """,
+    )
+    text = render_pending_snapshots(date(2026, 9, 4), tmp_path)
+    assert text.splitlines() == [TITLE_PENDING, EMPTY_LIST]
+
+
+def test_do2_pending_file_does_not_change_coverage_byte_for_byte(tmp_path: Path) -> None:
+    """Acceptance 2: a snapshot_date > as_of file must not change
+    coverage_report / theme_mention_dates / theme_last_mention_dates /
+    story_last_changed / load_as_of. The pending list is the only new
+    surface that can see it."""
+    _write(
+        tmp_path,
+        "2026-09-04.yaml",
+        """
+        snapshot_date: 2026-09-04
+        narratives:
+          - narrative_id: story
+            name: story
+            first_noted: 2026-09-01
+            source: self
+            source_ref: x
+            stance: new
+            named_symbols: ["A01"]
+            inferred_symbols: []
+            note: n/a
+        """,
+    )
+    themes = _themes_ab()
+    as_of = date(2026, 9, 4)
+    before_snap = load_as_of(as_of, tmp_path)
+    before = {
+        "coverage": narrative_coverage_report(before_snap, themes),
+        "mentions": theme_mention_dates(before_snap, themes),
+        "last": theme_last_mention_dates(as_of, themes, tmp_path),
+        "changed": story_last_changed("story", as_of, tmp_path),
+        "ids": tuple(n.narrative_id for n in before_snap.narratives),
+        "snap_date": before_snap.snapshot_date,
+    }
+
+    _write(
+        tmp_path,
+        "2026-09-06.yaml",
+        """
+        snapshot_date: 2026-09-06
+        narratives:
+          - narrative_id: story
+            name: story
+            first_noted: 2026-09-01
+            source: self
+            source_ref: x
+            stance: new
+            revisit: 2026-10-01
+            theme_ids: [t_b]
+            named_symbols: ["B01"]
+            inferred_symbols: []
+            note: would flip coverage if leaked
+        """,
+    )
+    after_snap = load_as_of(as_of, tmp_path)
+    after = {
+        "coverage": narrative_coverage_report(after_snap, themes),
+        "mentions": theme_mention_dates(after_snap, themes),
+        "last": theme_last_mention_dates(as_of, themes, tmp_path),
+        "changed": story_last_changed("story", as_of, tmp_path),
+        "ids": tuple(n.narrative_id for n in after_snap.narratives),
+        "snap_date": after_snap.snapshot_date,
+    }
+    assert after == before
+    assert str(after["coverage"]) == str(before["coverage"])
+    assert pending_snapshots(as_of, tmp_path) == [
+        (date(2026, 9, 6), "2026-09-06.yaml")
+    ]
+
+
+def test_do2_pending_real_narratives_dir_as_of_latest_price_day() -> None:
+    """Live files: as_of=2026-09-04 (latest price day as of this sprint)
+    includes 2026-09-06.yaml; every listed snapshot_date is after as_of."""
+    as_of = date(2026, 9, 4)
+    found = pending_snapshots(as_of, REPO_ROOT / "narratives")
+    assert (date(2026, 9, 6), "2026-09-06.yaml") in found
+    assert all(d > as_of for d, _ in found)
+
+
+# ── sprint 009 DO-3 F5 / F6 ──
+
+
+def test_do3_f5_all_invalid_theme_ids_fall_back_to_named_symbols() -> None:
+    """All theme_ids unknown → not `declared`; four-state named_symbols
+    path runs. unknown_theme_ids still lists the typos (008 must not
+    disappear)."""
+    themes = _themes_ab()
+    n = _narr("typo_only", theme_ids=("bogus",), named=("A01",))
+    snap = NarrativeSnapshot(date(2026, 9, 6), (n,))
+    assert narrative_coverage_report(snap, themes)["typo_only"] == COVERAGE_COVERED
+    assert theme_mention_dates(snap, themes)["t_a"] == date(2026, 9, 6)
+    assert theme_mention_dates(snap, themes)["t_b"] is None
+    assert unknown_theme_ids(snap, themes) == {"typo_only": ("bogus",)}
+
+
+def test_do3_f5_all_invalid_theme_ids_without_named_is_unknown() -> None:
+    themes = _themes_ab()
+    n = _narr("empty_typo", theme_ids=("bogus",))
+    snap = NarrativeSnapshot(date(2026, 9, 6), (n,))
+    assert narrative_coverage_report(snap, themes)["empty_typo"] == COVERAGE_UNKNOWN
+    assert unknown_theme_ids(snap, themes) == {"empty_typo": ("bogus",)}
+    assert theme_mention_dates(snap, themes)["t_a"] is None
+
+
+def test_do3_f5_mixed_valid_and_invalid_still_declared() -> None:
+    """A valid sibling still counts as declared; the typo is only a notice."""
+    themes = _themes_ab()
+    n = _narr("mix", theme_ids=("t_a", "bogus"), named=("B01",))
+    snap = NarrativeSnapshot(date(2026, 9, 6), (n,))
+    assert narrative_coverage_report(snap, themes)["mix"] == COVERAGE_DECLARED
+    dates = theme_mention_dates(snap, themes)
+    assert dates["t_a"] == date(2026, 9, 6)
+    assert dates["t_b"] is None  # named_symbols not consulted
+    assert unknown_theme_ids(snap, themes) == {"mix": ("bogus",)}
+
+
+def test_do3_f6_coverage_and_mentioned_agree_on_the_same_narrative() -> None:
+    """spec 009 DO-3 F6: coverage_report and _mentioned_theme_ids share one
+    membership test. For any one narrative, declared ↔ mentioned equals
+    the valid theme_ids; four-state covered/partial ↔ mentioned equals
+    named ∩ members; unknown/uncovered ↔ mentioned empty."""
+    from marketpulse.narratives import _member_sets, _mentioned_theme_ids
+
+    themes = _themes_ab()
+    member_sets = _member_sets(themes)
+    cases = [
+        _narr("declared", theme_ids=("t_a",)),
+        _narr("mix", theme_ids=("t_a", "nope"), named=("B01",)),
+        _narr("fallback", theme_ids=("nope",), named=("A01",)),
+        _narr("covered", named=("A01",)),
+        _narr("partial", named=("A01", "ZZZ")),
+        _narr("uncovered", named=("ZZZ",)),
+        _narr("unknown"),
+        _narr("all_bad", theme_ids=("nope", "also_nope")),
+    ]
+    for narrative in cases:
+        snap = NarrativeSnapshot(date(2026, 9, 6), (narrative,))
+        status = narrative_coverage_report(snap, themes)[narrative.narrative_id]
+        mentioned = _mentioned_theme_ids(narrative, member_sets)
+        via_dates = {
+            tid for tid, d in theme_mention_dates(snap, themes).items() if d is not None
+        }
+        assert mentioned == via_dates
+        if status == COVERAGE_DECLARED:
+            assert mentioned == {tid for tid in narrative.theme_ids if tid in member_sets}
+            assert mentioned
+        elif status in (COVERAGE_UNKNOWN, COVERAGE_UNCOVERED):
+            assert mentioned == set()
+        elif status in (COVERAGE_COVERED, COVERAGE_PARTIAL):
+            named = set(narrative.named_symbols)
+            assert mentioned == {
+                tid for tid, members in member_sets.items() if named & members
+            }
+            assert mentioned
+        else:
+            raise AssertionError(f"unexpected status {status} for {narrative.narrative_id}")

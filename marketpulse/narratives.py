@@ -63,11 +63,15 @@ TITLE_REVISIT_CONDITIONAL = "條件型（無法判斷是否到期）"
 TITLE_OUT_OF_CLASSIFICATION = "分類外代號"  # sprint 008 DO-1
 TITLE_STORY_PROGRESS = "故事進度"  # sprint 008 DO-2
 TITLE_RECENT_EVENTS = "最近事件"  # sprint 008 DO-2
+TITLE_PENDING = "尚未生效"  # sprint 009 DO-2
 UNKNOWN_THEME_ID_NOTE = "未知 theme_id（不在 themes/v1.yaml）"  # sprint 008 DO-1
 NARRATIVE_COL_HEADER = "敘事"
+NARRATIVE_COL_WIDTH = 10  # ISO date width (spec 009 DO-3 F4)
 NARRATIVE_MISSING = "—"
 EMPTY_LIST = "（無）"
 GAP_LIST_LIMIT = 5
+PENDING_LIMIT = 3  # sprint 009 DO-2
+PENDING_PIT_NOTE = "（快照日期晚於最新價量日 {as_of}，依 PIT 規則尚未納入）"
 CLAIM_PREVIEW_LEN = 30
 STRONG_RANK_MAX = 3
 REVISIT_SEP = " · "
@@ -265,6 +269,64 @@ def has_snapshot_files(narratives_dir: Path = DEFAULT_NARRATIVES_DIR) -> bool:
     return bool(_snapshot_files(narratives_dir))
 
 
+def _snapshot_date_only(path: Path) -> date | None:
+    """Read snapshot_date from a YAML file and ignore everything else.
+
+    Spec 009 DO-2: the pending list is a filesystem fact. It must not
+    inspect narrative bodies, named_symbols, theme_ids, or log entries.
+    """
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return None
+    if not isinstance(payload, dict) or payload.get("snapshot_date") is None:
+        return None
+    try:
+        return _as_date(payload["snapshot_date"])
+    except (TypeError, ValueError):
+        return None
+
+
+def pending_snapshots(
+    as_of: date,
+    narratives_dir: Path = DEFAULT_NARRATIVES_DIR,
+) -> list[tuple[date, str]]:
+    """``(snapshot_date, filename)`` for files with snapshot_date > as_of.
+
+    Newest-not-required: sorted by snapshot_date then name, capped at
+    PENDING_LIMIT. Does not parse narratives (spec 009 DO-2 / R2).
+    """
+    found: list[tuple[date, str]] = []
+    for path in _snapshot_files(narratives_dir):
+        snapshot_date = _snapshot_date_only(path)
+        if snapshot_date is None or snapshot_date <= as_of:
+            continue
+        found.append((snapshot_date, path.name))
+    found.sort()
+    return found[:PENDING_LIMIT]
+
+
+def render_pending_snapshots(
+    as_of: date,
+    narratives_dir: Path = DEFAULT_NARRATIVES_DIR,
+) -> str:
+    """`尚未生效` block. Pure notice: date · filename, plus a fixed why.
+
+    Empty prints （無）; the block is never omitted by this function (the
+    caller gates on has_snapshot_files). Never writes, never feeds a
+    coverage / mention / story-progress decision.
+    """
+    items = pending_snapshots(as_of, narratives_dir)
+    lines = [TITLE_PENDING]
+    if items:
+        for snapshot_date, name in items:
+            lines.append(f"{snapshot_date.isoformat()}{REVISIT_SEP}{name}")
+        lines.append(PENDING_PIT_NOTE.format(as_of=as_of.isoformat()))
+    else:
+        lines.append(EMPTY_LIST)
+    return "\n".join(lines)
+
+
 def _pit_filter(narrative: Narrative, as_of: date) -> Narrative:
     """Drop log entries dated after as_of. The snapshot_date and per-narrative
     first_noted gates are applied by the caller; this is the same discipline
@@ -330,26 +392,67 @@ def history(
     return tuple(versions)
 
 
+def _valid_declared_theme_ids(
+    narrative: Narrative, member_sets: dict[str, set[str]]
+) -> set[str]:
+    """theme_ids that actually exist in the ThemeSet. Empty means the
+    field is treated as absent (spec 009 DO-3 F5: all-invalid ids fall
+    back to the named_symbols four-state, they do not count as declared).
+    """
+    return {tid for tid in narrative.theme_ids if tid in member_sets}
+
+
+def _themes_hit_by_named_symbols(
+    named_symbols: tuple[str, ...],
+    member_sets: dict[str, set[str]],
+) -> set[str]:
+    """The single named_symbols ∩ members test (spec 009 DO-3 F6)."""
+    named = set(named_symbols)
+    if not named:
+        return set()
+    return {tid for tid, members in member_sets.items() if named & members}
+
+
+def _named_symbols_in_themes(
+    named_symbols: tuple[str, ...],
+    member_sets: dict[str, set[str]],
+) -> list[str]:
+    """named_symbols that sit in at least one theme, original order.
+
+    Built on `_themes_hit_by_named_symbols` so coverage_report and
+    `_mentioned_theme_ids` share one membership test (spec 009 DO-3 F6).
+    """
+    hits = _themes_hit_by_named_symbols(named_symbols, member_sets)
+    if not hits:
+        return []
+    covered_members: set[str] = set()
+    for tid in hits:
+        covered_members |= member_sets[tid]
+    return [s for s in named_symbols if s in covered_members]
+
+
 def coverage_report(snapshot: NarrativeSnapshot, themes: ThemeSet) -> dict[str, str]:
     """Per-narrative coverage of named_symbols against themes/v1.yaml.
 
     Derived, not stored — recomputed from the current theme YAML on every
     call. Empty named_symbols is `unknown`, not `covered`: nothing was
     named, so nothing has actually been verified either way.
+
+    `theme_ids` with at least one id that exists in the ThemeSet is
+    `declared`. All-invalid theme_ids fall through to the four-state
+    named_symbols logic (spec 009 DO-3 F5); unknown_theme_ids() still
+    surfaces the typos.
     """
-    all_members = {m for theme in themes.themes for m in theme.members}
+    member_sets = _member_sets(themes)
     report: dict[str, str] = {}
     for narrative in snapshot.narratives:
-        if narrative.theme_ids:
-            # Sprint 008 DO-1: theme_ids explicit > named_symbols test. This
-            # narrative declared its theme(s); the four-state logic below is
-            # left exactly as it was for every narrative that did not.
+        if _valid_declared_theme_ids(narrative, member_sets):
             report[narrative.narrative_id] = COVERAGE_DECLARED
             continue
         if not narrative.named_symbols:
             report[narrative.narrative_id] = COVERAGE_UNKNOWN
             continue
-        present = [s for s in narrative.named_symbols if s in all_members]
+        present = _named_symbols_in_themes(narrative.named_symbols, member_sets)
         if len(present) == len(narrative.named_symbols):
             report[narrative.narrative_id] = COVERAGE_COVERED
         elif not present:
@@ -390,19 +493,18 @@ def _mentioned_theme_ids(
 ) -> set[str]:
     """The theme ids one narrative mentions.
 
-    Sprint 008 DO-1 priority, fixed: explicit `theme_ids` win outright; only
-    when a narrative has none do we fall back to the named_symbols ∩ members
-    test (the same test coverage_report uses — uncovered / unknown fall out
-    of it as the empty set by construction). No merge, no vote. theme_ids
-    that name no real theme are dropped here and surfaced separately by
-    unknown_theme_ids().
+    Sprint 008 DO-1 priority, fixed: explicit `theme_ids` that exist in the
+    ThemeSet win outright; only when none do we fall back to the
+    named_symbols ∩ members test (the same helper coverage_report uses —
+    uncovered / unknown fall out of it as the empty set by construction).
+    No merge, no vote. All-invalid theme_ids are treated as absent
+    (spec 009 DO-3 F5), matching coverage_report; the typos are surfaced
+    separately by unknown_theme_ids().
     """
-    if narrative.theme_ids:
-        return {tid for tid in narrative.theme_ids if tid in member_sets}
-    if not narrative.named_symbols:
-        return set()
-    named = set(narrative.named_symbols)
-    return {tid for tid, members in member_sets.items() if named & members}
+    declared = _valid_declared_theme_ids(narrative, member_sets)
+    if declared:
+        return declared
+    return _themes_hit_by_named_symbols(narrative.named_symbols, member_sets)
 
 
 def theme_mention_dates(

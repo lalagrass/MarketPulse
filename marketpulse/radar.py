@@ -18,6 +18,7 @@ from marketpulse.momentum import (
 )
 from marketpulse.narratives import (
     NARRATIVE_COL_HEADER,
+    NARRATIVE_COL_WIDTH,
     NARRATIVE_MISSING,
     NarrativeOverlay,
     theme_mention_dates,
@@ -176,7 +177,7 @@ def render_radar(
         f"{'Breadth':>7}  {'Volume':>6}  {RANK_TRIPLET_HEADER:<15}  Rot  Momentum"
     )
     if show_narratives:
-        header = f"{header}  {NARRATIVE_COL_HEADER}"
+        header = f"{header}  {_ljust(NARRATIVE_COL_HEADER, NARRATIVE_COL_WIDTH)}"
     lines = [
         f"MarketPulse — {as_of.isoformat()}",
         quality_line(market_row, null_baseline=null_baseline, snapshot_as_of=as_of),
@@ -218,7 +219,10 @@ def render_radar(
             f"{_fmt_mom_ascii(mom.state)}"
         )
         if show_narratives:
-            row = f"{row}  {_narrative_date_label(rec.theme_id, overlay)}"
+            row = (
+                f"{row}  "
+                f"{_ljust(_narrative_date_label(rec.theme_id, overlay), NARRATIVE_COL_WIDTH)}"
+            )
         lines.append(row)
     if show_narratives and overlay is not None and overlay.error:
         lines.extend(["", overlay.error])

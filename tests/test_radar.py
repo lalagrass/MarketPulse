@@ -15,6 +15,7 @@ from marketpulse.calc import (
 )
 from marketpulse.narratives import (
     NARRATIVE_COL_HEADER,
+    NARRATIVE_COL_WIDTH,
     NARRATIVE_MISSING,
     Narrative,
     NarrativeOverlay,
@@ -366,7 +367,8 @@ def test_do3_f3_separator_width_matches_header_display_width() -> None:
     rule = lines[lines.index(header) + 1]
     assert set(rule) == {"-"}
     assert len(rule) == _vislen(header)  # measured, not a hand-typed 114
-    assert _vislen(header) == 110
+    # 008 was 110 (敘事 unpadded, vislen 4). Width 10 adds 6 display cols.
+    assert _vislen(header) == 116
 
     off = render_radar(snap, dates[-1], show_narratives=False)
     off_lines = off.splitlines()
@@ -376,6 +378,62 @@ def test_do3_f3_separator_width_matches_header_display_width() -> None:
 
 
 # ── sprint 008 DO-3 B2: 敘事 column shows the last-mentioned date ──
+
+
+def test_do3_f4_narrative_cell_is_width_10() -> None:
+    """spec 009 DO-3 F4: 敘事 cell width = 10 (ISO date). Header / date /
+    — rows end with that padded cell. 整列右緣仍隨 Momentum 標籤變動，
+    F4 只釘住這一欄的寬度。--no-narratives 100 is untouched (asserted
+    in test_do3_f3)."""
+    dates = session_dates(21)
+    bars = make_bars(
+        dates,
+        {"AAA": [100.0] * 20 + [120.0], "BBB": [100.0] * 21, "CCC": [100.0] * 20 + [110.0]},
+        twse=("AAA", "BBB"),
+        tpex=("CCC",),
+    )
+    snap = compute_snapshots(bars, make_index(dates, [1000.0] * 21), two_theme_set(), thin_min=1)
+    overlay = NarrativeOverlay(
+        snapshot=NarrativeSnapshot(
+            snapshot_date=dates[-1],
+            narratives=(
+                Narrative(
+                    narrative_id="hit",
+                    name="hit",
+                    first_noted=dates[-1],
+                    source="self",
+                    source_ref="x",
+                    stance="new",
+                    named_symbols=("AAA",),
+                    inferred_symbols=(),
+                    note="",
+                ),
+            ),
+        ),
+        themes=two_theme_set(),
+    )
+    from marketpulse.product import _ljust
+
+    text = render_radar(snap, dates[-1], show_narratives=True, overlay=overlay)
+    lines = text.splitlines()
+    header = [ln for ln in lines if NARRATIVE_COL_HEADER in ln][0]
+    rule = lines[lines.index(header) + 1]
+    alpha = [ln for ln in lines if "Alpha" in ln][0]
+    beta = [ln for ln in lines if "Beta" in ln][0]
+    assert dates[-1].isoformat() in alpha
+    assert NARRATIVE_MISSING in beta
+    assert NARRATIVE_COL_WIDTH == 10
+    assert _vislen(header) == len(rule)
+    # 敘事 cell is vislen 10 on header / date / —. Momentum is unpadded
+    # (and must stay so: padding it would change --no-narratives), so
+    # full-line vislen still varies with the Momentum label; the column
+    # itself is what F4 asked to pin.
+    header_cell = _ljust(NARRATIVE_COL_HEADER, NARRATIVE_COL_WIDTH)
+    date_cell = _ljust(dates[-1].isoformat(), NARRATIVE_COL_WIDTH)
+    blank_cell = _ljust(NARRATIVE_MISSING, NARRATIVE_COL_WIDTH)
+    assert header.endswith(header_cell)
+    assert alpha.endswith(date_cell)
+    assert beta.endswith(blank_cell)
 
 
 def test_do3_b2_narrative_date_label_uses_mention_dates_when_present() -> None:

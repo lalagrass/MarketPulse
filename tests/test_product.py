@@ -12,6 +12,7 @@ from marketpulse.narratives import (
     EMPTY_LIST,
     TITLE_COVERED_WEAK,
     TITLE_OUT_OF_CLASSIFICATION,
+    TITLE_PENDING,
     TITLE_RECENT_EVENTS,
     TITLE_REVISIT_CONDITIONAL,
     TITLE_REVISIT_DUE,
@@ -570,6 +571,18 @@ def test_do1_unknown_theme_id_message_appears_in_brief() -> None:
     assert "主題一  #1" not in strong  # t01 still declared despite the typo sibling
 
 
+def test_do3_f5_all_invalid_theme_ids_still_print_unknown_message() -> None:
+    """spec 009 Q3: falling back to named_symbols must not swallow the
+    008 unknown-id line."""
+    overlay = _overlay_with((_n("n_typo", theme_ids=("bogus_id",), named=("S01",)),))
+    text = render_brief(_eleven_day(), date(2026, 8, 31), overlay=overlay)
+    assert UNKNOWN_THEME_ID_NOTE in text
+    line = [ln for ln in text.splitlines() if UNKNOWN_THEME_ID_NOTE in ln][0]
+    assert "n_typo" in line and "bogus_id" in line
+    strong = text.split(TITLE_STRONG_UNCOVERED, 1)[1].split(TITLE_COVERED_WEAK, 1)[0]
+    assert "主題一  #1" not in strong  # S01 still covers t01 via named_symbols
+
+
 def test_do1_no_narratives_adds_no_new_blocks() -> None:
     """Acceptance 5 (byte-identity precondition): with no narrative snapshot
     loaded, none of the DO-1 additions render."""
@@ -581,6 +594,7 @@ def test_do1_no_narratives_adds_no_new_blocks() -> None:
     text_empty = render_brief(_eleven_day(), date(2026, 8, 31), overlay=empty_overlay)
     for text in (text_none, text_empty):
         assert TITLE_OUT_OF_CLASSIFICATION not in text
+        assert TITLE_PENDING not in text
         assert UNKNOWN_THEME_ID_NOTE not in text
 
 
@@ -644,6 +658,7 @@ def test_do2_brief_no_narratives_omits_story_progress(tmp_path) -> None:
     text = render_brief(_eleven_day(), date(2026, 8, 31), overlay=None)
     assert TITLE_STORY_PROGRESS not in text
     assert TITLE_RECENT_EVENTS not in text
+    assert TITLE_PENDING not in text
 
 
 def test_do2_brief_no_narratives_flag_off_identical(tmp_path) -> None:
@@ -662,6 +677,7 @@ def test_do2_brief_no_narratives_flag_off_identical(tmp_path) -> None:
     off_none = render_brief(_eleven_day(), date(2026, 8, 31), show_narratives=False)
     assert off_overlay == off_none
     assert TITLE_STORY_PROGRESS not in off_none
+    assert TITLE_PENDING not in off_none
 
 
 # ── sprint 008 addendum A: gate the three blocks on "dir has files" ──
@@ -690,6 +706,7 @@ def test_addendum_a_state1_no_files_blocks_absent() -> None:
     ):
         text = render_brief(_eleven_day(), date(2026, 8, 31), overlay=overlay)
         assert TITLE_OUT_OF_CLASSIFICATION not in text
+        assert TITLE_PENDING not in text
         assert TITLE_STORY_PROGRESS not in text
         assert TITLE_RECENT_EVENTS not in text
 
@@ -708,18 +725,31 @@ def test_addendum_a_state1_empty_overlay_matches_no_overlay_byte_for_byte() -> N
     assert a == b
 
 
-def test_addendum_a_state2_files_present_pit_empty_headers_with_placeholder() -> None:
-    """State 2: file present, PIT empty → all three headers appear, each
-    printing （無） (故事進度 is （無）, not zero lines)."""
+def test_addendum_a_state2_files_present_pit_empty_headers_with_placeholder(
+    tmp_path,
+) -> None:
+    """State 2: file present, PIT empty → 分類外代號 / 故事進度 / 最近事件
+    still print （無）; 尚未生效 lists the future file (spec 009 DO-2)."""
+    (tmp_path / "2026-09-06.yaml").write_text(
+        "snapshot_date: 2026-09-06\nnarratives: []\n", encoding="utf-8"
+    )
     text = render_brief(
-        _eleven_day(), date(2026, 8, 31), overlay=_overlay_files_present_pit_empty()
+        _eleven_day(),
+        date(2026, 8, 31),
+        overlay=_overlay_files_present_pit_empty(),
+        narratives_dir=tmp_path,
     )
     for title in (TITLE_OUT_OF_CLASSIFICATION, TITLE_STORY_PROGRESS, TITLE_RECENT_EVENTS):
         assert title in text
         block = text.split(title, 1)[1].lstrip("\n")
         assert block.splitlines()[0] == EMPTY_LIST
-    # placement unchanged: 分類外代號 with the lists, 故事進度 before 到期重看
+    assert TITLE_PENDING in text
+    pending = text.split(TITLE_PENDING, 1)[1]
+    assert "2026-09-06 · 2026-09-06.yaml" in pending.splitlines()
+    # placement: 分類外代號 with the lists, 尚未生效 after it, 故事進度 before 到期重看
     assert text.index(TITLE_COVERED_WEAK) < text.index(TITLE_OUT_OF_CLASSIFICATION)
+    assert text.index(TITLE_OUT_OF_CLASSIFICATION) < text.index(TITLE_PENDING)
+    assert text.index(TITLE_PENDING) < text.index(TITLE_STORY_PROGRESS)
     assert text.index(TITLE_STORY_PROGRESS) < text.index(TITLE_REVISIT_DUE)
 
 
@@ -748,3 +778,59 @@ def test_brief_render_does_not_change_narratives_mtime_or_bytes() -> None:
         p.name: (p.stat().st_mtime_ns, p.read_bytes()) for p in sorted(n_dir.glob("*.yaml"))
     }
     assert after == before
+
+
+# ── sprint 009 DO-2: 尚未生效 ──
+
+
+def test_do2_pending_block_lists_future_file_and_why(tmp_path) -> None:
+    """Acceptance 1 (synthetic): snapshot_date > as_of is listed as
+    `date · filename` plus the locked PIT sentence. Max 3 is the
+    renderer's cap, tested in test_narratives."""
+    from marketpulse.narratives import PENDING_PIT_NOTE
+
+    (tmp_path / "2026-08-31.yaml").write_text(
+        "snapshot_date: 2026-08-31\nnarratives: []\n", encoding="utf-8"
+    )
+    (tmp_path / "2026-09-06.yaml").write_text(
+        "snapshot_date: 2026-09-06\nnarratives: []\n", encoding="utf-8"
+    )
+    overlay = _overlay_with((), has_files=True)
+    text = render_brief(
+        _eleven_day(), date(2026, 8, 31), overlay=overlay, narratives_dir=tmp_path
+    )
+    assert TITLE_PENDING in text
+    block = text.split(TITLE_PENDING, 1)[1]
+    lines = [ln for ln in block.splitlines() if ln][:3]
+    assert lines[0] == "2026-09-06 · 2026-09-06.yaml"
+    assert lines[1] == PENDING_PIT_NOTE.format(as_of="2026-08-31")
+    assert "2026-08-31.yaml" not in block.split(TITLE_STORY_PROGRESS, 1)[0]
+
+
+def test_do2_pending_empty_prints_placeholder_not_omitted(tmp_path) -> None:
+    (tmp_path / "2026-08-01.yaml").write_text(
+        "snapshot_date: 2026-08-01\nnarratives: []\n", encoding="utf-8"
+    )
+    overlay = _overlay_with((), has_files=True)
+    text = render_brief(
+        _eleven_day(), date(2026, 8, 31), overlay=overlay, narratives_dir=tmp_path
+    )
+    assert TITLE_PENDING in text
+    block = text.split(TITLE_PENDING, 1)[1].lstrip("\n")
+    assert block.splitlines()[0] == EMPTY_LIST
+
+
+def test_do2_pending_no_files_brief_matches_dev_byte_for_byte() -> None:
+    """Acceptance 3: no snapshot file → 尚未生效 absent; same bytes as overlay=None."""
+    a = render_brief(_eleven_day(), date(2026, 8, 31), overlay=None)
+    b = render_brief(
+        _eleven_day(),
+        date(2026, 8, 31),
+        overlay=NarrativeOverlay(
+            snapshot=NarrativeSnapshot(snapshot_date=None, narratives=()),
+            themes=_eleven_theme_set(),
+            has_snapshot_files=False,
+        ),
+    )
+    assert a == b
+    assert TITLE_PENDING not in a
