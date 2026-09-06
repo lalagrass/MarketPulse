@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+import os
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pandas as pd
 
 from marketpulse.cli import _write_snapshot_meta, format_ops_status
 from marketpulse.data import (
+    cached_label,
     last_complete_session,
     raw_file_usable,
     should_fetch,
@@ -91,6 +93,7 @@ def test_should_fetch_holiday_before_complete_kept(tmp_path: Path) -> None:
     session = date(2026, 9, 1)
     path = tmp_path / "twse.json"
     path.write_text(json.dumps({"stat": "很抱歉，沒有符合條件的資料!"}), encoding="utf-8")
+    # mtime is "now" (after the session) → official empty / holiday, do not retry.
     assert not should_fetch(
         path,
         market="twse",
@@ -98,6 +101,52 @@ def test_should_fetch_holiday_before_complete_kept(tmp_path: Path) -> None:
         last_complete=date(2026, 9, 2),
         today=date(2026, 9, 3),
     )
+
+
+def _write_empty_twse(path: Path, mtime: datetime) -> None:
+    path.write_text(json.dumps({"stat": "很抱歉，沒有符合條件的資料!"}), encoding="utf-8")
+    ts = mtime.timestamp()
+    os.utime(path, (ts, ts))
+
+
+def test_should_fetch_retries_empty_written_before_session(tmp_path: Path) -> None:
+    session = date(2026, 9, 1)
+    path = tmp_path / "twse.json"
+    _write_empty_twse(path, datetime(2026, 8, 31, 16, 30, tzinfo=timezone.utc))
+    assert should_fetch(
+        path,
+        market="twse",
+        session=session,
+        last_complete=date(2026, 9, 2),
+        today=date(2026, 9, 3),
+    )
+
+
+def test_should_fetch_keeps_empty_written_after_session(tmp_path: Path) -> None:
+    session = date(2026, 7, 10)
+    path = tmp_path / "twse.json"
+    _write_empty_twse(path, datetime(2026, 8, 31, 16, 29, tzinfo=timezone.utc))
+    assert not should_fetch(
+        path,
+        market="twse",
+        session=session,
+        last_complete=date(2026, 9, 2),
+        today=date(2026, 9, 3),
+    )
+
+
+def test_cached_label_fetch_failed_when_mtime_before_session(tmp_path: Path) -> None:
+    session = date(2026, 9, 1)
+    path = tmp_path / "twse.json"
+    _write_empty_twse(path, datetime(2026, 8, 31, 16, 30, tzinfo=timezone.utc))
+    assert cached_label(path, "twse", session) == "fetch-failed"
+
+
+def test_cached_label_holiday_when_mtime_after_session(tmp_path: Path) -> None:
+    session = date(2026, 7, 10)
+    path = tmp_path / "twse.json"
+    _write_empty_twse(path, datetime(2026, 8, 31, 16, 29, tzinfo=timezone.utc))
+    assert cached_label(path, "twse", session) == "holiday"
 
 
 def test_should_fetch_force_and_missing(tmp_path: Path) -> None:

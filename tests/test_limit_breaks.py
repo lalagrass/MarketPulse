@@ -205,8 +205,12 @@ def test_live_bars_include_6669_on_2026_09_02() -> None:
     keyed = set(zip(hits["date"], hits["symbol"].astype(str)))
     assert (date(2026, 9, 2), "6669") in keyed
     row = hits[(hits["date"] == date(2026, 9, 2)) & (hits["symbol"] == "6669")].iloc[0]
-    assert row["return_1"] == pytest.approx(2610.0 / 7095.0 - 1)
+    # 08-31 close 7095 → 09-02 2610 was −63.2% before 09-01 was restored;
+    # with 09-01 at 7800 the same print is −66.5%. Either way it is far
+    # past ±10%. Pin the date/symbol, not a frozen prev-close.
+    assert row["return_1"] < -0.50
     assert "AI伺服器" in row["themes"]
     text = format_impossible_returns(hits)
     assert "2026-09-02  6669" in text
-    assert "-63.2%" in text
+    mag = f"{float(row['return_1']) * 100:+.1f}%"
+    assert mag in text

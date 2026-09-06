@@ -24,12 +24,18 @@ from marketpulse.calc import (
 )
 from marketpulse.baskets import compute_basket_metrics, render_basket_panel
 from marketpulse.data import (
+    EMPTY_FETCH_FAILED,
+    MAX_PREMATURE_RETRY,
     coverage_report,
     download_range,
+    download_session,
+    empty_session_verdicts,
+    format_empty_session_verdicts,
     last_complete_session,
     last_raw_attempt,
     normalize_all,
     parse_yyyymmdd,
+    premature_empty_sessions,
     read_normalized,
     validate_normalized,
     write_normalized,
@@ -270,6 +276,40 @@ def format_ops_status(
     return "\n".join(lines)
 
 
+def _retry_premature_empty(data_dir: Path, today: date) -> list[date]:
+    """B2: retry weekday raw files that were written before their session.
+
+    Appetite caps this at MAX_PREMATURE_RETRY. Above that we print the
+    list and fetch nothing — that is 012, not a silent backfill.
+    """
+    premature = premature_empty_sessions(data_dir)
+    if not premature:
+        return []
+    if len(premature) > MAX_PREMATURE_RETRY:
+        typer.echo(
+            f"premature empty sessions: {len(premature)} "
+            f"(cap {MAX_PREMATURE_RETRY}); stopping, not fetching:"
+        )
+        for session in premature:
+            typer.echo(f"  {session.isoformat()}  {EMPTY_FETCH_FAILED}")
+        return []
+    last_complete = last_complete_session(data_dir)
+    done: list[date] = []
+    for session in premature:
+        info = download_session(
+            session,
+            data_dir,
+            force=False,
+            last_complete=last_complete,
+            today=today,
+        )
+        typer.echo(f"retry {info['date']}  twse={info['twse']}  tpex={info['tpex']}")
+        if info["twse"] not in {"ok", "cached"} or info["tpex"] not in {"ok", "cached"}:
+            typer.echo(f"  {info['date']} 官方回空（重抓後仍無資料，不是休市）")
+        done.append(session)
+    return done
+
+
 def _limit_breaks(data_dir: Path, themes_path: Path) -> pd.DataFrame:
     bars, _index = read_normalized(data_dir)
     themes = load_themes(themes_path) if themes_path.exists() else None
@@ -285,6 +325,7 @@ def _run_validate(data_dir: Path, themes_path: Path | None = None) -> None:
     if path.exists():
         themes = load_themes(path)
     typer.echo(format_impossible_returns(impossible_daily_returns(bars, themes)))
+    typer.echo(format_empty_session_verdicts(empty_session_verdicts(data_dir)))
     issues = validate_normalized(bars, index)
     if issues:
         typer.echo("ISSUES:")
@@ -647,6 +688,7 @@ def refresh(
         typer.echo(f"downloaded {len(frame)} weekday requests")
     else:
         typer.echo(f"already current through {hi.isoformat()}; skip download")
+    _retry_premature_empty(data_dir, hi)
     _run_validate(data_dir, themes_path)
     snapshot = _run_analyze(data_dir, themes_path)
     if snapshot.empty:

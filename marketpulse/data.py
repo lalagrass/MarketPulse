@@ -8,7 +8,7 @@ import re
 import time
 import urllib.error
 import urllib.request
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from http.client import IncompleteRead
 from pathlib import Path
 from typing import Any
@@ -354,6 +354,20 @@ def last_complete_session(data_dir: Path) -> date | None:
     return max(sessions) if sessions else None
 
 
+def utc_mtime_date(path: Path) -> date | None:
+    """File mtime as a UTC calendar date. Used to tell 'fetched before the
+    session happened' from 'fetched after, official empty' without a
+    holiday calendar (spec 011 DO-2)."""
+    if not path.exists():
+        return None
+    return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).date()
+
+
+def fetched_before_session(path: Path, session: date) -> bool:
+    mt = utc_mtime_date(path)
+    return mt is not None and mt < session
+
+
 def should_fetch(
     path: Path,
     *,
@@ -369,7 +383,11 @@ def should_fetch(
         return False
     if last_complete is None:
         return True
-    return session >= today or session > last_complete
+    if session >= today or session > last_complete:
+        return True
+    # B2: an unusable file written before its session is a fetch failure,
+    # not a holiday. Existence alone must not freeze it forever.
+    return fetched_before_session(path, session)
 
 
 def _twse_fetch_label(payload: dict[str, Any]) -> str:
@@ -395,7 +413,48 @@ def _tpex_fetch_label(payload: dict[str, Any], session: date) -> str:
 def cached_label(path: Path, market: str, session: date) -> str:
     if raw_file_usable(path, market, session):
         return "cached"
+    if fetched_before_session(path, session):
+        return "fetch-failed"
     return "holiday"
+
+
+EMPTY_HOLIDAY = "官方休市"
+EMPTY_FETCH_FAILED = "抓取失敗"
+MAX_PREMATURE_RETRY = 3
+
+
+def empty_session_verdicts(data_dir: Path) -> list[tuple[date, str]]:
+    """Weekday raw dates where neither market is usable.
+
+    抓取失敗: at least one file's UTC mtime date is before the session
+    (we asked before the day happened). 官方休市: we asked on or after
+    the session date and the official feed was empty.
+    """
+    rows: list[tuple[date, str]] = []
+    for session in iter_raw_dates(data_dir):
+        if session.weekday() >= 5:
+            continue
+        twse_path, tpex_path = raw_paths(data_dir, session)
+        twse_ok = raw_file_usable(twse_path, "twse", session)
+        tpex_ok = raw_file_usable(tpex_path, "tpex", session)
+        if twse_ok or tpex_ok:
+            continue
+        premature = fetched_before_session(twse_path, session) or fetched_before_session(
+            tpex_path, session
+        )
+        rows.append((session, EMPTY_FETCH_FAILED if premature else EMPTY_HOLIDAY))
+    return rows
+
+
+def format_empty_session_verdicts(rows: list[tuple[date, str]]) -> str:
+    lines = [f"empty sessions: {len(rows)}"]
+    for session, verdict in rows:
+        lines.append(f"  {session.isoformat()}  {verdict}")
+    return "\n".join(lines)
+
+
+def premature_empty_sessions(data_dir: Path) -> list[date]:
+    return [d for d, verdict in empty_session_verdicts(data_dir) if verdict == EMPTY_FETCH_FAILED]
 
 
 def last_raw_attempt(data_dir: Path) -> dict[str, Any] | None:
