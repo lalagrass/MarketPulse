@@ -29,6 +29,7 @@ ENG 進 DO 的次數是 **0**。這不是優先序判斷的結果，是規則的
 | product.py / radar.py 重複的格式化層 | ENG | 2026-09-04 技術債盤點 | 十個 helper 各自處理 n/a，四種不同的 sentinel。建議在下次動到任一 renderer 時順手抽出 |
 | `radar.py` 180 行 f-string HTML | ENG | 2026-09-04 技術債盤點 | 含內嵌 CSS，且插值未跳脫。建議拆出 `radar.css` 並過 `html.escape()` |
 | radar 表格 `Momentum` 欄沒有欄寬 | ENG | 009 驗收 | 009 DO-3.1 只給 `敘事` 補了右側空白（最後一欄，畫面零改變），真正的病灶是 `Momentum` 標籤長度 4–9 讓 `敘事` 欄左緣浮動。修它會動到 `--no-narratives` 表頭，需一併決定 |
+| `scripts/acceptance-check.sh` 驗收機械項自動化 | ENG | 2026-09-06 skill retro | 規劃端每輪手工重跑同一組 grep：釘住的函式 diff 是否為空、測試名有無目視宣稱詞、evidence 有無真的 `N passed in Ns` 行、每個驗收條件代號有無對應輸出。**「逐字元相同」這條驗收句型連續出現在 003–010 共 8 份 spec**。官方判準：必須每次發生、不需判斷 → 確定性腳本／hook，不是 skill、不是靠模型自律 |
 | radar 新鮮度改成「距今差幾個交易日」 | 使用 | 010 驗收 | **010 DO-2 的洞，責任在規劃端。**`caught_up` 比的是 `last_raw_attempt.date == as_of`，而 `last_raw_attempt`（`data.py:401`）讀的是 `data/raw/` 最新那一天——結構上偵測不到「根本沒跑過 refresh」。repo 目前無處拿 `date.today()` 比對，需要一個交易日概念，不是純接線 |
 | `DISPERSION_PCT_DIRECTION` 措辭「名次越擠」不準 | 使用 | 010 驗收 | `dispersion` 是 top-half 減 bottom-half 的平均 RS20（`quality.py:71`），量的是強弱差距、單位百分點；名次永遠 1..11 不會擠。改成「族群之間的強弱差距越小」。一行 |
 | momentum 標籤重做，且必須可還原 | 使用 | 010 拍板 4 | D16 收窄後的第一個受約束項目：讀者要能從同一列可見數字還原出標籤，否則改成不顯示。物證見 `010-report.md` 第 6 節 |
@@ -59,6 +60,26 @@ composite、IBD RS Rating、12−1、residual momentum、Elo 皆然）。004 的
 （k=1/+34.4σ → k=5/+25.4σ → k=20/+2.84σ）強化「問題在尺度不在統計量」。
 除非 as-of 成分重測翻轉 k=20 讀法，否則不重開「換 rank」討論。sprint 005 改買
 前向 Rank-IC 物證，不換 primary。
+
+### 開發流程要不要再加 skill（2026-09-06 評估，結論：不加）
+
+**記錄在此是為了避免日後重複討論。**
+
+官方判準（<https://code.claude.com/docs/en/skills>）：
+「當你一直複製貼上同一套指令／checklist，或 `CLAUDE.md` 裡某段已經從**事實**長成
+**程序**時，才該轉成 skill。」另建議 `SKILL.md` 保持在 500 行以下。
+
+| 候選 | 判定 | 理由 |
+|---|---|---|
+| 實作端專屬 skill | **不加** | `CLAUDE.md` 的「Working a Sprint Spec」的確是程序不是事實，符合官方的轉換訊號**的一半**——但另一半是「只有時才相關」。這個 repo 每一次 session 都是 sprint 工作，所以它永遠相關，留在常駐檔裡是對的 |
+| 引用 `engineering:*` 內建 skill（code-review／tech-debt／testing-strategy／architecture） | **不引用** | 四個都跟現有機制正面重疊：驗收＝sprint skill 階段 0；技術債＝backlog 的 ENG 保留格；最小測試清單＝contract §9；ADR＝規則帳（且規則帳多了「重看日期」）。引進來會製造第二個真理來源，而 `CLAUDE.md` 明文規定 source of truth 的順序 |
+| 收工前強制跑 `pytest` 的 Stop hook | **不加** | 官方確實建議「必須每次發生」的事用 Stop hook（exit 2 擋住收工）。但**起因填不出來**：000–010 每一份 evidence 都有真實的 `N passed in Ns` 行，沒有一輪漏跑或謊報。按本專案自己的標準，沒有物證就不加規則 |
+| 把驗收的機械檢查寫成腳本 | **加**，見待排 | 這一項有物證（8 份 spec 同一句型、每輪手工重跑同一組 grep），且屬「必須每次發生、不需判斷」，官方判準指向確定性腳本而非 skill |
+| 拆 `marketpulse-sprint` skill 成多檔（progressive disclosure） | **先不拆，標觸發條件** | 現在 389 行／官方上限 500 行。**觸發條件：**哪一輪出現「skill 裡有一條沒被執行，因為讀的人漏掉了」，那時再把階段 4 的 spec 樣板與規則帳慣例移進 `references/` |
+
+**現況尺寸（2026-09-06）：**`CLAUDE.md` 344 行、`docs/coding-contract.md` 310 行、
+`SKILL.md` 389 行。官方對「過度囉唆的 `CLAUDE.md`」的建議是**修剪或轉成 hook**，
+不是升級成 skill——記在這裡，下次覺得「該再寫一份文件」時先回頭看這一行。
 
 ### ~~Sprint 004 已排入~~（2026-09-06 已併入 `dev@42c3522`）
 
@@ -178,6 +199,8 @@ tpex   351 檔   20250501 → 20260903      ← 少 89 天
 
 ## 修訂紀錄
 
+- 2026-09-06 skill retro：新增「開發流程要不要再加 skill」盤點（結論：不加 skill，
+  加一支驗收檢查腳本）。待排新增 `scripts/acceptance-check.sh`。
 - 2026-09-06 sprint 010 驗收：三項全數通過，併入 `dev@874302d`，搬到「已完成」。
   新增待排四項——radar 新鮮度改「距今差幾個交易日」（DO-2 的洞，規劃端造成）、
   `DISPERSION_PCT_DIRECTION` 措辭、momentum 重做且必須可還原（D16）、
