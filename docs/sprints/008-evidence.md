@@ -435,3 +435,214 @@ dates" test with its output; item 3 has the header + rule strings.
    are absent when there are no narratives. This sprint chose byte-identity
    for the no-narratives path. Needs a PO ruling if the always-on `（無）`
    behaviour was the intent.
+   → **Superseded by addendum A below** (PO chose the third path: gate on
+   whether `narratives/` holds a file).
+
+---
+
+# Addendum — post-acceptance补做 (2026-09-06)
+
+Same branch `sprint/008-theme-ids`, not merged. Commits:
+
+| item | hash | subject |
+|---|---|---|
+| A | `52a1f9fd9da7385a14b44b963f6b0e2795738409` | fix(product): addendum A — gate the three new blocks on "narratives/ has a file", not on PIT |
+| B | `<this evidence commit>` | run `refresh`, report real output (no code change) |
+
+`uv run pytest` after A: `199 passed` (was 196; +3 addendum-A tests).
+`uv run pytest` after B (`refresh` added 2026-09-04 data): `199 passed`.
+
+## A — gate on "narratives/ has a snapshot file"
+
+`NarrativeOverlay` gains `has_snapshot_files: bool`; `_load_overlay` sets it
+from `narratives.has_snapshot_files(narratives_dir)`
+(`bool(_snapshot_files(dir))`, and `_snapshot_files` now guards a missing dir
+explicitly). The three blocks in `render_brief` /
+`render_gap_lists` gate on `overlay.has_snapshot_files` instead of
+`overlay.snapshot.narratives`.
+
+### Acceptance 1 — empty dir / nonexistent dir → byte-identical to dev@051798b
+
+`render` via each tree's own `cli._load_overlay`, as_of=2026-09-03, real null
+baseline, `narratives_dir` pointed at an empty dir, then at a missing path:
+
+```text
+                       brief.txt      radar.txt            radar.html
+empty dir              IDENTICAL      differs: 1 line*     IDENTICAL
+nonexistent dir        IDENTICAL      differs: 1 line*     IDENTICAL
+```
+
+`* ` the one differing radar-ASCII line is the separator rule, `114`→`110` —
+that is **DO-3 F3** (committed in `972a127`, accepted in `008-report.md`
+第一節), not an addendum-A change. Addendum A touches `product.py` /
+`cli.py` / `narratives.py` only; `radar.py` is untouched, and the diff is
+identical before and after `52a1f9f`. `--no-narratives` radar ASCII + HTML
+stay byte-identical to dev (F3 keeps the off-value at `100`).
+
+sha1 (as_of=2026-09-03, empty-dir render):
+
+| file | sha1 (both dev@051798b and sprint/008) |
+|---|---|
+| brief | `99f9d442ac021449a39672a83810cca4a5ca0896` |
+| radar HTML | `d70e6d353e133fdc8d4873d5fd8f21fef1b22105` |
+
+### Acceptance 2 — file present, PIT empty → three headers, each `（無）`
+
+Real `narratives/` (has 09-04 + 09-06 files), as_of=2026-09-03 (predates
+both), real CLI render:
+
+```text
+強但沒人講
+光通訊/CPO  #1
+散熱/液冷  #2
+高速材料/CCL  #3
+
+有人講但弱
+（無）
+
+分類外代號
+（無）
+
+歷史回放使用現行族群定義，用來把過去的輪動畫清楚，不代表當時已知這份名單。
+Rank is relative leadership over time; it does not prove capital flowed from A to B.
+
+故事進度
+（無）
+
+最近事件
+（無）
+
+到期重看
+（無）
+
+條件型（無法判斷是否到期）
+（無）
+```
+
+`分類外代號` / `故事進度` / `最近事件` all present, each `（無）`
+(`故事進度` is one `（無）` line, not zero lines). Placement unchanged.
+
+### Acceptance 3 — `--no-narratives` unchanged
+
+Real CLI `brief --no-narratives` / `radar --no-narratives` (sprint/008)
+vs `dev@051798b` render, same inputs: brief, radar ASCII, radar HTML all
+three diffs empty.
+
+### Acceptance 4 — tests for the three states
+
+`tests/test_product.py`:
+- `test_addendum_a_state1_no_files_blocks_absent` (overlay=None and
+  `has_snapshot_files=False`)
+- `test_addendum_a_state1_empty_overlay_matches_no_overlay_byte_for_byte`
+- `test_addendum_a_state2_files_present_pit_empty_headers_with_placeholder`
+- state 3 (file present, PIT non-empty) — the existing
+  `test_do2_brief_shows_story_progress_between_lists_and_revisit` and the
+  DO-1 brief tests, all now carrying `has_snapshot_files=True`.
+
+## B — `uv run marketpulse refresh`, real output (not counterfactual)
+
+```text
+$ uv run marketpulse refresh
+2026-09-04  twse=ok  tpex=ok
+downloaded 1 weekday requests
+sessions: 408  2024-12-27 → 2026-09-04
+...
+wrote data/snapshots/theme_daily.parquet  rows=4488  themes=11
+```
+
+2026-09-04 (Fri) fetched fine; 09-05/09-06 are the weekend, no session.
+
+### B.2 — as_of and which narrative file
+
+- real `brief` as_of = **2026-09-04**
+- `load_as_of(2026-09-04, narratives/)` → **`narratives/2026-09-04.yaml`**
+  (`snapshot_date` 2026-09-04). All three narratives: `stage=open` (field
+  absent in that file → default), **`theme_ids=()`**, `named_symbols` =
+  `asic_xpu:['2454']`, `nvhbm:['2330']`, `optical_cpo:[]`.
+
+### B.1 — real brief narrative sections (as_of=2026-09-04)
+
+```text
+強但沒人講
+光通訊/CPO  #1
+散熱/液冷  #2
+高速材料/CCL  #3
+
+有人講但弱
+（無）
+
+分類外代號
+asic_xpu · 2454
+
+故事進度
+asic_xpu · open · 1代號 · —
+nvhbm · open · 1代號 · —
+optical_cpo · open · 0代號 · —
+
+最近事件
+（無）
+
+到期重看
+（無）
+
+條件型（無法判斷是否到期）
+（無）
+```
+
+Real radar `敘事` column (as_of=2026-09-04):
+
+```text
+Sector                    1D       5D      20D     RS20  Breadth  Volume  Rank R5·R20·R60  Rot  Momentum  敘事
+--------------------------------------------------------------------------------------------------------------
+ 光通訊/CPO             +3.2%    +5.4%   +29.7%   +24.8%    10/10    1.2x  2·#1·4           →    Stable  —
+ 散熱/液冷              +5.4%   +10.3%   +20.8%   +15.9%      5/5    0.8x  1·#2·2           →    Strong  —
+ 高速材料/CCL           +2.8%    -3.5%   +14.8%   +10.0%      2/4    0.5x  8·#3·1           →    Weakening  —
+ 被動元件               +8.7%    +4.1%   +11.7%    +6.8%      5/7    1.0x  4·#4·11          ↑↑   Improving  —
+ 先進製程               +2.0%    +1.1%    +7.9%    +3.0%      5/6    0.8x  5·#5·3           ↓    Weakening  2026-09-04
+ 重電                   +1.4%    -3.0%    +6.4%    +1.5%      6/7    0.5x  7·#6·7           ↑    Weakening  —
+ PCB                    +0.2%    -7.2%    +5.3%    +0.5%      3/6    1.5x  11·#7·9          ↓↓   Weakening  —
+ 半導體測試/測試介面    +0.6%    +5.3%    +1.3%    -3.5%      3/5    0.8x  3·#8·8           ↑    Improving  —
+ 記憶體                 +1.9%    -4.1%    +1.1%    -3.7%      2/7    0.7x  9·#9·5           ↓↓   Weakening  —
+ AI電力/電源            +1.3%    -1.7%    -0.4%    -5.2%      1/5    0.7x  6·#10·10         →    Weak  —
+ AI伺服器               +3.4%    -6.5%    -1.5%    -6.3%     7/10    1.4x  10·#11·6         →    Weak  —
+```
+
+Only `先進製程` (foundry_advanced) lights up, dated `2026-09-04` — `nvhbm`
+names `2330`, which is in that theme. Every other row is `—`.
+
+### B.3 — expected effects, one by one
+
+| 預期 | 實際 | |
+|---|---|---|
+| as_of 變成 2026-09-04 | as_of = 2026-09-04 | ✓ |
+| `load_as_of` 拿到 `narratives/2026-09-04.yaml` | 是（`snapshot_date` 2026-09-04） | ✓ |
+| `optical_cpo` **仍然**出現在「強但沒人講」（theme_ids 只在 09-06 檔） | `光通訊/CPO #1` 在「強但沒人講」；09-04 檔 `theme_ids=()` | ✓ 與預期一致 |
+| `分類外代號` 的 `asic_xpu · 2454` 亮起來 | `分類外代號` → `asic_xpu · 2454` | ✓ |
+| 先進製程 `敘事` 欄亮起來（`nvhbm` 的 2330 → foundry_advanced） | radar 先進製程列 `敘事` = `2026-09-04`；其餘全 `—` | ✓ |
+
+### B.3 — effects that did NOT appear, and why (all correct, no code touched)
+
+- **`故事進度` 三則的「上次變動」全是 `—`.** `story_last_changed` needs ≥2 PIT
+  snapshot versions; only `narratives/2026-09-04.yaml` has `snapshot_date <=`
+  2026-09-04, so `history()` returns one version → `—`. The 09-06 file (with
+  branches / log / `theme_ids` / `stage=mapped`) is invisible until
+  2026-09-07 price data lands (F7's "週末寫的 narrative 看不到").
+- **`最近事件` → `（無）`.** The 09-04 file carries no `log` entries; the
+  EP694 log lines are in the 09-06 file.
+- **`到期重看` / 條件型 → `（無）`.** The 09-04 file carries no `revisit`
+  field (it predates `REVISIT_REQUIRED_FROM = 2026-09-06`, so it is not
+  required and not present).
+- **`有人講但弱` → `（無）`.** `nvhbm`'s 2330 covers `foundry_advanced`, but
+  that theme is rank #5 and `weak_rank_threshold(11) = 6`, so #5 is not weak.
+- **`optical_cpo` shows `0代號` in `故事進度`.** In the 09-04 file it has no
+  `named_symbols` and no `theme_ids`.
+- **DO-1's headline effect (optical_cpo leaving 強但沒人講) is still not
+  visible** on real output, and will not be until 2026-09-07 data lands so
+  `as_of` can reach the 09-06 snapshot. This matches F7 exactly and the
+  user's stated expectation; no code or data was changed to force it.
+
+### B.4 — data availability
+
+2026-09-04 TWSE + TPEx both fetched (`twse=ok tpex=ok`). No missing data, no
+retry, no synthesised values. `data/` and `reports/radar.html` remain
+gitignored (untracked), unchanged tracking state.
