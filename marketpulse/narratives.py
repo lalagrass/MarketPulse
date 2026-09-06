@@ -54,11 +54,15 @@ DEFAULT_NARRATIVES_DIR = Path("narratives")
 # Display copy locked by spec 007. Do not rewrite from the numbers (D10).
 TITLE_STRONG_UNCOVERED = "強但沒人講"
 TITLE_COVERED_WEAK = "有人講但弱"
+TITLE_REVISIT_DUE = "到期重看"
+TITLE_REVISIT_CONDITIONAL = "條件型（無法判斷是否到期）"
 NARRATIVE_COL_HEADER = "敘事"
 NARRATIVE_MISSING = "—"
 EMPTY_LIST = "（無）"
 GAP_LIST_LIMIT = 5
+CLAIM_PREVIEW_LEN = 30
 STRONG_RANK_MAX = 3
+REVISIT_SEP = " · "
 
 # `revisit` is required — a story with no date to come back to rots quietly
 # (sprint 004 DO-1, mirrors the skill's UNKNOWN rule). Snapshots written
@@ -366,3 +370,56 @@ def theme_mention_dates(
             if named & theme_members:
                 dates[theme_id] = snapshot.snapshot_date
     return dates
+
+
+def parse_revisit_date(revisit: str) -> date | None:
+    """ISO date or nothing. Do not parse natural language (spec 007 DO-2)."""
+    text = (revisit or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _claim_preview(text: str, n: int = CLAIM_PREVIEW_LEN) -> str:
+    return " ".join((text or "").split())[:n]
+
+
+def render_revisit_due(snapshot: NarrativeSnapshot, as_of: date) -> str:
+    """Due-revisit block. Read-only: does not write narratives/ or change stage."""
+    due_lines: list[str] = []
+    cond_lines: list[str] = []
+    for narrative in snapshot.narratives:
+        parsed = parse_revisit_date(narrative.revisit)
+        if parsed is None:
+            if (narrative.revisit or "").strip():
+                cond_lines.append(
+                    f"{narrative.narrative_id}{REVISIT_SEP}{narrative.revisit.strip()}"
+                )
+            continue
+        if parsed > as_of:
+            continue
+        if narrative.branches:
+            for branch in narrative.branches:
+                due_lines.append(
+                    f"{narrative.narrative_id}{REVISIT_SEP}"
+                    f"{branch.branch_id}{REVISIT_SEP}"
+                    f"{parsed.isoformat()}{REVISIT_SEP}"
+                    f"{_claim_preview(branch.claim)}"
+                )
+        else:
+            due_lines.append(
+                f"{narrative.narrative_id}{REVISIT_SEP}"
+                f"{NARRATIVE_MISSING}{REVISIT_SEP}"
+                f"{parsed.isoformat()}{REVISIT_SEP}"
+                f"{_claim_preview(narrative.note or narrative.name)}"
+            )
+
+    def _block(title: str, lines: list[str]) -> list[str]:
+        return [title, *(lines if lines else [EMPTY_LIST]), ""]
+
+    parts = _block(TITLE_REVISIT_DUE, due_lines)
+    parts.extend(_block(TITLE_REVISIT_CONDITIONAL, cond_lines))
+    return "\n".join(parts)

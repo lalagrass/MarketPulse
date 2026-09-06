@@ -9,10 +9,18 @@ import pytest
 from marketpulse.narratives import (
     COVERAGE_UNCOVERED,
     COVERAGE_UNKNOWN,
+    EMPTY_LIST,
     STAGE_OPEN,
+    TITLE_REVISIT_CONDITIONAL,
+    TITLE_REVISIT_DUE,
+    Branch,
+    Narrative,
+    NarrativeSnapshot,
     history,
     load_as_of,
     load_as_of_lenient,
+    parse_revisit_date,
+    render_revisit_due,
     theme_mention_dates,
     weak_rank_threshold,
 )
@@ -488,3 +496,93 @@ def test_load_as_of_lenient_missing_dir_is_empty(tmp_path: Path) -> None:
     assert error is None
     assert snapshot.narratives == ()
     assert snapshot.snapshot_date is None
+
+
+# ── sprint 007 DO-2: revisit due (read-only) ──
+
+
+def _fingerprint(dir_: Path) -> dict[str, tuple[int, bytes]]:
+    out: dict[str, tuple[int, bytes]] = {}
+    for path in sorted(dir_.glob("*.yaml")):
+        st = path.stat()
+        out[path.name] = (st.st_mtime_ns, path.read_bytes())
+    return out
+
+
+def _narrative(
+    nid: str,
+    *,
+    revisit: str,
+    claim: str = "claim text here",
+    branches: tuple[Branch, ...] = (),
+    note: str = "note",
+) -> Narrative:
+    return Narrative(
+        narrative_id=nid,
+        name=nid,
+        first_noted=date(2026, 9, 1),
+        source="self",
+        source_ref="x",
+        stance="new",
+        named_symbols=(),
+        inferred_symbols=(),
+        note=note,
+        revisit=revisit,
+        branches=branches,
+    )
+
+
+def test_parse_revisit_date_iso_only_no_nlp() -> None:
+    assert parse_revisit_date("2026-10-15") == date(2026, 10, 15)
+    assert parse_revisit_date("2026-10-15 或 Broadcom 下一次財報電話會議（以先到者為準）") is None
+    assert parse_revisit_date("台積電 2026-10 法說") is None
+    assert parse_revisit_date("2026-10-01；若 optical_cpo 主題 rank 跌出前 3 則提前重評") is None
+    assert parse_revisit_date("") is None
+
+
+def test_render_revisit_due_date_type_and_conditional() -> None:
+    snap = NarrativeSnapshot(
+        snapshot_date=date(2026, 9, 6),
+        narratives=(
+            _narrative(
+                "due_one",
+                revisit="2026-09-01",
+                branches=(
+                    Branch("b1", "this claim is definitely longer than thirty chars", ("1",), "w", "live"),
+                ),
+            ),
+            _narrative("future_one", revisit="2026-12-01"),
+            _narrative("cond_one", revisit="Broadcom 下一次財報電話會議"),
+        ),
+    )
+    text = render_revisit_due(snap, date(2026, 9, 6))
+    assert TITLE_REVISIT_DUE in text
+    assert TITLE_REVISIT_CONDITIONAL in text
+    due, cond = text.split(TITLE_REVISIT_CONDITIONAL, 1)
+    assert "due_one · b1 · 2026-09-01 · this claim is definitely longe" in due
+    assert "future_one" not in due
+    assert "cond_one · Broadcom 下一次財報電話會議" in cond
+    assert "future_one" not in cond
+
+
+def test_render_revisit_due_empty_prints_placeholder() -> None:
+    snap = NarrativeSnapshot(snapshot_date=None, narratives=())
+    text = render_revisit_due(snap, date(2026, 9, 6))
+    assert TITLE_REVISIT_DUE in text
+    assert TITLE_REVISIT_CONDITIONAL in text
+    due, cond = text.split(TITLE_REVISIT_CONDITIONAL, 1)
+    assert EMPTY_LIST in due
+    assert EMPTY_LIST in cond
+
+
+def test_revisit_due_does_not_change_narratives_mtime_or_bytes() -> None:
+    """spec 007 DO-2 acceptance 3. Named so evidence can point at it."""
+    n_dir = REPO_ROOT / "narratives"
+    before = _fingerprint(n_dir)
+    snap = load_as_of(date(2026, 9, 6), n_dir)
+    render_revisit_due(snap, date(2026, 9, 6))
+    render_revisit_due(snap, date(2026, 12, 31))
+    load_as_of_lenient(date(2026, 9, 6), n_dir)
+    after = _fingerprint(n_dir)
+    assert after == before
+    assert before, "narratives/ should not be empty"

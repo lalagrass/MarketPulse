@@ -11,6 +11,8 @@ from marketpulse.quality import HORIZON_FOOTNOTE
 from marketpulse.narratives import (
     EMPTY_LIST,
     TITLE_COVERED_WEAK,
+    TITLE_REVISIT_CONDITIONAL,
+    TITLE_REVISIT_DUE,
     TITLE_STRONG_UNCOVERED,
     Narrative,
     NarrativeOverlay,
@@ -397,6 +399,8 @@ def test_brief_show_narratives_false_ignores_overlay_byte_identical() -> None:
     assert off_none == off_overlay
     assert TITLE_STRONG_UNCOVERED not in off_none
     assert TITLE_COVERED_WEAK not in off_none
+    assert TITLE_REVISIT_DUE not in off_none
+    assert TITLE_REVISIT_CONDITIONAL not in off_none
     on = render_brief(snap, date(2026, 8, 31), show_narratives=True, overlay=overlay)
     assert TITLE_STRONG_UNCOVERED in on
     assert off_none != on
@@ -427,3 +431,77 @@ def test_brief_empty_block_is_not_omitted() -> None:
     weak_block = text.split(TITLE_COVERED_WEAK, 1)[1]
     first = weak_block.strip().splitlines()[0]
     assert first == EMPTY_LIST
+
+
+def test_brief_ends_with_revisit_due_and_conditional() -> None:
+    themes = ThemeSet(
+        classification_version="test",
+        taxonomy_frozen_at="2026-01-01",
+        notes="",
+        themes=(Theme("t06", "主題六", ("S06",)),),
+    )
+    overlay = NarrativeOverlay(
+        snapshot=NarrativeSnapshot(
+            snapshot_date=date(2026, 8, 31),
+            narratives=(
+                Narrative(
+                    narrative_id="due_n",
+                    name="due_n",
+                    first_noted=date(2026, 8, 1),
+                    source="self",
+                    source_ref="x",
+                    stance="new",
+                    named_symbols=("S06",),
+                    inferred_symbols=(),
+                    note="a note",
+                    revisit="2026-08-30",
+                ),
+                Narrative(
+                    narrative_id="cond_n",
+                    name="cond_n",
+                    first_noted=date(2026, 8, 1),
+                    source="self",
+                    source_ref="x",
+                    stance="new",
+                    named_symbols=(),
+                    inferred_symbols=(),
+                    note="",
+                    revisit="Broadcom 下一次財報電話會議",
+                ),
+            ),
+        ),
+        themes=themes,
+    )
+    text = render_brief(_eleven_day(), date(2026, 8, 31), overlay=overlay)
+    assert text.index(TITLE_STRONG_UNCOVERED) < text.index(TITLE_REVISIT_DUE)
+    assert TITLE_REVISIT_DUE in text
+    assert TITLE_REVISIT_CONDITIONAL in text
+    assert "due_n · — · 2026-08-30 · a note" in text
+    assert "cond_n · Broadcom 下一次財報電話會議" in text
+
+
+def test_brief_render_does_not_change_narratives_mtime_or_bytes() -> None:
+    """spec 007 DO-2 acceptance 3 via the brief renderer, not refresh."""
+    from pathlib import Path
+
+    n_dir = Path(__file__).resolve().parents[1] / "narratives"
+    before = {
+        p.name: (p.stat().st_mtime_ns, p.read_bytes()) for p in sorted(n_dir.glob("*.yaml"))
+    }
+    themes = ThemeSet(
+        classification_version="test",
+        taxonomy_frozen_at="2026-01-01",
+        notes="",
+        themes=(Theme("t01", "主題一", ("S01",)),),
+    )
+    from marketpulse.narratives import load_as_of
+
+    overlay = NarrativeOverlay(
+        snapshot=load_as_of(date(2026, 9, 6), n_dir),
+        themes=themes,
+    )
+    render_brief(_eleven_day(), date(2026, 8, 31), overlay=overlay)
+    after = {
+        p.name: (p.stat().st_mtime_ns, p.read_bytes()) for p in sorted(n_dir.glob("*.yaml"))
+    }
+    assert after == before

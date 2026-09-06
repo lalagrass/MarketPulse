@@ -19,6 +19,8 @@ from marketpulse.narratives import (
     TITLE_COVERED_WEAK,
     TITLE_STRONG_UNCOVERED,
     NarrativeOverlay,
+    NarrativeSnapshot,
+    render_revisit_due,
     theme_mention_dates,
     weak_rank_threshold,
 )
@@ -314,6 +316,12 @@ def render_brief(
     if "MISSING_DATA" in statuses:
         lines.extend([MISSING_NOTE, ""])
     lines.extend([REPLAY_DISCLOSURE, RANK_DISCLOSURE])
+    if show_narratives:
+        narrative_snap = (
+            overlay.snapshot if overlay is not None else NarrativeSnapshot(None, ())
+        )
+        lines.append("")
+        lines.append(render_revisit_due(narrative_snap, as_of).rstrip("\n"))
     return "\n".join(lines) + "\n"
 
 
