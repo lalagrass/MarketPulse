@@ -31,11 +31,13 @@ from marketpulse.product import (
     STATE_LAGGING,
     STATE_LEADING,
     STATE_WEAKENING,
+    _mention_lookup,
     brief_state,
     chart_window,
     effective_rank_period,
     format_end_label,
     render_brief,
+    render_gap_lists,
     render_timeline,
     status_mark,
 )
@@ -386,6 +388,70 @@ def test_brief_gap_lists_covered_and_uncovered() -> None:
     assert "主題六  #6" in weak
     assert "主題十一  #11" in weak
     assert "主題五  #5" not in weak  # covered would need rank >= 6; t05 is uncovered anyway
+
+
+# ── spec 010 DO-3.1: gap lists use overlay.mention_dates, like 敘事 ──
+
+
+def _eleven_themes() -> ThemeSet:
+    return ThemeSet(
+        classification_version="test",
+        taxonomy_frozen_at="2026-01-01",
+        notes="",
+        themes=tuple(Theme(f"t{i:02d}", f"主題{i}", (f"S{i:02d}",)) for i in range(1, 12)),
+    )
+
+
+def test_c1_covered_weak_uses_every_snapshot_mention_not_just_current_pit() -> None:
+    """C1: a theme named in an earlier snapshot but not the latest PIT one,
+    ranked at/under weak_rank_threshold, belongs in 有人講但弱. The single-PIT
+    lookup (mention_dates absent) does not see it; overlay.mention_dates does."""
+    themes = _eleven_themes()
+    day = _eleven_day()  # t11 has rank 11; weak_rank_threshold(11) == 6
+    latest_pit = NarrativeSnapshot(snapshot_date=date(2026, 9, 6), narratives=())
+
+    with_scan = NarrativeOverlay(
+        snapshot=latest_pit,
+        themes=themes,
+        mention_dates={"t11": date(2026, 9, 1)},
+    )
+    without_scan = NarrativeOverlay(snapshot=latest_pit, themes=themes)
+
+    weak_with = render_gap_lists(day, with_scan).split(TITLE_COVERED_WEAK, 1)[1]
+    weak_without = render_gap_lists(day, without_scan).split(TITLE_COVERED_WEAK, 1)[1]
+    assert "主題十一  #11" in weak_with
+    assert "主題十一  #11" not in weak_without
+
+
+def test_c2_mention_dates_none_falls_back_to_single_pit_snapshot() -> None:
+    """C2: with overlay.mention_dates absent, _mention_lookup is exactly the
+    pre-change single-snapshot theme_mention_dates() — byte-identical output."""
+    from marketpulse.narratives import theme_mention_dates
+
+    themes = _eleven_themes()
+    snap = NarrativeSnapshot(
+        snapshot_date=date(2026, 9, 6),
+        narratives=(
+            Narrative(
+                narrative_id="n_top",
+                name="n_top",
+                first_noted=date(2026, 9, 6),
+                source="self",
+                source_ref="x",
+                stance="new",
+                named_symbols=("S01",),
+                inferred_symbols=(),
+                note="",
+            ),
+        ),
+    )
+    overlay = NarrativeOverlay(snapshot=snap, themes=themes)  # no mention_dates
+    assert _mention_lookup(overlay) == theme_mention_dates(snap, themes)
+
+    day = _eleven_day()
+    rendered = render_gap_lists(day, overlay)
+    # t11 is in no snapshot → not covered → not in the weak list, same as dev
+    assert "主題十一  #11" not in rendered.split(TITLE_COVERED_WEAK, 1)[1]
 
 
 def test_brief_show_narratives_false_ignores_overlay_byte_identical() -> None:

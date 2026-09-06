@@ -229,8 +229,17 @@ def format_end_label(rec) -> str:
 
 
 def _mention_lookup(overlay: NarrativeOverlay | None) -> dict[str, date | None]:
+    """`強但沒人講` / `有人講但弱` use the same "被講過" definition as the
+    敘事 column beside them (spec 010 DO-3.1). That column reads
+    overlay.mention_dates — the every-snapshot scan filled by
+    cli.theme_last_mention_dates — so this does too, and only falls back to
+    the single-PIT-snapshot theme_mention_dates() when mention_dates is
+    absent (a hand-built overlay in a test), matching radar._narrative_date_label.
+    """
     if overlay is None:
         return {}
+    if overlay.mention_dates is not None:
+        return dict(overlay.mention_dates)
     return theme_mention_dates(overlay.snapshot, overlay.themes)
 
 

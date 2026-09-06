@@ -1050,6 +1050,141 @@ def test_do2_pending_real_narratives_dir_as_of_latest_price_day() -> None:
     assert all(d > as_of for d, _ in found)
 
 
+# ── spec 010 DO-3.2: overflow notes for 尚未生效 / 最近事件 ──
+
+
+_PENDING_EMPTY = "snapshot_date: {d}\nnarratives: []\n"
+
+
+def _events_snap(n_events: int) -> str:
+    head = (
+        "snapshot_date: 2026-09-04\n"
+        "narratives:\n"
+        "  - narrative_id: s1\n"
+        "    name: S1\n"
+        "    first_noted: 2026-09-01\n"
+        "    source: self\n"
+        "    source_ref: x\n"
+        "    stance: new\n"
+        "    named_symbols: []\n"
+        "    inferred_symbols: []\n"
+        "    note: n/a\n"
+        "    log:\n"
+    )
+    days = ["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05"]
+    body = "".join(
+        f"      - date: {days[i]}\n"
+        f"        source_ref: r\n"
+        f"        kind: evidence\n"
+        f"        text: event {i}\n"
+        f"        bears_on: []\n"
+        for i in range(n_events)
+    )
+    return head + body
+
+
+def test_c3_pending_snapshots_overflow_line_beyond_the_cap(tmp_path: Path) -> None:
+    """C3: exactly PENDING_LIMIT pending → no overflow line; a 4th → still 3
+    shown plus `還有 1 份`. The cap itself is unchanged."""
+    from marketpulse.narratives import PENDING_LIMIT, PENDING_OVERFLOW_NOTE, TITLE_PENDING
+
+    as_of = date(2026, 9, 4)
+    for d in ("2026-09-05", "2026-09-06", "2026-09-07"):
+        _write(tmp_path, f"{d}.yaml", _PENDING_EMPTY.format(d=d))
+    text3 = render_pending_snapshots(as_of, tmp_path)
+    shown3 = [ln for ln in text3.splitlines() if ln.startswith("2026-09-0")]
+    assert len(shown3) == PENDING_LIMIT == 3
+    assert "還有" not in text3
+
+    _write(tmp_path, "2026-09-08.yaml", _PENDING_EMPTY.format(d="2026-09-08"))
+    text4 = render_pending_snapshots(as_of, tmp_path)
+    shown4 = [ln for ln in text4.splitlines() if ln.startswith("2026-09-0")]
+    assert len(shown4) == 3  # cap unchanged
+    assert PENDING_OVERFLOW_NOTE.format(n=1) in text4
+    assert "還有 1 份" in text4
+    assert text4.splitlines()[0] == TITLE_PENDING
+    # newest-not-required: the three oldest pending are the ones shown
+    assert shown4 == ["2026-09-05 · 2026-09-05.yaml", "2026-09-06 · 2026-09-06.yaml",
+                      "2026-09-07 · 2026-09-07.yaml"]
+
+
+def test_c3_recent_events_overflow_line_beyond_the_cap(tmp_path: Path) -> None:
+    """C3, 最近事件 half: exactly RECENT_EVENTS_LIMIT log entries → no
+    overflow line; a 4th → 3 shown plus `還有 1 筆`."""
+    from marketpulse.narratives import RECENT_EVENTS_LIMIT, RECENT_EVENTS_OVERFLOW_NOTE
+
+    _write(tmp_path, "2026-09-04.yaml", _events_snap(RECENT_EVENTS_LIMIT))
+    snap3 = load_as_of(date(2026, 9, 4), tmp_path)
+    text3 = render_story_progress(snap3, date(2026, 9, 4), tmp_path)
+    recent3 = text3.split(TITLE_RECENT_EVENTS, 1)[1]
+    assert recent3.count("s1 · 2026-09-0") == 3
+    assert "還有" not in recent3
+
+    _write(tmp_path, "2026-09-04.yaml", _events_snap(RECENT_EVENTS_LIMIT + 1))
+    snap4 = load_as_of(date(2026, 9, 4), tmp_path)
+    text4 = render_story_progress(snap4, date(2026, 9, 4), tmp_path)
+    recent4 = text4.split(TITLE_RECENT_EVENTS, 1)[1]
+    assert recent4.count("s1 · 2026-09-0") == 3
+    assert RECENT_EVENTS_OVERFLOW_NOTE.format(n=1) in recent4
+    assert "還有 1 筆" in recent4
+
+
+def test_c4_do3_2_leaves_the_five_pinned_functions_untouched(tmp_path: Path) -> None:
+    """C4: DO-3.2 must not change load_as_of / theme_mention_dates /
+    theme_last_mention_dates / weak_rank_threshold /
+    out_of_classification_symbols. Behavioural guard for the git-diff-empty
+    claim in the evidence."""
+    assert [weak_rank_threshold(n) for n in (0, 1, 10, 11)] == [0, 1, 5, 6]
+
+    _write(
+        tmp_path,
+        "2026-09-02.yaml",
+        """
+        snapshot_date: 2026-09-02
+        narratives:
+          - narrative_id: early
+            name: early
+            first_noted: 2026-09-01
+            source: self
+            source_ref: x
+            stance: new
+            named_symbols: ["A01"]
+            inferred_symbols: []
+            note: n/a
+        """,
+    )
+    _write(
+        tmp_path,
+        "2026-09-06.yaml",
+        """
+        snapshot_date: 2026-09-06
+        narratives:
+          - narrative_id: later
+            name: later
+            first_noted: 2026-09-01
+            source: self
+            source_ref: x
+            stance: new
+            revisit: 2026-10-01
+            named_symbols: []
+            inferred_symbols: []
+            note: n/a
+        """,
+    )
+    themes = _themes_ab()
+    snap = load_as_of(date(2026, 9, 6), tmp_path)
+    assert snap.snapshot_date == date(2026, 9, 6)
+    assert tuple(n.narrative_id for n in snap.narratives) == ("later",)
+    # latest PIT snapshot mentions no theme; the earlier one mentioned t_a
+    assert theme_mention_dates(snap, themes)["t_a"] is None
+    last = theme_last_mention_dates(date(2026, 9, 6), themes, tmp_path)
+    assert last["t_a"] == date(2026, 9, 2)
+    assert last["t_b"] is None
+
+    ooc = NarrativeSnapshot(date(2026, 9, 6), (_narr("x", named=("ZZZ",)),))
+    assert out_of_classification_symbols(ooc, themes) == [("x", "ZZZ")]
+
+
 # ── sprint 009 DO-3 F5 / F6 ──
 
 
