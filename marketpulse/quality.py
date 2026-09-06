@@ -33,6 +33,32 @@ STALE_MARKER = "†"
 # Fixed B+C horizon reading (spec 005 DO-3). Locked Chinese string — do not
 # rewrite from IC / persistence magnitude (D10).
 HORIZON_FOOTNOTE = "月尺度：可偵測≠穩定；短端遠強於長端；凍結成分偏高估（D6）。"
+# spec 010 DO-1 item 3: HORIZON_FOOTNOTE carries a bare "（D6）" with nothing
+# on screen to resolve it. This line spells it out in plain language so a
+# reader does not have to open docs/product/non-goals.md. Not a verdict, not
+# a threshold — a fixed gloss, printed right after HORIZON_FOOTNOTE whenever
+# that note is printed.
+D6_GLOSS = "D6：持續性是在凍結成分股（非 as-of 成分）上量的，這個偏誤的方向是高估。"
+# spec 010 DO-1 item 2: the STALE_MARKER (†) on the persistence digit had no
+# footnote. This explains it: the whole persistence group was measured
+# through the baseline's sample_end, which is not today. {sample_end} is that
+# date when known.
+DAGGER_NOTE_TEMPLATE = (
+    "† 持續性這一組（觀測值與虛無、σ、超出次數）量到 {sample_end}"
+    "（baseline sample_end）為止，不是今天"
+)
+DAGGER_NOTE_NO_DATE = "† 持續性這一組量到 baseline sample_end 為止，不是今天"
+# spec 010 DO-1 item 4: with no usable null baseline the persistence slot used
+# to print the lone daily rank_persistence_20 — the misleading no-corroboration
+# value 008 B6 removed elsewhere. Print this instead.
+NO_BASELINE_TEXT = "無基準"
+# spec 010 DO-1 item 1: each parenthetical percentile is a position within the
+# trailing PERCENTILE_WINDOW sessions (quality.py:_percentile is
+# rolling(PERCENTILE_WINDOW).rank(pct=True)). Say so, and say which way it
+# points — no conditional wording, no threshold (D10 red line).
+PERCENTILE_WINDOW_LABEL = f"近 {PERCENTILE_WINDOW} 個交易日"
+CHURN_PCT_DIRECTION = "越高＝名次相對前一交易日洗牌越多"
+DISPERSION_PCT_DIRECTION = "越低＝族群名次越擠、當日名次差異的資訊量越低"
 NULL_BASELINE_FILENAME = "signal_quality_null.json"
 DISPLAY_NULL_K = 20  # quality_line shows persistence_20; pair with k=20 null
 NULL_METHOD_VERSION = 1
@@ -333,6 +359,18 @@ def _fmt_pct(value: object) -> str:
     return f"{int(round(float(value) * 100))}%"
 
 
+def _fmt_ordinal_pct(value: object) -> str:
+    """`第 N 百分位` for a 0..1 rolling-rank percentile (spec 010 DO-1 item 1).
+
+    Same input as _fmt_pct — the trailing-window position from _percentile —
+    just phrased as an ordinal so the parenthetical reads as a rank, not a
+    second measurement of the value beside it.
+    """
+    if value is None or pd.isna(value):
+        return "百分位 n/a"
+    return f"第 {int(round(float(value) * 100))} 百分位"
+
+
 def _fmt_pp(value: object) -> str:
     if value is None or pd.isna(value):
         return "n/a"
@@ -487,8 +525,9 @@ def quality_line(
     *,
     null_baseline: dict | None = None,
     snapshot_as_of: date | None = None,
+    oneline: bool = False,
 ) -> str:
-    """Compact signal-quality readout: numbers/percentiles plus fixed horizon note.
+    """Signal-quality readout: numbers/percentiles plus fixed horizon note.
 
     No verdict, no threshold-based label (D10 / acceptance 5) — the reader
     judges. Uses rank_persistence_20 rather than rank_persistence_1: the
@@ -503,49 +542,72 @@ def quality_line(
     rank_persistence_20 stays in market_daily.parquet; it is not printed
     here. If the entry's sample_end differs from ``snapshot_as_of`` (or
     market_row's date), appends STALE_MARKER (†) after the observed
-    persistence — the marker now means "this whole set was measured through
-    sample_end, which is not as_of". Missing file / None baseline keeps the
-    numeric line without 虛無 (the persistence slot then still uses the
-    daily value; spec 009 open question 1).
+    persistence — the marker means "this whole set was measured through
+    sample_end, which is not as_of" — and a DAGGER_NOTE line spelling that
+    out (spec 010 DO-1 item 2). With no usable baseline the persistence slot
+    prints NO_BASELINE_TEXT (`無基準`), never the lone daily value
+    (spec 010 DO-1 item 4).
 
-    Whenever ``market_row`` is present, appends HORIZON_FOOTNOTE on the next
-    line (spec 005 DO-3 default: show even without a null baseline — it is a
-    scale reading, not a null digit). Absent when market_row is None.
+    Each parenthetical percentile is written as a position within the
+    trailing PERCENTILE_WINDOW sessions, with its direction (spec 010 DO-1
+    item 1) — no conditional wording, no threshold.
+
+    Whenever ``market_row`` is present, appends HORIZON_FOOTNOTE and then
+    D6_GLOSS (spec 005 DO-3 / spec 010 DO-1 item 3). Absent when market_row
+    is None.
+
+    ``oneline`` keeps the three metric groups on one physical line instead
+    of one per line; the footnote lines are unaffected. Layout only — spec
+    010 open question 1, default expanded per its 拍板.
     """
     if market_row is None:
-        base = "持續性 n/a   換手 n/a   離散 n/a"
-        # Still allow a stale/present null marker only when there is something
-        # to attach to; without a row there is no persistence digit.
-        return base
+        # A2: no row → the original three-n/a line, nothing appended.
+        return "持續性 n/a   換手 n/a   離散 n/a"
     churn = market_row.get("rank_churn")
     churn_text = "n/a" if churn is None or pd.isna(churn) else f"{int(round(float(churn)))}"
-    churn_pct = _fmt_pct(market_row.get("rank_churn_pct"))
+    churn_seg = (
+        f"換手 {churn_text}"
+        f"（{PERCENTILE_WINDOW_LABEL}{_fmt_ordinal_pct(market_row.get('rank_churn_pct'))}"
+        f"；{CHURN_PCT_DIRECTION}）"
+    )
     dispersion_text = _fmt_pp(market_row.get("dispersion"))
-    dispersion_pct = _fmt_pct(market_row.get("dispersion_pct"))
+    dispersion_seg = (
+        f"離散 {dispersion_text}"
+        f"（{PERCENTILE_WINDOW_LABEL}{_fmt_ordinal_pct(market_row.get('dispersion_pct'))}"
+        f"；{DISPERSION_PCT_DIRECTION}）"
+    )
 
     entry = _null_entry_for_display(null_baseline, DISPLAY_NULL_K)
+    dagger_note: str | None = None
     if entry is None:
-        persistence = _fmt_corr(market_row.get("rank_persistence_20"))
-        body = (
-            f"持續性 {persistence}   "
-            f"換手 {churn_text} ({churn_pct})   "
-            f"離散 {dispersion_text} ({dispersion_pct})"
-        )
+        persistence_seg = f"持續性 {NO_BASELINE_TEXT}"
     else:
         persistence = _fmt_corr(entry.get("observed"))
         as_of = snapshot_as_of
         if as_of is None:
             as_of = _parse_iso_date(market_row.get("date"))
-        sample_end = _parse_iso_date(entry.get("sample_end") or (null_baseline or {}).get("sample_end"))
+        sample_end = _parse_iso_date(
+            entry.get("sample_end") or (null_baseline or {}).get("sample_end")
+        )
         stale = sample_end is not None and as_of is not None and sample_end != as_of
         mark = STALE_MARKER if stale else ""
-        null_text = _fmt_null_baseline(entry)
-        body = (
-            f"持續性 {persistence}{mark} {null_text}   "
-            f"換手 {churn_text} ({churn_pct})   "
-            f"離散 {dispersion_text} ({dispersion_pct})"
-        )
-    return f"{body}\n{HORIZON_FOOTNOTE}"
+        persistence_seg = f"持續性 {persistence}{mark} {_fmt_null_baseline(entry)}"
+        if stale:
+            dagger_note = (
+                DAGGER_NOTE_TEMPLATE.format(sample_end=sample_end.isoformat())
+                if sample_end is not None
+                else DAGGER_NOTE_NO_DATE
+            )
+
+    if oneline:
+        lines = [f"{persistence_seg}   {churn_seg}   {dispersion_seg}"]
+    else:
+        lines = [persistence_seg, churn_seg, dispersion_seg]
+    if dagger_note is not None:
+        lines.append(dagger_note)
+    lines.append(HORIZON_FOOTNOTE)
+    lines.append(D6_GLOSS)
+    return "\n".join(lines)
 
 
 RANK_IC_WINDOWS = (5, 20, 60)
