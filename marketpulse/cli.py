@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import webbrowser
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -209,12 +210,21 @@ def _load_overlay(
     )
 
 
-def format_ops_status(
-    data_dir: Path,
-    *,
-    chart_path: Path | None = None,
-    effective: tuple[date, date] | None = None,
-) -> str:
+@dataclass(frozen=True)
+class OpsStatus:
+    """The freshness facts `format_ops_status` prints, as data (spec 010 DO-2 /
+    open question 3). `attempt` is `last_raw_attempt`'s dict or None; `as_of`
+    is the snapshot / last-complete-session date; `caught_up` is the same
+    condition the terminal `(will retry)` suffix keys off. `render_radar_html`
+    renders its own phrasing from this so the page and the terminal state one
+    fact set."""
+
+    attempt: dict | None
+    as_of: date | None
+    caught_up: bool
+
+
+def ops_status(data_dir: Path) -> OpsStatus:
     attempt = last_raw_attempt(data_dir)
     snap_path = data_dir / "snapshots" / "theme_daily.parquet"
     as_of = last_complete_session(data_dir)
@@ -222,17 +232,32 @@ def format_ops_status(
         frame = _load_snapshot(data_dir)
         if not frame.empty:
             as_of = max(frame["date"])
+    caught_up = bool(
+        attempt is not None
+        and attempt["usable"]
+        and as_of is not None
+        and attempt["date"] == as_of
+    )
+    return OpsStatus(attempt=attempt, as_of=as_of, caught_up=caught_up)
+
+
+def format_ops_status(
+    data_dir: Path,
+    *,
+    chart_path: Path | None = None,
+    effective: tuple[date, date] | None = None,
+) -> str:
+    st = ops_status(data_dir)
     lines: list[str] = []
-    if attempt is None:
+    if st.attempt is None:
         lines.append("raw last attempt: none")
     else:
-        caught_up = bool(attempt["usable"] and as_of is not None and attempt["date"] == as_of)
-        suffix = "" if caught_up else "  (will retry)"
+        suffix = "" if st.caught_up else "  (will retry)"
         lines.append(
-            f"raw last attempt: {attempt['date'].isoformat()}  "
-            f"twse={attempt['twse']}  tpex={attempt['tpex']}{suffix}"
+            f"raw last attempt: {st.attempt['date'].isoformat()}  "
+            f"twse={st.attempt['twse']}  tpex={st.attempt['tpex']}{suffix}"
         )
-    lines.append(f"bars/snapshot as_of: {as_of.isoformat() if as_of else 'none'}")
+    lines.append(f"bars/snapshot as_of: {st.as_of.isoformat() if st.as_of else 'none'}")
     if chart_path is None or effective is None:
         lines.append("chart: skipped (no ranked rows)")
     else:
@@ -350,6 +375,7 @@ def _run_radar(
         null_baseline=_load_null_baseline(data_dir),
         show_narratives=show_narratives,
         overlay=overlay,
+        freshness=ops_status(data_dir),
     )
     return dest
 

@@ -5,8 +5,12 @@ from __future__ import annotations
 import html
 from datetime import date
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pandas as pd
+
+if TYPE_CHECKING:  # avoid a runtime import cycle (cli imports radar)
+    from marketpulse.cli import OpsStatus
 
 from marketpulse import RANK_DISCLOSURE, REPLAY_DISCLOSURE
 from marketpulse.calc import ROLE_FOLLOWER, ROLE_LAGGARD, ROLE_LEADER
@@ -364,6 +368,29 @@ def _html_evidence_item(label: str, direction: str, value: str) -> str:
     )
 
 
+def _freshness_line(freshness: "OpsStatus | None") -> str | None:
+    """One line of the ops freshness facts for the radar.html header
+    (spec 010 DO-2). Same fields `format_ops_status` prints: the data date,
+    the last raw fetch attempt with its per-market status, and — only when
+    not caught up — that a retry is pending. No new computation; renders
+    what cli.ops_status already worked out. Returns None when no freshness
+    was passed (tests / callers that don't have it), leaving the header
+    byte-identical to before."""
+    if freshness is None:
+        return None
+    as_of = getattr(freshness, "as_of", None)
+    attempt = getattr(freshness, "attempt", None)
+    caught_up = bool(getattr(freshness, "caught_up", False))
+    as_of_text = as_of.isoformat() if as_of else "none"
+    if attempt is None:
+        return f"資料到 {as_of_text} · raw last attempt: none"
+    tail = "" if caught_up else " · 尚未追上，refresh 會重試"
+    return (
+        f"資料到 {as_of_text} · raw last attempt {attempt['date'].isoformat()}"
+        f"（twse={attempt['twse']} tpex={attempt['tpex']}）{tail}"
+    )
+
+
 def render_radar_html(
     snapshot: pd.DataFrame,
     stocks: pd.DataFrame,
@@ -373,6 +400,7 @@ def render_radar_html(
     *,
     show_narratives: bool = True,
     overlay: NarrativeOverlay | None = None,
+    freshness: "OpsStatus | None" = None,
 ) -> str:
     day = radar_day(snapshot, as_of)
     rows = []
@@ -496,6 +524,12 @@ def render_radar_html(
     error_p = ""
     if show_narratives and overlay is not None and overlay.error:
         error_p = f"\n<p class='sub'>{html.escape(overlay.error)}</p>"
+    freshness_text = _freshness_line(freshness)
+    freshness_p = (
+        f'\n  <p class="sub freshness">{html.escape(freshness_text)}</p>'
+        if freshness_text
+        else ""
+    )
     return f"""<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -510,6 +544,7 @@ def render_radar_html(
   .sub {{ color: #555; margin: 0 0 16px; font-size: 0.95rem; }}
   .quality {{ font-family: "SF Mono", Menlo, monospace; font-size: 0.82rem;
              margin-bottom: 10px; white-space: pre-line; }}
+  .freshness {{ color: #444; margin: 0 0 10px; font-size: 0.85rem; }}
   .wrap {{ overflow-x: auto; }}
   table {{ border-collapse: collapse; width: 100%; font-size: 0.92rem; }}
   th, td {{ padding: 8px 10px; text-align: right; border-bottom: 1px solid #eee; }}
@@ -552,7 +587,7 @@ def render_radar_html(
 <body>
 <header id="top">
   <h1>MarketPulse</h1>
-  <p class="sub">Sector Rotation · {html.escape(as_of.isoformat())}</p>
+  <p class="sub">Sector Rotation · {html.escape(as_of.isoformat())}</p>{freshness_p}
   <p class="sub quality">{html.escape(quality_line(market_row, null_baseline=null_baseline, snapshot_as_of=as_of))}</p>
   <p class="sub">{html.escape(RADAR_NOTE)}</p>
   <p class="sub">{html.escape(RADAR_MOM_NOTE)}</p>
@@ -588,6 +623,7 @@ def write_radar_html(
     *,
     show_narratives: bool = True,
     overlay: NarrativeOverlay | None = None,
+    freshness: "OpsStatus | None" = None,
 ) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -599,6 +635,7 @@ def write_radar_html(
             null_baseline=null_baseline,
             show_narratives=show_narratives,
             overlay=overlay,
+            freshness=freshness,
         ),
         encoding="utf-8",
     )

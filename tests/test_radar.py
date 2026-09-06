@@ -469,3 +469,97 @@ def test_do3_b2_narrative_date_label_falls_back_without_mention_dates() -> None:
         themes=ThemeSet("t", "2026-01-01", "", (Theme("alpha", "Alpha", ("AAA",)),)),
     )
     assert _narrative_date_label("alpha", overlay) == "2026-09-06"
+
+
+# ── spec 010 DO-2: data freshness in radar.html ──
+
+
+def _freshness_snapshot():
+    return _rank_history_snapshot()
+
+
+def test_b1_radar_html_carries_last_raw_attempt_date_and_per_market_status() -> None:
+    """B1: the page shows the `raw last attempt` date and twse=/tpex= status
+    that format_ops_status already computes — no new calculation."""
+    from marketpulse.cli import OpsStatus
+
+    snap, dates = _freshness_snapshot()
+    fr = OpsStatus(
+        attempt={"date": date(2026, 9, 4), "twse": "ok", "tpex": "empty", "usable": False},
+        as_of=dates[-1],
+        caught_up=False,
+    )
+    page = render_radar_html(snap, pd.DataFrame(), dates[-1], freshness=fr)
+    assert "raw last attempt 2026-09-04" in page
+    assert "twse=ok" in page
+    assert "tpex=empty" in page
+    assert f"資料到 {dates[-1].isoformat()}" in page
+
+
+def test_b2_radar_html_behind_wording_only_when_not_caught_up() -> None:
+    """B2: caught_up False → the page carries the same facts as the terminal
+    plus a retry-pending note; caught_up True → no misleading behind text.
+    No freshness passed → header byte-identical to before."""
+    from marketpulse.cli import OpsStatus
+
+    snap, dates = _freshness_snapshot()
+    common = {
+        "attempt": {"date": date(2026, 9, 4), "twse": "ok", "tpex": "ok", "usable": True},
+        "as_of": dates[-1],
+    }
+    behind = render_radar_html(
+        snap, pd.DataFrame(), dates[-1], freshness=OpsStatus(**common, caught_up=False)
+    )
+    caught = render_radar_html(
+        snap, pd.DataFrame(), dates[-1], freshness=OpsStatus(**common, caught_up=True)
+    )
+    assert "尚未追上" in behind
+    assert "尚未追上" not in caught
+    for page in (behind, caught):
+        assert "raw last attempt 2026-09-04" in page  # same fact set either way
+
+    without = render_radar_html(snap, pd.DataFrame(), dates[-1])
+    assert without == render_radar_html(snap, pd.DataFrame(), dates[-1], freshness=None)
+    assert "raw last attempt" not in without
+
+
+def test_b3_format_ops_status_terminal_string_byte_for_byte(monkeypatch) -> None:
+    """B3: the string format_ops_status prints must not change. It now builds
+    on ops_status(); pin the three legacy shapes through the formatting half."""
+    from pathlib import Path
+
+    from marketpulse import cli
+
+    caught = cli.OpsStatus(
+        attempt={"date": date(2026, 9, 4), "twse": "ok", "tpex": "ok", "usable": True},
+        as_of=date(2026, 9, 4),
+        caught_up=True,
+    )
+    monkeypatch.setattr(cli, "ops_status", lambda _d: caught)
+    assert cli.format_ops_status(Path("unused")) == (
+        "raw last attempt: 2026-09-04  twse=ok  tpex=ok\n"
+        "bars/snapshot as_of: 2026-09-04\n"
+        "chart: skipped (no ranked rows)"
+    )
+
+    behind = cli.OpsStatus(
+        attempt={"date": date(2026, 9, 4), "twse": "ok", "tpex": "empty", "usable": False},
+        as_of=date(2026, 9, 3),
+        caught_up=False,
+    )
+    monkeypatch.setattr(cli, "ops_status", lambda _d: behind)
+    assert cli.format_ops_status(
+        Path("x"), chart_path=Path("reports/c.png"), effective=(date(2026, 7, 9), date(2026, 9, 3))
+    ) == (
+        "raw last attempt: 2026-09-04  twse=ok  tpex=empty  (will retry)\n"
+        "bars/snapshot as_of: 2026-09-03\n"
+        "chart: reports/c.png  effective 2026-07-09 → 2026-09-03"
+    )
+
+    none_attempt = cli.OpsStatus(attempt=None, as_of=None, caught_up=False)
+    monkeypatch.setattr(cli, "ops_status", lambda _d: none_attempt)
+    assert cli.format_ops_status(Path("x")) == (
+        "raw last attempt: none\n"
+        "bars/snapshot as_of: none\n"
+        "chart: skipped (no ranked rows)"
+    )
