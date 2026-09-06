@@ -19,7 +19,7 @@ ENG 進 DO 的次數是 **0**。這不是優先序判斷的結果，是規則的
 | 項目 | 層次 | 來源 | 備註 |
 |---|---|---|---|
 | 資料窗已拉長；**as-of 成分股**仍缺 | L1 | 2026-09-05 review | 回補與對齊樣本在 003/004 做了；D6／Q5 的 as-of 成員尚未做。單獨「再回補」不進 DO |
-| `arch.bootstrap` 取代手刻循環位移 | L1 | 2026-09-05 research | `CircularBlockBootstrap` / `StationaryBootstrap` + `optimal_block_length()`。現在的 k=20 是寫死的單一參數；block bootstrap 給信賴區間而非單一百分位。不模擬損益，不碰 R1/D2。NCSA 授權。二選一，別跟 `recombinator` 都裝（D9） |
+| `arch.bootstrap` 取代手刻循環位移 | L1 | 2026-09-05 research | `CircularBlockBootstrap` / `StationaryBootstrap` + `optimal_block_length()`。現在的 k=20 是寫死的單一參數；block bootstrap 給信賴區間而非單一百分位。不模擬損益，不碰 R1/D2。NCSA 授權。二選一，別跟 `recombinator` 都裝（D9）。**010 研究查證：8.0.0／2025-10-21 發布／仍在維護**，可行；押後的理由是它動 compute 層＋新增相依，與 010 Appetite 衝突，不是不可行 |
 | 市場層級 breadth | L1 | 2026-09-04 研究 | 現有 breadth 是族群屬性；市場層級的版本提供「這次輪動發生在寬廣還是狹窄的市場」的解讀脈絡 |
 | 除權息幅度量測 | L1 | 2026-09-04 討論 | 七八月除權息集中，未還原收盤價使高殖利率族群被系統性壓低。**先量幅度**（§8 允許 report），改方法需先改 §8 |
 | 個股層排序與呈現檢視 | L1 | 2026-09-04 | `compute_stock_metrics()` 已算好個股 RS20 與 Leader/Follower/Laggard，可能只需調整呈現 |
@@ -29,8 +29,6 @@ ENG 進 DO 的次數是 **0**。這不是優先序判斷的結果，是規則的
 | product.py / radar.py 重複的格式化層 | ENG | 2026-09-04 技術債盤點 | 十個 helper 各自處理 n/a，四種不同的 sentinel。建議在下次動到任一 renderer 時順手抽出 |
 | `radar.py` 180 行 f-string HTML | ENG | 2026-09-04 技術債盤點 | 含內嵌 CSS，且插值未跳脫。建議拆出 `radar.css` 並過 `html.escape()` |
 | radar 表格 `Momentum` 欄沒有欄寬 | ENG | 009 驗收 | 009 DO-3.1 只給 `敘事` 補了右側空白（最後一欄，畫面零改變），真正的病灶是 `Momentum` 標籤長度 4–9 讓 `敘事` 欄左緣浮動。修它會動到 `--no-narratives` 表頭，需一併決定 |
-| `尚未生效` / `最近事件` 靜默截斷 | L2 | 009 驗收 | `PENDING_LIMIT=3`、`RECENT_EVENTS_LIMIT=3` 都沒有溢出提示。第 4 份未生效快照會再次隱形，正是 DO-2 的立案理由「錯在沉默」。補「還有 N 份」 |
-| `entry is None` 時品質行印什麼 | L1 | 009 未決 1 | 目前印單日持續性且無虛無——B6 剛修掉的誤導的無旁證版。日常流程踩不到（新 clone／刪 `data/processed`／bump `NULL_METHOD_VERSION` 才會）。候選：`n/a`／固定文案「無基準」 |
 | gazetteer（`pyahocorasick` ＋ 凍結 ISIN 表）、`narrate add` | L2 | 009 spec 明確押後 | 009 Appetite 把它們推到 010：新相依＋新資料＋第二層寫入端 |
 
 ### 橫斷面動能指標盤點（2026-09-04 評估，結論：不新增）
@@ -73,6 +71,17 @@ composite、IBD RS Rating、12−1、residual momentum、Elo 皆然）。004 的
 | 前向 Rank-IC 3×3（`rank-ic`） | L1 | 買資訊；不改 primary |
 | `above_count` 全 NaN → NaN | L1 | 邊界假 0 |
 | Brief／radar B＋C 固定短註 | 使用 | 字面鎖定 |
+
+### Sprint 010 已排入（2026-09-06）
+
+**本輪主題：已經算出來、但沒有送到畫面上的東西。**三項全部是顯示層，零新計算、
+零新相依、零新資料；硬邊界是 `theme_daily.parquet` 與 `market_daily.parquet` 前後不變。
+
+| 項目 | 層次 | 備註 |
+|---|---|---|
+| 品質行改寫成讀得懂的樣子（含 `entry is None` 改印「無基準」） | 使用 | 010 DO-1。`_percentile` 是 `rolling(60)`，所以 `離散 …(18%)` 早就在說「今天名次差異資訊量偏低」，只是沒印出來。擠掉的是「兩兩相關係數新指標」——研究證明那是同一個構念 |
+| `radar.html` 標頭補新鮮度（複用 `format_ops_status`） | ENG | 010 DO-2，**本輪的 ENG 保留格**。`cli.py:212` 已算好 `caught_up`，只印在終端機 |
+| 2×2 的「被講過」定義與 `敘事` 欄統一；`尚未生效`／`最近事件` 補溢出提示 | L2 | 010 DO-3。`cli.py:201` 已存 `mention_dates`，但 `product.py:231` 忽略它。**今天可見效果為零**，差異要到某主題被講過又掉出榜才出現 |
 
 ### 脈絡挖掘（2026-09-04 提出；burst／PTT 已於 007 刪除）
 
@@ -162,6 +171,10 @@ tpex   351 檔   20250501 → 20260903      ← 少 89 天
 
 ## 修訂紀錄
 
+- 2026-09-06 sprint 010 收斂：三項進 DO（全為顯示層）。待排移出「靜默截斷」與
+  「`entry is None` 文案」（併入 010 DO-1／DO-3）。`arch` 那列補上查證結果（8.0.0、
+  維護中、NCSA），押後理由改為「動 compute 層」而非「不確定可不可行」。
+  未採用：主題間兩兩相關係數新指標（研究推翻，見 010-report 第 2 節）。
 - 2026-09-06 sprint 009 併入 `dev@566ba37` 後：拍板 2／3 兩條測試項已於 `98e7198` 完工，搬到「已完成」。`Momentum` 欄寬、靜默截斷、`entry is None` 文案、gazetteer 四項仍在待排。
 - 2026-09-06 sprint 009 驗收：新增六項（Momentum 欄寬、F4 測試名實不符、pending 真實目錄測試脆弱、靜默截斷、`entry is None` 文案、gazetteer／`narrate add` 押後）。前四項來自 009 驗收物證，見 `docs/sprints/009-report.md`。
 - 2026-09-06 sprint 007：刪 `above_count` 待排殘留（005/006 已完工）、脈絡生命週期狀態機／burst、PTT 每日掃描；新增「007 明確不做」五項（momentum 標籤、品質行、`narrate add`、虛無窮舉／`n_iter`／`n=` 位置、換 primary 等），各附 spec／006-review 物證。
