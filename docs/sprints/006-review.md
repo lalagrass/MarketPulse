@@ -117,3 +117,21 @@ DO-3 動了 `calc.py` 的 `above_count` fallback（`0` → `np.nan`），那條�
 
 補完 A3 之後，`005` + `006` 一次併（線性鏈，`git merge --ff-only sprint/006-ic-null`）。
 A1／A2 與「小事」三條進 007。B1～B4 是報告的事，不是程式碼的事。
+
+---
+
+## 更新 2026-09-06 — A3 結案
+
+`006-evidence.md` 新增「驗收條件 6」一節。**A3 關閉，併之前的阻擋解除。**
+
+物證：兩邊各自在 `/tmp` 獨立 data-dir 重算 snapshot（不寫 repo 的 `data/`、`reports/`），
+brief／radar ASCII／radar HTML 三份 `diff -u` 皆空，附兩邊相同的 sha1；
+`themes/v1.yaml` 11 個主題的成分對 `bars.parquet` 全數 present（逐主題表）；
+重算後 `above_count` 兩邊同為 NaN 209 列、`==0` 416 列。
+
+**結論修正：**DO-3 動的 `above_cols` 空路徑**現行資料踩不到**，所以它是一個
+潛在修正（latent fix），不是行為變更。守著它的只有合成 ghost 主題那條單元測試——
+這是它現在唯一的證人，別在未來的清理裡順手刪掉。
+
+`refresh` 本身沒跑（會打官網、會寫 `reports/`），evidence 有明講。
+其產物由 analyze→brief／radar 決定，實質已涵蓋。這個取捨我同意。
