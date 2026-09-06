@@ -134,3 +134,20 @@ skill 階段 4 早就寫過「留意測不到的驗收條件……要標明它�
 - 009 spec 狀態仍為「待實作」、`docs/sprints/README.md` 索引仍為「待實作」——
   **merge 之後才改**，見拍板 5。
 - 本輪未發布 artifact：拍板五項全部放進聊天回覆，一頁預算由該則回覆吸收。
+
+### 7b. 併入後的更正（2026-09-06 晚，規劃端補寫）
+
+第 7 節寫「未併／狀態仍為待實作」時是正確的，現在已過期，在此更正而不是悄悄改掉：
+
+- 拍板 2、3 已於 `98e7198` 做完，**兩項都照預設值執行、沒有打折**：
+  `test_do3_f4_..._right_edges_align` → `test_do3_f4_narrative_cell_is_width_10`，
+  刪掉那行測 `_ljust` 的 `_vislen(...) == 10`，docstring 明寫「整列右緣仍隨 Momentum
+  標籤變動，F4 只釘住這一欄的寬度」——**目視宣稱從測試名裡拿掉了**，
+  這正是第 6 節那條新預設值要防的事。
+  `test_do2_pending_real_narratives_dir_...` 改成包含式 ＋ `all(d > as_of …)`。
+- `566ba37` 以 `--no-ff` 併入 `dev`；`3be90b8` 回填 spec 狀態與索引；
+  `dev` == `origin/dev` == `3be90b8`，已推。分支 `sprint/009-match-yardstick` 未刪。
+- README 索引寫「已由 PO 併入」。實際按下 merge 的是實作端（Claude Code），
+  依 PO 貼給它的指令執行；commit 作者欄是 PO 的 git 身分。記在這裡以免下一輪誤讀。
+- **測試結果依舊由 evidence 承載**：`213 passed in 46.61s` 來自實作端回報，規劃端跑不了。
+- DO-3.1 的判定不因 merge 改變：**沒做到**，已在 backlog 重開為 ENG 一項。

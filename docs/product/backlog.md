@@ -29,8 +29,6 @@ ENG 進 DO 的次數是 **0**。這不是優先序判斷的結果，是規則的
 | product.py / radar.py 重複的格式化層 | ENG | 2026-09-04 技術債盤點 | 十個 helper 各自處理 n/a，四種不同的 sentinel。建議在下次動到任一 renderer 時順手抽出 |
 | `radar.py` 180 行 f-string HTML | ENG | 2026-09-04 技術債盤點 | 含內嵌 CSS，且插值未跳脫。建議拆出 `radar.css` 並過 `html.escape()` |
 | radar 表格 `Momentum` 欄沒有欄寬 | ENG | 009 驗收 | 009 DO-3.1 只給 `敘事` 補了右側空白（最後一欄，畫面零改變），真正的病灶是 `Momentum` 標籤長度 4–9 讓 `敘事` 欄左緣浮動。修它會動到 `--no-narratives` 表頭，需一併決定 |
-| `test_do3_f4_..._right_edges_align` 名實不符 | ENG | 009 驗收 | 名字宣稱右緣對齊，body 註解自承不對齊；三行 `_vislen(_ljust(x,10))==10` 在測 `_ljust`。改名並刪同義反覆斷言 |
-| `pending_snapshots` 的真實目錄測試會被「使用產品」弄紅 | ENG | 009 驗收 | `test_do2_pending_real_narratives_dir_as_of_latest_price_day` 對真實 `narratives/` 做完全相等斷言；PO 週末新增一份 narrative 就紅，而那正是 DO-2 的用途。改 tmp_path 或改成包含式 |
 | `尚未生效` / `最近事件` 靜默截斷 | L2 | 009 驗收 | `PENDING_LIMIT=3`、`RECENT_EVENTS_LIMIT=3` 都沒有溢出提示。第 4 份未生效快照會再次隱形，正是 DO-2 的立案理由「錯在沉默」。補「還有 N 份」 |
 | `entry is None` 時品質行印什麼 | L1 | 009 未決 1 | 目前印單日持續性且無虛無——B6 剛修掉的誤導的無旁證版。日常流程踩不到（新 clone／刪 `data/processed`／bump `NULL_METHOD_VERSION` 才會）。候選：`n/a`／固定文案「無基準」 |
 | gazetteer（`pyahocorasick` ＋ 凍結 ISIN 表）、`narrate add` | L2 | 009 spec 明確押後 | 009 Appetite 把它們推到 010：新相依＋新資料＋第二層寫入端 |
@@ -146,6 +144,7 @@ tpex   351 檔   20250501 → 20260903      ← 少 89 天
 
 | 項目 | Sprint |
 |---|---|
+| F4 測試名實不符、pending 真實目錄測試脆弱（009 驗收拍板 2／3） | 009 |
 | `above_count` 全 NaN → NaN；空 `above_cols` → NaN | 005–006 |
 | 虛無基準放在持續性數字旁（σ＋超越計數） | 003–004 |
 | `calc.py` 資料空窗檢查（日期連續＋TWSE/TPEx 成對） | 004 |
@@ -163,6 +162,7 @@ tpex   351 檔   20250501 → 20260903      ← 少 89 天
 
 ## 修訂紀錄
 
+- 2026-09-06 sprint 009 併入 `dev@566ba37` 後：拍板 2／3 兩條測試項已於 `98e7198` 完工，搬到「已完成」。`Momentum` 欄寬、靜默截斷、`entry is None` 文案、gazetteer 四項仍在待排。
 - 2026-09-06 sprint 009 驗收：新增六項（Momentum 欄寬、F4 測試名實不符、pending 真實目錄測試脆弱、靜默截斷、`entry is None` 文案、gazetteer／`narrate add` 押後）。前四項來自 009 驗收物證，見 `docs/sprints/009-report.md`。
 - 2026-09-06 sprint 007：刪 `above_count` 待排殘留（005/006 已完工）、脈絡生命週期狀態機／burst、PTT 每日掃描；新增「007 明確不做」五項（momentum 標籤、品質行、`narrate add`、虛無窮舉／`n_iter`／`n=` 位置、換 primary 等），各附 spec／006-review 物證。
 - 2026-09-05 review：001/002 已完成項目搬出待排（先前漏搬）；新增三項候選；
