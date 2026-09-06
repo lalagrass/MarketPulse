@@ -66,6 +66,7 @@ TITLE_RECENT_EVENTS = "最近事件"  # sprint 008 DO-2
 TITLE_PENDING = "尚未生效"  # sprint 009 DO-2
 UNKNOWN_THEME_ID_NOTE = "未知 theme_id（不在 themes/v1.yaml）"  # sprint 008 DO-1
 NARRATIVE_COL_HEADER = "敘事"
+NARRATIVE_COL_WIDTH = 10  # ISO date width (spec 009 DO-3 F4)
 NARRATIVE_MISSING = "—"
 EMPTY_LIST = "（無）"
 GAP_LIST_LIMIT = 5
@@ -391,26 +392,67 @@ def history(
     return tuple(versions)
 
 
+def _valid_declared_theme_ids(
+    narrative: Narrative, member_sets: dict[str, set[str]]
+) -> set[str]:
+    """theme_ids that actually exist in the ThemeSet. Empty means the
+    field is treated as absent (spec 009 DO-3 F5: all-invalid ids fall
+    back to the named_symbols four-state, they do not count as declared).
+    """
+    return {tid for tid in narrative.theme_ids if tid in member_sets}
+
+
+def _themes_hit_by_named_symbols(
+    named_symbols: tuple[str, ...],
+    member_sets: dict[str, set[str]],
+) -> set[str]:
+    """The single named_symbols ∩ members test (spec 009 DO-3 F6)."""
+    named = set(named_symbols)
+    if not named:
+        return set()
+    return {tid for tid, members in member_sets.items() if named & members}
+
+
+def _named_symbols_in_themes(
+    named_symbols: tuple[str, ...],
+    member_sets: dict[str, set[str]],
+) -> list[str]:
+    """named_symbols that sit in at least one theme, original order.
+
+    Built on `_themes_hit_by_named_symbols` so coverage_report and
+    `_mentioned_theme_ids` share one membership test (spec 009 DO-3 F6).
+    """
+    hits = _themes_hit_by_named_symbols(named_symbols, member_sets)
+    if not hits:
+        return []
+    covered_members: set[str] = set()
+    for tid in hits:
+        covered_members |= member_sets[tid]
+    return [s for s in named_symbols if s in covered_members]
+
+
 def coverage_report(snapshot: NarrativeSnapshot, themes: ThemeSet) -> dict[str, str]:
     """Per-narrative coverage of named_symbols against themes/v1.yaml.
 
     Derived, not stored — recomputed from the current theme YAML on every
     call. Empty named_symbols is `unknown`, not `covered`: nothing was
     named, so nothing has actually been verified either way.
+
+    `theme_ids` with at least one id that exists in the ThemeSet is
+    `declared`. All-invalid theme_ids fall through to the four-state
+    named_symbols logic (spec 009 DO-3 F5); unknown_theme_ids() still
+    surfaces the typos.
     """
-    all_members = {m for theme in themes.themes for m in theme.members}
+    member_sets = _member_sets(themes)
     report: dict[str, str] = {}
     for narrative in snapshot.narratives:
-        if narrative.theme_ids:
-            # Sprint 008 DO-1: theme_ids explicit > named_symbols test. This
-            # narrative declared its theme(s); the four-state logic below is
-            # left exactly as it was for every narrative that did not.
+        if _valid_declared_theme_ids(narrative, member_sets):
             report[narrative.narrative_id] = COVERAGE_DECLARED
             continue
         if not narrative.named_symbols:
             report[narrative.narrative_id] = COVERAGE_UNKNOWN
             continue
-        present = [s for s in narrative.named_symbols if s in all_members]
+        present = _named_symbols_in_themes(narrative.named_symbols, member_sets)
         if len(present) == len(narrative.named_symbols):
             report[narrative.narrative_id] = COVERAGE_COVERED
         elif not present:
@@ -451,19 +493,18 @@ def _mentioned_theme_ids(
 ) -> set[str]:
     """The theme ids one narrative mentions.
 
-    Sprint 008 DO-1 priority, fixed: explicit `theme_ids` win outright; only
-    when a narrative has none do we fall back to the named_symbols ∩ members
-    test (the same test coverage_report uses — uncovered / unknown fall out
-    of it as the empty set by construction). No merge, no vote. theme_ids
-    that name no real theme are dropped here and surfaced separately by
-    unknown_theme_ids().
+    Sprint 008 DO-1 priority, fixed: explicit `theme_ids` that exist in the
+    ThemeSet win outright; only when none do we fall back to the
+    named_symbols ∩ members test (the same helper coverage_report uses —
+    uncovered / unknown fall out of it as the empty set by construction).
+    No merge, no vote. All-invalid theme_ids are treated as absent
+    (spec 009 DO-3 F5), matching coverage_report; the typos are surfaced
+    separately by unknown_theme_ids().
     """
-    if narrative.theme_ids:
-        return {tid for tid in narrative.theme_ids if tid in member_sets}
-    if not narrative.named_symbols:
-        return set()
-    named = set(narrative.named_symbols)
-    return {tid for tid, members in member_sets.items() if named & members}
+    declared = _valid_declared_theme_ids(narrative, member_sets)
+    if declared:
+        return declared
+    return _themes_hit_by_named_symbols(narrative.named_symbols, member_sets)
 
 
 def theme_mention_dates(

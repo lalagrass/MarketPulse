@@ -9,6 +9,7 @@ import pytest
 from marketpulse.narratives import (
     COVERAGE_COVERED,
     COVERAGE_DECLARED,
+    COVERAGE_PARTIAL,
     COVERAGE_UNCOVERED,
     COVERAGE_UNKNOWN,
     EMPTY_LIST,
@@ -1046,3 +1047,82 @@ def test_do2_pending_real_narratives_dir_as_of_latest_price_day() -> None:
     as_of = date(2026, 9, 4)
     found = pending_snapshots(as_of, REPO_ROOT / "narratives")
     assert found == [(date(2026, 9, 6), "2026-09-06.yaml")]
+
+
+# ── sprint 009 DO-3 F5 / F6 ──
+
+
+def test_do3_f5_all_invalid_theme_ids_fall_back_to_named_symbols() -> None:
+    """All theme_ids unknown → not `declared`; four-state named_symbols
+    path runs. unknown_theme_ids still lists the typos (008 must not
+    disappear)."""
+    themes = _themes_ab()
+    n = _narr("typo_only", theme_ids=("bogus",), named=("A01",))
+    snap = NarrativeSnapshot(date(2026, 9, 6), (n,))
+    assert narrative_coverage_report(snap, themes)["typo_only"] == COVERAGE_COVERED
+    assert theme_mention_dates(snap, themes)["t_a"] == date(2026, 9, 6)
+    assert theme_mention_dates(snap, themes)["t_b"] is None
+    assert unknown_theme_ids(snap, themes) == {"typo_only": ("bogus",)}
+
+
+def test_do3_f5_all_invalid_theme_ids_without_named_is_unknown() -> None:
+    themes = _themes_ab()
+    n = _narr("empty_typo", theme_ids=("bogus",))
+    snap = NarrativeSnapshot(date(2026, 9, 6), (n,))
+    assert narrative_coverage_report(snap, themes)["empty_typo"] == COVERAGE_UNKNOWN
+    assert unknown_theme_ids(snap, themes) == {"empty_typo": ("bogus",)}
+    assert theme_mention_dates(snap, themes)["t_a"] is None
+
+
+def test_do3_f5_mixed_valid_and_invalid_still_declared() -> None:
+    """A valid sibling still counts as declared; the typo is only a notice."""
+    themes = _themes_ab()
+    n = _narr("mix", theme_ids=("t_a", "bogus"), named=("B01",))
+    snap = NarrativeSnapshot(date(2026, 9, 6), (n,))
+    assert narrative_coverage_report(snap, themes)["mix"] == COVERAGE_DECLARED
+    dates = theme_mention_dates(snap, themes)
+    assert dates["t_a"] == date(2026, 9, 6)
+    assert dates["t_b"] is None  # named_symbols not consulted
+    assert unknown_theme_ids(snap, themes) == {"mix": ("bogus",)}
+
+
+def test_do3_f6_coverage_and_mentioned_agree_on_the_same_narrative() -> None:
+    """spec 009 DO-3 F6: coverage_report and _mentioned_theme_ids share one
+    membership test. For any one narrative, declared ↔ mentioned equals
+    the valid theme_ids; four-state covered/partial ↔ mentioned equals
+    named ∩ members; unknown/uncovered ↔ mentioned empty."""
+    from marketpulse.narratives import _member_sets, _mentioned_theme_ids
+
+    themes = _themes_ab()
+    member_sets = _member_sets(themes)
+    cases = [
+        _narr("declared", theme_ids=("t_a",)),
+        _narr("mix", theme_ids=("t_a", "nope"), named=("B01",)),
+        _narr("fallback", theme_ids=("nope",), named=("A01",)),
+        _narr("covered", named=("A01",)),
+        _narr("partial", named=("A01", "ZZZ")),
+        _narr("uncovered", named=("ZZZ",)),
+        _narr("unknown"),
+        _narr("all_bad", theme_ids=("nope", "also_nope")),
+    ]
+    for narrative in cases:
+        snap = NarrativeSnapshot(date(2026, 9, 6), (narrative,))
+        status = narrative_coverage_report(snap, themes)[narrative.narrative_id]
+        mentioned = _mentioned_theme_ids(narrative, member_sets)
+        via_dates = {
+            tid for tid, d in theme_mention_dates(snap, themes).items() if d is not None
+        }
+        assert mentioned == via_dates
+        if status == COVERAGE_DECLARED:
+            assert mentioned == {tid for tid in narrative.theme_ids if tid in member_sets}
+            assert mentioned
+        elif status in (COVERAGE_UNKNOWN, COVERAGE_UNCOVERED):
+            assert mentioned == set()
+        elif status in (COVERAGE_COVERED, COVERAGE_PARTIAL):
+            named = set(narrative.named_symbols)
+            assert mentioned == {
+                tid for tid, members in member_sets.items() if named & members
+            }
+            assert mentioned
+        else:
+            raise AssertionError(f"unexpected status {status} for {narrative.narrative_id}")

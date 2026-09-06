@@ -571,6 +571,18 @@ def test_do1_unknown_theme_id_message_appears_in_brief() -> None:
     assert "主題一  #1" not in strong  # t01 still declared despite the typo sibling
 
 
+def test_do3_f5_all_invalid_theme_ids_still_print_unknown_message() -> None:
+    """spec 009 Q3: falling back to named_symbols must not swallow the
+    008 unknown-id line."""
+    overlay = _overlay_with((_n("n_typo", theme_ids=("bogus_id",), named=("S01",)),))
+    text = render_brief(_eleven_day(), date(2026, 8, 31), overlay=overlay)
+    assert UNKNOWN_THEME_ID_NOTE in text
+    line = [ln for ln in text.splitlines() if UNKNOWN_THEME_ID_NOTE in ln][0]
+    assert "n_typo" in line and "bogus_id" in line
+    strong = text.split(TITLE_STRONG_UNCOVERED, 1)[1].split(TITLE_COVERED_WEAK, 1)[0]
+    assert "主題一  #1" not in strong  # S01 still covers t01 via named_symbols
+
+
 def test_do1_no_narratives_adds_no_new_blocks() -> None:
     """Acceptance 5 (byte-identity precondition): with no narrative snapshot
     loaded, none of the DO-1 additions render."""
