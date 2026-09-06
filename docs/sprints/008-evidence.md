@@ -122,16 +122,29 @@ value in the real narrative files is `[optical_cpo]`, which **is** a real theme
 id in `themes/v1.yaml`. `unknown_theme_ids(load_as_of(2026-09-06), themes)`
 returns `{}`. The current files do **not** hit an unknown id.
 
-**Behaviour implemented** (spec unresolved Q1 default — no raise on load, one
-line on screen). Synthetic `theme_ids: [optical_cpo, opitcal_cpo]`:
+**Behaviour** — Q1 was answered 2026-09-06 (written back into the spec): keep
+the default, no raise on load, one line on screen. The written-back answer
+adds two requirements on that line, both met:
 
-```text
-未知 theme_id（不在 themes/v1.yaml）：x · opitcal_cpo
-```
+1. format `narrative_id · unknown_theme_id`. Synthetic
+   `asic_xpu` with `theme_ids: [optical_cpo, opitcal_cpo]`, rendered in a full
+   brief:
+
+   ```text
+   未知 theme_id（不在 themes/v1.yaml）：asic_xpu · opitcal_cpo
+   強但沒人講
+   ...
+   ```
+
+   `asic_xpu` is the narrative_id, `opitcal_cpo` the unknown id.
+2. the line sits **directly above the coverage lists** it affects
+   (`render_brief` prints it immediately before `render_gap_lists`), not
+   adrift where later output buries it.
 
 `load_as_of` does not raise (`test_do1_unknown_theme_id_is_surfaced_not_raised`);
-the valid sibling id in the same list still classifies. **Q1 is put back to the
-PO in the report — the measurement says the choice is currently inert.**
+the valid sibling id in the same list still classifies. On today's real files
+`unknown_theme_ids()` is `{}`, so this path is currently inert — it is a
+decision about a future failure mode.
 
 ### Acceptance 5 — byte-identity when nobody uses the new field
 
@@ -205,16 +218,22 @@ optical_cpo · 2026-09-05 · Broadcom 在 Fabric、光通訊與互聯架構的 G
   (matches the YAML). ✓
 - Acceptance 3 — "上次變動日期", **actual computed values, not tuned**:
 
-  | narrative | 上次變動 | why |
+  | narrative | 上次變動 | differing fields, 09-04 → 09-06 |
   |---|---|---|
-  | `asic_xpu` | `2026-09-06` | 09-06 added stage, revisit, 2 branches, 1 log entry |
-  | `optical_cpo` | `2026-09-06` | 09-06 added stage=mapped, revisit, theme_ids, 1 log entry |
-  | `nvhbm` | `2026-09-06` | 09-06 rewrote `note` and added stage, revisit, 1 branch |
+  | `asic_xpu` | `2026-09-06` | `stage`/`revisit`/`log`/`branches` (field birth — absent in 09-04); real content: +2 branches, +1 log |
+  | `optical_cpo` | `2026-09-06` | `stage`/`revisit`/`log` (field birth); real content: +1 log, `stage=mapped`, `note` rewritten |
+  | `nvhbm` | `2026-09-06` | `stage`/`revisit`/`branches` (field birth); real content: +1 branch, `note` rewritten |
 
-  All three land on `2026-09-06`. This is **not** information-free: there are
-  only two snapshot files and every narrative genuinely changed between them,
-  so the one later date is the correct answer. With more snapshots the dates
-  spread. See Q2 in the report.
+  All three land on `2026-09-06`. **Correction (per the written-back Q2
+  answer, 2026-09-06):** the `stage` / `revisit` / empty `log` / empty
+  `branches` differences do **not** count as story evolution — those fields
+  were born in the 09-06 schema (`REVISIT_REQUIRED_FROM = date(2026, 9, 6)`);
+  `revisit` alone would stamp all three with 09-06 even with no content
+  change. The three still each had a *real* content change (branches / log /
+  note, listed above), so "every narrative genuinely changed" holds — but on
+  that narrower evidence. Whether the dates spread once more snapshots exist
+  is a **prediction, not a measurement** (revisit date: `narratives/` at 4
+  files). The whole-object granularity is kept unchanged (contract #6).
 
 ### Acceptance 4 — one snapshot only → `—`, no raise
 
