@@ -153,3 +153,21 @@ docstring 老實寫了這件事，但畫面上看不到 docstring。
    而真實資料上這個功能對兩則故事是啞的。**「有測試」不等於「在真資料上有用」。**
 3. spec 說敘事欄是「最近一次提及日」，卻同時要求只取 PIT 最新一份快照。
    這兩句在只有一份快照可用時不矛盾，多份時就矛盾。B2 是這個矛盾的產物，不是實作端誤讀。
+
+---
+
+## 八、併入紀錄（Q8 要求註明是誰按的）
+
+**2026-09-06，由規劃端（Cowork）在 PO 明示授權下 fast-forward 併入 `dev`。**
+
+- `dev` `0ed4697` → `537142c`（＝ `sprint/007-narrative-loop` 分支尾）
+- 手法：`git update-ref refs/heads/dev <new> <old>`，非 `git merge`。
+  理由：規劃端的 VM 不能 `checkout`（無法 unlink 檔案），而 `dev` 是 007 的祖先，
+  fast-forward 只是移動 ref。`<old>` 當守衛，`dev` 若被動過會拒絕。
+- 併前確認：`git merge-base --is-ancestor dev sprint/007-narrative-loop` 通過。
+- **併入時 F1／F2／F3 都還沒修。**`dev` 上因此有一版會誤報「強但沒人講」的覆蓋清單，
+  這是知情的取捨，不是遺漏——008 第一項就是修它。
+- `origin/dev` 落後 6 個 commit，push 要由 PO 在 Mac 上做（規劃端 VM 對 github.com:22 封鎖）。
+- 殘骸分支 `sprint/004-narrative-shape`／`005-horizon-ic`／`006-ic-null` 經查證
+  `ahead of dev` 皆為 0，零未併成果，建議刪除；規劃端 VM 卡 `packed-refs.lock` 刪不掉，
+  由 PO 在 Mac 上執行。
