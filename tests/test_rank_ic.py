@@ -188,33 +188,37 @@ def test_rank_ic_null_is_deterministic() -> None:
 
 
 def test_shuffled_null_sigma_within_three() -> None:
-    """Independent daily permutations: some passing cell has |sigma| < 3."""
+    """Independent daily permutations: every passing cell has |sigma| < 3.
+
+    006-review §規劃端自己造成的問題.1: the spec said ±3, the implementation
+    used `.any()`. All passing cells, not one of them.
+    """
     rng = np.random.default_rng(7)
     base = np.array([0.30, 0.10, -0.10])
     rs = np.vstack([rng.permutation(base) for _ in range(NULL_N_DAYS)])
     frame = rank_ic_null_test(_snapshot_from_rs(rs), n_iter=200, seed=0)
     passing = frame[frame["reason"].eq("")]
     assert not passing.empty
-    # At least one cell sits inside the null, not in either tail.
-    assert bool((passing["sigma"].abs() < 3).any())
+    assert bool((passing["sigma"].abs() < 3).all())
 
 
 def test_persistent_null_sigma_positive_zero_exceedance() -> None:
-    """Slow random walk per theme: a passing cell sits well above its null.
+    """Slow random walk per theme: every passing cell sits well above its null.
 
     A tiled constant cross-section (the 005 monotone fixture) cannot be
     used here: every pairing, including every circular shift, has Spearman
     +1, so null_std is 0 and sigma is n/a. The walk is the same construction
     persistence_null_test uses for its k=1 sanity check.
+
+    006-review §規劃端自己造成的問題.1: check all passing rows, not iloc[0].
     """
     rng = np.random.default_rng(1)
     scores = np.cumsum(rng.normal(scale=1.0, size=(NULL_N_DAYS, 3)), axis=0)
     frame = rank_ic_null_test(_snapshot_from_rs(scores), n_iter=200, seed=0)
     passing = frame[frame["reason"].eq("")]
     assert not passing.empty
-    cell = passing.iloc[0]
-    assert cell["sigma"] > 3
-    assert int(cell["n_ge_observed"]) == 0
+    assert bool((passing["sigma"] > 3).all())
+    assert bool((passing["n_ge_observed"] == 0).all())
 
 
 def test_guard_failure_prints_na_and_locked_reason() -> None:

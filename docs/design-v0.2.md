@@ -639,6 +639,13 @@ The chart should make this distinction clear in accompanying text.
 
 # 16. Optional RRG
 
+> **[SUPERSEDED 2026-09-04 → non-goals.md D3]**
+>
+> Retained as history. RRG is an explicit non-goal. The former coding-contract
+> §11 conditional ("RRG may be added only after the Rank Timeline works") was
+> withdrawn on 2026-09-04 because the Timeline already works, which under that
+> wording would have unlocked RRG by default.
+
 RRG is an optional visualization, not the MarketPulse core algorithm.
 
 If included:

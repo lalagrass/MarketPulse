@@ -20,7 +20,6 @@ ENG 進 DO 的次數是 **0**。這不是優先序判斷的結果，是規則的
 |---|---|---|---|
 | 資料窗已拉長；**as-of 成分股**仍缺 | L1 | 2026-09-05 review | 回補與對齊樣本在 003/004 做了；D6／Q5 的 as-of 成員尚未做。單獨「再回補」不進 DO |
 | `arch.bootstrap` 取代手刻循環位移 | L1 | 2026-09-05 research | `CircularBlockBootstrap` / `StationaryBootstrap` + `optimal_block_length()`。現在的 k=20 是寫死的單一參數；block bootstrap 給信賴區間而非單一百分位。不模擬損益，不碰 R1/D2。NCSA 授權。二選一，別跟 `recombinator` 都裝（D9） |
-| `above_count` 全 NaN 列塌成 0 而非 NaN | L1 | 2026-09-05 回補驗收 | 序列起點缺 SMA20 歷史時 `sum(skipna=True)` 回 0。與 sprint 001 修掉的 breadth NaN-as-failure 同類，只是發生在邊界。連帶：DO-2 的一致性驗收措辭應改為「`status == OK` 的格子不得改變」 |
 | 市場層級 breadth | L1 | 2026-09-04 研究 | 現有 breadth 是族群屬性；市場層級的版本提供「這次輪動發生在寬廣還是狹窄的市場」的解讀脈絡 |
 | 除權息幅度量測 | L1 | 2026-09-04 討論 | 七八月除權息集中，未還原收盤價使高殖利率族群被系統性壓低。**先量幅度**（§8 允許 report），改方法需先改 §8 |
 | 個股層排序與呈現檢視 | L1 | 2026-09-04 | `compute_stock_metrics()` 已算好個股 RS20 與 Leader/Follower/Laggard，可能只需調整呈現 |
@@ -71,24 +70,37 @@ composite、IBD RS Rating、12−1、residual momentum、Elo 皆然）。004 的
 | `above_count` 全 NaN → NaN | L1 | 邊界假 0 |
 | Brief／radar B＋C 固定短註 | 使用 | 字面鎖定 |
 
-### 脈絡挖掘（2026-09-04 提出，最早 sprint 002）
+### 脈絡挖掘（2026-09-04 提出；burst／PTT 已於 007 刪除）
 
 前提：sprint 001 的 UNKNOWN「每週手動記錄撐不撐得住四週」要先有答案。
 自動化的價值完全取決於它。
 
+**2026-09-06 sprint 007 DO-3 刪兩項，不是重排。**理由：兩者都卡在未拍板的前提上，
+且沒有任何 sprint 排了去解決那些前提（007-spec DO-3.3；同見 004-spec「本輪明確不做」）。
+
+- **脈絡生命週期狀態機／burst detection** — 階段 1 收斂時已看過：Kleinberg 有 `s` 與
+  `gamma` 兩個可調把手（D10），`nmarinsek/burst_detection` 非 OSI，MIT 替代等同未維護。
+  「誰來決定 s 與 gamma」從未拍板。刪。真的重要它會自己再冒出來。
+- **PTT 每日掃描** — 採用前須確認 PTT 使用條款（D13）；每日自動掃描即是排程（D7）。
+  兩個前提都沒人排去解決。刪。
+
 | 項目 | 層次 | 備註 |
 |---|---|---|
-| 脈絡生命週期狀態機（新生／加熱／吵完／封存） | L2 | **2026-09-05 更正：本列原本的前提是錯的。**原文寫「用 Kleinberg burst detection，不自訂熱度門檻（D10）」——但 Kleinberg 有 `s`（狀態間距）與 `gamma`（轉換成本）兩個參數，是不折不扣的可調把手，把門檻換成參數不等於消除門檻。且 `nmarinsek/burst_detection`（PyPI 0.1.3, 2018-01）授權是 *Free for non-commercial use*，非 OSI；MIT 的替代 `hitalex/pybursts` 只有 10 個 commit、等同未維護。**這一列若要重開，要先回答的是「誰來決定 s 與 gamma」，不是「用哪個套件」。**sprint 004 明確不做，見 `docs/sprints/004-spec.md` |
-| 淺層每日掃描：PTT Stock 版 | L2 | **常態零 LLM**——抓文後用 pandas 數代號／關鍵字頻率、跑 burst detection，純確定性計算。爬蟲現成（`chrisyang-tw/PTT_Crawler`、`kuo23/PTT-Stock`）。**採用前須確認 PTT 使用條款（D13）** |
-| 深層挖掘：僅在未匹配爆發時觸發 | L2 | 只有當 burst 標記出對不上任何已知脈絡的訊號才叫 agent。預估一週一兩次。股癌逐字稿深挖不排程，由使用者丟稿觸發 |
-| 「太早」vs「吵完了」的區分 | L1+L2 | 2×2 中同屬「有人講但數字不動」那格，用行進方向分辨：討論量升＋價格平＝可能太早；討論量降＋價格平＝講完可封存 |
+| 深層挖掘：僅在未匹配爆發時觸發 | L2 | 股癌逐字稿深挖不排程，由使用者丟稿觸發。原先綁 burst；burst 已刪，本列只剩「人丟稿」那半 |
+| 「太早」vs「吵完了」的區分 | L1+L2 | 2×2 中同屬「有人講但數字不動」那格。討論量那一軸隨 burst／PTT 刪除而暫停 |
 
-**已知的契約衝突：**每日自動掃描即是排程，違反 D7。兩條路——正式推翻 D7 並寫理由，
-或把排程放在 Cowork 端的排程任務，repo 維持「本機、手動觸發」的性質。傾向後者。
-**列為 sprint 002 的規則質疑對象。**
+### Sprint 007 明確不做（轉入 backlog，附物證）
 
-**已知的量測陷阱：**討論量的絕對值幾乎無用——崩盤時討論量高於大漲。只有變化率與
-佔比有意義。burst detection 處理的正是這件事。
+007-spec「本輪明確不做」五項。刪不是這裡的工作——這五項是本輪故意不碰、要留著下次挑的。
+每項附 spec／review 裡的物證，不只一行標題。
+
+| 項目 | 層次 | 物證 |
+|---|---|---|
+| momentum 標籤重做 | 使用 | **階段 1：**全同向的日子無資訊；`Rank #1 · Δ5 +1 · 20D +26.5%` 卻標 `⚠️ Weakening`。同一現象在 `docs/sprints/past-momentum-visibility.md` 已出現過（Optical/CPO +26.5% 20D、-5.6% 1D → Weakening）。007 本輪動了顯示層，故意不順手改 momentum——改了會讓驗收條件 2（關掉新欄位後與 `dev` 逐字元相同）說不清楚是誰造成的 |
+| 品質行可讀性重寫 | 使用 | **階段 1「只看輸出」角色的逐條疑問：**`.11 / .06±.03 / +2.8σ / 0/1000` 之間的關係看不出來、`換手 10 (80%)` 的 80% 是什麼、`D6` 在畫面上無對應。007 本輪不重寫品質行，理由同上（驗收條件 2） |
+| `narrate add` 互動指令、速記檔入口 | L2 | 007 PO 前提 4：寫入摩擦本輪不碰。先確認回饋迴路有效（本輪 DO-1／DO-2），再降寫入摩擦——反過來做的話，摩擦降了但寫完還是沒反應。排下一輪 |
+| 窮舉取代虛無抽樣；`n_iter` 一名兩義；guard-fail 格的 `n=` 位置 | ENG | **006-review：**A1（`0/1000` 實際只有 288 個相異位移，顯示精度超過設計能給的；窮舉更便宜）；A2（同一欄三格抽到同一組 1000 個 e，跨格 σ 誤差耦合；窮舉會讓 A2 消失）；小事（`n=342` 站在 guard-fail 格第二子行，橫著掃會看成虛無用了 342 天；`n_iter` DataFrame 欄是 `len(valid_null)`、CLI 尾行是使用者參數）。007 不可碰 `persistence_null_test`／`rank_ic_null_test`，留給之後 |
+| 換 primary、composite、Elo、RRG、as-of 成分、雙池、burst、PTT | mixed | 007 本輪明確不做。R1 仍擋 composite；D3 仍擋 RRG；as-of 成分仍在待排（D6／Q5）；雙池是 open-questions Q6，004 用「籃子只並列」繞開而非回答。burst／PTT 見上，007 DO-3.3 已從待排刪除 |
 
 ### Sprint 001 發散階段產出、本輪未採用但值得留著
 
@@ -128,6 +140,7 @@ tpex   351 檔   20250501 → 20260903      ← 少 89 天
 
 | 項目 | Sprint |
 |---|---|
+| `above_count` 全 NaN → NaN；空 `above_cols` → NaN | 005–006 |
 | 虛無基準放在持續性數字旁（σ＋超越計數） | 003–004 |
 | `calc.py` 資料空窗檢查（日期連續＋TWSE/TPEx 成對） | 004 |
 | `reports/radar.html` 取消追蹤 | 003 |
@@ -144,6 +157,7 @@ tpex   351 檔   20250501 → 20260903      ← 少 89 天
 
 ## 修訂紀錄
 
+- 2026-09-06 sprint 007：刪 `above_count` 待排殘留（005/006 已完工）、脈絡生命週期狀態機／burst、PTT 每日掃描；新增「007 明確不做」五項（momentum 標籤、品質行、`narrate add`、虛無窮舉／`n_iter`／`n=` 位置、換 primary 等），各附 spec／006-review 物證。
 - 2026-09-05 review：001/002 已完成項目搬出待排（先前漏搬）；新增三項候選；
   記錄 ENG 永遠擠不進 DO 的結構偏差。
 - 2026-09-05 sprint 002 收斂：多時間窗 RS 解除押後並進入 DO；新增 persistence 檢定。
