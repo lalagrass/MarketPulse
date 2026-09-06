@@ -44,11 +44,11 @@ from marketpulse.quality import (
     MARKET_COLUMNS,
     NULL_TEST_ITER,
     compute_market_quality,
-    compute_rank_ic,
     format_rank_ic_table,
     load_null_baseline,
     null_baseline_path,
     persistence_null_test,
+    rank_ic_null_test,
     write_null_baseline,
 )
 from marketpulse.radar import RADAR_HTML_NAME, render_radar, write_radar_html
@@ -395,21 +395,23 @@ def validate_signal(
 @app.command(name="rank-ic")
 def rank_ic_cmd(
     as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default = latest snapshot date"),
+    n_iter: int = typer.Option(NULL_TEST_ITER, "--iter", help="null-distribution draws"),
     data_dir: Path = typer.Option(DEFAULT_DATA),
 ) -> None:
-    """Forward Rank-IC 3×3: Spearman(RS_k[T], h-day excess[T→T+h]).
+    """Forward Rank-IC 3×3 with a circular-shift null per cell.
 
-    Buy-information diagnostic (spec 005 DO-1). Not part of refresh; does not
-    write signal_quality_null.json. Numbers only — no significance language.
+    Buy-information diagnostic (spec 005 DO-1, spec 006 DO-1). Not part of
+    refresh; does not write signal_quality_null.json. Numbers only — no
+    significance language, no percentile.
     """
     snapshot = _load_snapshot(data_dir)
     day = _parse_date(as_of) if as_of else max(snapshot["date"])
     typer.echo(
         "restated (frozen membership applied historically; not as-of / point-in-time)"
     )
-    frame = compute_rank_ic(snapshot, as_of=day)
+    frame = rank_ic_null_test(snapshot, as_of=day, n_iter=n_iter, seed=0)
     typer.echo(format_rank_ic_table(frame))
-    typer.echo(f"as_of={day.isoformat()}  cells={len(frame)}")
+    typer.echo(f"as_of={day.isoformat()}  cells={len(frame)}  n_iter={n_iter}  seed=0")
 
 
 @app.command()

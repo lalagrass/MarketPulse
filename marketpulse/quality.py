@@ -543,6 +543,24 @@ def quality_line(
 
 RANK_IC_WINDOWS = (5, 20, 60)
 RANK_IC_RS_COLS = {5: "rs5", 20: "rs20", 60: "rs60"}
+RANK_IC_NULL_COLUMNS = [
+    "k",
+    "h",
+    "observed",
+    "null_mean",
+    "null_std",
+    "sigma",
+    "n_ge_observed",
+    "n_iter",
+    "n_days",
+    "retained",
+    "reason",
+]
+# Guard-fail wording is locked by tests (spec 006 DO-1 acceptance 5).
+RANK_IC_GUARD_REASON_TEMPLATE = "retained {retained:.0%}<{threshold:.0%} (h={h} L={L})"
+RANK_IC_PERSISTENCE_CELL = (20, 20)
+RANK_IC_PERSISTENCE_MARK = "‡"
+RANK_IC_PERSISTENCE_NOTE = "‡ 此格等同 rank_persistence_20，非獨立物證"
 
 
 def _spearman_cross_section(left: pd.Series, right: pd.Series) -> float:
@@ -557,6 +575,107 @@ def _spearman_cross_section(left: pd.Series, right: pd.Series) -> float:
     return float(ra.corr(rb, method="pearson"))
 
 
+def _average_rank_rows(x: np.ndarray) -> np.ndarray:
+    """pandas Series.rank(method='average', na_option='keep') per row."""
+    if x.size == 0:
+        return np.empty(x.shape, dtype=float)
+    is_nan = np.isnan(x)
+    xi = x[:, :, np.newaxis]
+    xj = x[:, np.newaxis, :]
+    nan_i = is_nan[:, :, np.newaxis]
+    nan_j = is_nan[:, np.newaxis, :]
+    valid = ~(nan_i | nan_j)
+    n_less = np.sum((xj < xi) & valid, axis=2)
+    n_equal = np.sum((xj == xi) & valid, axis=2)
+    ranks = n_less + (n_equal + 1) / 2.0
+    return np.where(is_nan, np.nan, ranks)
+
+
+def _row_wise_spearman(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Batched Spearman matching ``_spearman_cross_section``.
+
+    Pairwise-complete: a theme NaN on either side is dropped from *both*
+    ranks for that row, then Pearson of those ranks. Ranking is not
+    precomputed independently of the pairing — that would diverge from
+    the scalar oracle whenever NaN masks differ.
+    """
+    if a.ndim != 2 or b.ndim != 2:
+        raise ValueError("row-wise Spearman expects 2-d arrays")
+    if a.shape != b.shape:
+        raise ValueError("row-wise Spearman sides must have the same shape")
+    if a.shape[1] == 0:
+        return np.full(a.shape[0], np.nan)
+    mask = ~(np.isnan(a) | np.isnan(b))
+    a_m = np.where(mask, a, np.nan)
+    b_m = np.where(mask, b, np.nan)
+    return _row_wise_pearson(_average_rank_rows(a_m), _average_rank_rows(b_m))
+
+
+def _rank_ic_terms(left: np.ndarray, right: np.ndarray, h: int, e: int = 0) -> np.ndarray:
+    """Spearman(left[i], right[(i + h + e) mod n]) for i in 0..n-h-1.
+
+    e=0 is the observed pairing (no wrap: i+h stays inside 0..n-1).
+    Nonzero e circular-shifts the forward side, which is the default
+    displacement side (spec 006 open question 1).
+    """
+    n = left.shape[0]
+    if n <= h:
+        return np.empty(0, dtype=float)
+    i = np.arange(n - h)
+    j = (i + h + e) % n
+    return _row_wise_spearman(left[i], right[j])
+
+
+def _mean_ic_and_n(terms: np.ndarray) -> tuple[float, int]:
+    valid = terms[~np.isnan(terms)]
+    n_days = int(valid.size)
+    if n_days == 0:
+        return float("nan"), 0
+    return float(valid.mean()), n_days
+
+
+def _rank_ic_rs_matrices(
+    snapshot: pd.DataFrame,
+    as_of: date | None,
+) -> tuple[list[date], dict[int, np.ndarray]]:
+    """Daily RS values as (n_days × n_themes) float arrays, NaN preserved.
+
+    Column order is sorted theme_id so every k shares the same alignment.
+    """
+    if snapshot.empty:
+        return [], {}
+    work = snapshot.copy()
+    work["date"] = pd.to_datetime(work["date"]).dt.date
+    dates = sorted(work["date"].unique())
+    if as_of is not None:
+        dates = [d for d in dates if d <= as_of]
+        work = work.loc[work["date"].isin(dates)]
+    if not dates:
+        return [], {}
+    theme_ids = sorted(work["theme_id"].unique())
+    matrices: dict[int, np.ndarray] = {}
+    n_themes = len(theme_ids)
+    for k, col in RANK_IC_RS_COLS.items():
+        if col in work.columns:
+            frame = _pivot(work, col).reindex(index=dates, columns=theme_ids)
+            matrices[k] = frame.to_numpy(dtype=float)
+        else:
+            matrices[k] = np.full((len(dates), n_themes), np.nan)
+    for k in RANK_IC_WINDOWS:
+        if k not in matrices:
+            matrices[k] = np.full((len(dates), n_themes), np.nan)
+    return dates, matrices
+
+
+def _rank_ic_guard_reason(*, h: int, retained: float, lag_l: int) -> str:
+    return RANK_IC_GUARD_REASON_TEMPLATE.format(
+        retained=retained,
+        threshold=MIN_RETAINED_FRACTION,
+        h=h,
+        L=lag_l,
+    )
+
+
 def compute_rank_ic(
     snapshot: pd.DataFrame,
     *,
@@ -567,82 +686,187 @@ def compute_rank_ic(
     Excess over (T, T+h] equals ``rs_h`` observed at session T+h — the same
     theme n-day return minus TAIEX n-day return already stored on the
     snapshot. Session lag is in trading days (snapshot date index), not
-    calendar days. Returns one row per (k, h) with mean_ic, n_days, se
-    (sample sd / √n). Pure numbers; no adjectives.
+    calendar days. Returns one row per (k, h) with mean_ic, n_days. Pure
+    numbers; no adjectives. The mean is the same statistic
+    ``rank_ic_null_test`` reports as ``observed``.
     """
-    cols = ["k", "h", "mean_ic", "n_days", "se"]
-    if snapshot.empty:
-        return pd.DataFrame(columns=cols)
-
-    work = snapshot.copy()
-    work["date"] = pd.to_datetime(work["date"]).dt.date
-    dates = sorted(work["date"].unique())
-    if as_of is not None:
-        dates = [d for d in dates if d <= as_of]
-        work = work.loc[work["date"].isin(dates)]
+    cols = ["k", "h", "mean_ic", "n_days"]
+    dates, matrices = _rank_ic_rs_matrices(snapshot, as_of)
     if not dates:
         return pd.DataFrame(columns=cols)
 
-    rs_frames = {
-        k: _pivot(work, col).reindex(dates)
-        for k, col in RANK_IC_RS_COLS.items()
-        if col in work.columns
-    }
-    for k in RANK_IC_WINDOWS:
-        if k not in rs_frames:
-            rs_frames[k] = pd.DataFrame(index=dates)
-
     rows: list[dict] = []
-    n_sessions = len(dates)
     for k in RANK_IC_WINDOWS:
         for h in RANK_IC_WINDOWS:
-            ics: list[float] = []
-            for i in range(n_sessions - h):
-                ic = _spearman_cross_section(
-                    rs_frames[k].iloc[i],
-                    rs_frames[h].iloc[i + h],
+            terms = _rank_ic_terms(matrices[k], matrices[h], h, e=0)
+            mean_ic, n_days = _mean_ic_and_n(terms)
+            rows.append({"k": k, "h": h, "mean_ic": mean_ic, "n_days": n_days})
+    return pd.DataFrame(rows, columns=cols)
+
+
+def rank_ic_null_test(
+    snapshot: pd.DataFrame,
+    *,
+    as_of: date | None = None,
+    n_iter: int = NULL_TEST_ITER,
+    seed: int | None = 0,
+) -> pd.DataFrame:
+    """Circular-shift null for every (k, h) Rank-IC cell.
+
+    Observed statistic: mean over T of Spearman(RS_k[T], RS_h[T+h]), the
+    same quantity ``compute_rank_ic`` stores as ``mean_ic``. Null: circular-
+    shift the *forward* side by a random effective lag e drawn from
+    ``_null_shift_candidates`` (same lag floor and retained-fraction guard
+    as ``persistence_null_test``; L = ``_null_min_lag(h)`` because h is the
+    pairing lag being scrambled) and recompute the mean.
+
+    Cells that fail the retained-fraction guard keep the observed mean
+    internally (so it still matches ``compute_rank_ic``) but carry a
+    ``reason`` string; ``format_rank_ic_table`` prints n/a rather than a
+    null that the sample cannot support. Does not raise — unlike
+    ``persistence_null_test`` — because eight neighbouring cells may still
+    be valid.
+
+    Does not write a file. seed defaults to 0 (reproducible).
+    """
+    dates, matrices = _rank_ic_rs_matrices(snapshot, as_of)
+    if not dates:
+        return pd.DataFrame(columns=RANK_IC_NULL_COLUMNS)
+
+    n = len(dates)
+    rows: list[dict] = []
+    for k in RANK_IC_WINDOWS:
+        for h in RANK_IC_WINDOWS:
+            left = matrices[k]
+            right = matrices[h]
+            terms_obs = _rank_ic_terms(left, right, h, e=0)
+            observed, n_days = _mean_ic_and_n(terms_obs)
+
+            lag_l = _null_min_lag(h)
+            candidates = _null_shift_candidates(n, h, lag_l)
+            retained = candidates.size / n if n else 0.0
+            if retained < MIN_RETAINED_FRACTION:
+                rows.append(
+                    {
+                        "k": k,
+                        "h": h,
+                        "observed": observed,
+                        "null_mean": float("nan"),
+                        "null_std": float("nan"),
+                        "sigma": float("nan"),
+                        "n_ge_observed": 0,
+                        "n_iter": 0,
+                        "n_days": n_days,
+                        "retained": retained,
+                        "reason": _rank_ic_guard_reason(
+                            h=h, retained=retained, lag_l=lag_l
+                        ),
+                    }
                 )
-                if pd.notna(ic):
-                    ics.append(float(ic))
-            n_days = len(ics)
-            if n_days == 0:
-                mean_ic = float("nan")
-                se = float("nan")
-            else:
-                arr = np.asarray(ics, dtype=float)
-                mean_ic = float(arr.mean())
-                se = (
-                    float(arr.std(ddof=1) / np.sqrt(n_days))
-                    if n_days > 1
-                    else float("nan")
-                )
+                continue
+
+            rng = np.random.default_rng(seed)
+            null_values = np.full(n_iter, np.nan)
+            for draw in range(n_iter):
+                e = int(rng.choice(candidates))
+                terms = _rank_ic_terms(left, right, h, e=e)
+                if np.any(~np.isnan(terms)):
+                    null_values[draw] = np.nanmean(terms)
+
+            valid_null = null_values[~np.isnan(null_values)]
+            null_mean = float(np.mean(valid_null)) if len(valid_null) else float("nan")
+            null_std = (
+                float(np.std(valid_null, ddof=1)) if len(valid_null) > 1 else float("nan")
+            )
+            have_obs = bool(len(valid_null)) and pd.notna(observed)
+            n_ge_observed = int(np.sum(valid_null >= observed)) if have_obs else 0
+            sigma = (
+                float((observed - null_mean) / null_std)
+                if have_obs and pd.notna(null_std) and null_std > 0
+                else float("nan")
+            )
             rows.append(
                 {
                     "k": k,
                     "h": h,
-                    "mean_ic": mean_ic,
+                    "observed": observed,
+                    "null_mean": null_mean,
+                    "null_std": null_std,
+                    "sigma": sigma,
+                    "n_ge_observed": n_ge_observed,
+                    "n_iter": int(len(valid_null)),
                     "n_days": n_days,
-                    "se": se,
+                    "retained": retained,
+                    "reason": "",
                 }
             )
-    return pd.DataFrame(rows, columns=cols)
+    return pd.DataFrame(rows, columns=RANK_IC_NULL_COLUMNS)
+
+
+def _rank_ic_cell_lines(row: object) -> list[str]:
+    """Four sub-lines for one (k, h) cell. Guard failures print n/a + reason."""
+    reason = getattr(row, "reason", "") or ""
+    n_days = int(row.n_days) if pd.notna(row.n_days) else 0
+    k, h = int(row.k), int(row.h)
+    mark = RANK_IC_PERSISTENCE_MARK if (k, h) == RANK_IC_PERSISTENCE_CELL else ""
+    if reason:
+        return [f"n/a{mark} {reason}", f"n={n_days}", "", ""]
+    if pd.isna(getattr(row, "observed", np.nan)):
+        return [f"n/a{mark}", f"n={n_days}", "", ""]
+    obs = f"{float(row.observed):+.4f}{mark}"
+    null_mean = row.null_mean
+    null_std = row.null_std
+    if pd.isna(null_mean) or pd.isna(null_std):
+        null_line = "null n/a"
+    else:
+        null_line = f"null {float(null_mean):+.4f}±{float(null_std):.4f}"
+    sigma = row.sigma
+    sigma_text = "n/aσ" if pd.isna(sigma) else f"{float(sigma):+.2f}σ"
+    dist = f"{sigma_text}  {int(row.n_ge_observed)}/{int(row.n_iter)}"
+    retained = row.retained
+    ret_text = "n/a" if pd.isna(retained) else f"{float(retained):.1%}"
+    tail = f"n={n_days} ret={ret_text}"
+    return [obs, null_line, dist, tail]
 
 
 def format_rank_ic_table(frame: pd.DataFrame) -> str:
-    """Plain 3×3 text table: mean IC, n_days, se per (k, h) cell."""
+    """Plain 3×3 text table: observed IC plus circular-shift null per cell.
+
+    Cells are joined with two spaces (spec 006 DO-3). Guard-fail cells print
+    n/a and the locked reason string, not a null the sample cannot support.
+    """
     lines = [
         "forward Rank-IC  Spearman(RS_k[T], excess_h[T→T+h])",
-        "k\\h".ljust(6) + "".join(f"{h:>22d}" for h in RANK_IC_WINDOWS),
+        "circular-shift null on the forward side; seed=0",
     ]
+    if frame.empty:
+        lines.append("n/a")
+        lines.append(RANK_IC_PERSISTENCE_NOTE)
+        return "\n".join(lines)
+
     by_kh = {(int(r.k), int(r.h)): r for r in frame.itertuples(index=False)}
+    blocks: list[list[list[str]]] = []
     for k in RANK_IC_WINDOWS:
-        cells: list[str] = []
+        row_cells: list[list[str]] = []
         for h in RANK_IC_WINDOWS:
             r = by_kh.get((k, h))
-            if r is None or pd.isna(r.mean_ic):
-                cells.append(f"{'n/a':>22}")
+            if r is None:
+                row_cells.append(["n/a", "", "", ""])
             else:
-                se_text = "n/a" if pd.isna(r.se) else f"{r.se:.4f}"
-                cells.append(f"{r.mean_ic:+.4f} n={int(r.n_days)} se={se_text}".rjust(22))
-        lines.append(f"{k:<6}" + "".join(cells))
+                row_cells.append(_rank_ic_cell_lines(r))
+        blocks.append(row_cells)
+
+    width = max(len(sub) for row in blocks for cell in row for sub in cell)
+    width = max(width, 8)
+    k_width = 6
+    lines.append(
+        "k\\h".ljust(k_width) + "  ".join(f"{h:^{width}d}" for h in RANK_IC_WINDOWS)
+    )
+    for k, row_cells in zip(RANK_IC_WINDOWS, blocks):
+        padded = [[sub.ljust(width) for sub in cell] for cell in row_cells]
+        for i in range(4):
+            prefix = f"{k:<{k_width}}" if i == 0 else " " * k_width
+            lines.append(prefix + "  ".join(cell[i] for cell in padded))
+        lines.append("")
+    lines.append(RANK_IC_PERSISTENCE_NOTE)
     return "\n".join(lines)
