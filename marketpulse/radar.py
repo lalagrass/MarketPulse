@@ -22,6 +22,7 @@ from marketpulse.calc import (
     impossible_returns_in_window,
 )
 from marketpulse.momentum import (
+    DIR_DOWN,
     DIR_MARK,
     MOM_UNKNOWN,
     MomentumEvidence,
@@ -61,6 +62,20 @@ RADAR_MOM_NOTE = (
     "Rotation = 相對前一交易日的名次。"
     " Momentum = 5D / Breadth / Volume / Rank Δ5 的方向，不是分數。"
 )
+# spec 011 DO-3 C1: the four votes and the label rule, on screen. Constants
+# are printed as the rule's facts, not knobs (D10: do not change them).
+RADAR_MOM_RULE = (
+    "Momentum 標籤由四票計出（5D / Breadth / Volume / Rank Δ5），不是名次變化本身。"
+    " 同樣 Δ5 +3 可以是 Strong 或 Weakening，另外三票不同。"
+    " 5D ↓ 在 5D 報酬仍為正時代表「比五日前的 5D 少了 ≥2pp」，不是正負號。"
+    " 計票：20D>0 且 ↓≥2 → Weakening；"
+    " rank≤3 且 20D>0 且 ↓=0 且 5D↑ → Strong；"
+    " rank≤3 且 20D>0 且 ↑>↓ 且 5D 非↓ → Strong；"
+    " 非強位 且 ↑≥2 且 ↑>↓ 且 5D↑ → Improving；"
+    " rank≥8 且 ↑<2 → Weak；"
+    " 20D≤0 且 5D↓ → Weak；其餘 → Stable。"
+)
+FIVE_DAY_DROP_NOTE = "（比五日前回落 ≥2pp）"
 
 
 def format_limit_window_line(count: int, n: int = LIMIT_WINDOW) -> str:
@@ -136,10 +151,27 @@ def _fmt_delta5(value: object) -> str:
     return f"Δ5 {int(value):+d}"
 
 
-def _fmt_mom_ascii(state: str) -> str:
-    if state == MOM_UNKNOWN:
+def _fmt_mom_ascii(evidence: MomentumEvidence) -> str:
+    """Label plus the four votes. Reconstructable from this cell + RADAR_MOM_RULE."""
+    if evidence.state == MOM_UNKNOWN:
         return "n/a"
-    return state
+    return (
+        f"{evidence.state} "
+        f"5D{_dir_arrow(evidence.five)}"
+        f" Br{_dir_arrow(evidence.breadth)}"
+        f" Vol{_dir_arrow(evidence.volume)}"
+        f" Δ5{_dir_arrow(evidence.rank)}"
+    )
+
+
+def _five_day_drop_note(rec, evidence: MomentumEvidence) -> str:
+    """When 5D is ↓ but the 5D return is still positive, say why."""
+    ret5 = getattr(rec, "return_5", None)
+    if evidence.five != DIR_DOWN:
+        return ""
+    if ret5 is None or pd.isna(ret5) or float(ret5) <= 0:
+        return ""
+    return f"  {FIVE_DAY_DROP_NOTE}"
 
 
 def _dir_arrow(direction: str) -> str:
@@ -214,6 +246,7 @@ def render_radar(
         "Sector Rotation",
         RADAR_NOTE,
         RADAR_MOM_NOTE,
+        RADAR_MOM_RULE,
         "Rotation: ↑ Rising  ↓ Falling  → Stable  (vs previous session)",
         "Momentum: Strong  Improving  Stable  Weakening  Weak  (5D / Breadth / Volume / Rank Δ5)",
         "",
@@ -246,7 +279,7 @@ def render_radar(
             f"{_fmt_x(vol):>6}  "
             f"{rank_triplet:<15}  "
             f"{rotation_mark(delta):<3}  "
-            f"{_fmt_mom_ascii(mom.state)}"
+            f"{_fmt_mom_ascii(mom)}"
         )
         if show_narratives:
             row = (
@@ -263,7 +296,8 @@ def render_radar(
 def _momentum_lines(rec, evidence: MomentumEvidence) -> list[str]:
     return [
         f"Momentum  {evidence.label}",
-        f"  5D       {_dir_arrow(evidence.five):<3}  {_fmt_signed_pct(getattr(rec, 'return_5', None))}",
+        f"  5D       {_dir_arrow(evidence.five):<3}  {_fmt_signed_pct(getattr(rec, 'return_5', None))}"
+        f"{_five_day_drop_note(rec, evidence)}",
         f"  20D      {_dir_arrow(evidence.twenty):<3}  {_fmt_signed_pct(rec.return_20)}",
         f"  Breadth  {_dir_arrow(evidence.breadth):<3}  "
         f"{_fmt_breadth(getattr(rec, 'above_count', None), rec.member_count)}",
@@ -456,7 +490,7 @@ def render_radar_html(
             f"<td>{html.escape(_fmt_x(getattr(rec, 'volume_ratio', None)).strip())}</td>"
             f'<td class="rank">{rank_triplet_html}</td>'
             f'<td class="{rot_class}">{html.escape(mark)} {html.escape(rot)}</td>'
-            f'<td class="mom {mom_class}">{html.escape(mom.label)}</td>'
+            f'<td class="mom {mom_class}">{html.escape(_fmt_mom_ascii(mom))}</td>'
         )
         if show_narratives:
             rows[-1] += (
@@ -498,7 +532,7 @@ def render_radar_html(
             f"<div class='metrics momentum'>"
             f"<div><span>Momentum</span><strong class='{mom_class}'>"
             f"{html.escape(mom.label)}</strong></div>"
-            f"{_html_evidence_item('5D', mom.five, _fmt_signed_pct(getattr(rec, 'return_5', None)))}"
+            f"{_html_evidence_item('5D', mom.five, _fmt_signed_pct(getattr(rec, 'return_5', None)) + _five_day_drop_note(rec, mom))}"
             f"{_html_evidence_item('20D', mom.twenty, _fmt_signed_pct(rec.return_20))}"
             f"{_html_evidence_item('Breadth', mom.breadth, _fmt_breadth(getattr(rec, 'above_count', None), rec.member_count))}"
             f"{_html_evidence_item('Volume', mom.volume, _fmt_x(getattr(rec, 'volume_ratio', None)).strip())}"
@@ -626,6 +660,7 @@ def render_radar_html(
   <p class="sub quality">{html.escape(quality_line(market_row, null_baseline=null_baseline, snapshot_as_of=as_of))}</p>{limit_p}
   <p class="sub">{html.escape(RADAR_NOTE)}</p>
   <p class="sub">{html.escape(RADAR_MOM_NOTE)}</p>
+  <p class="sub">{html.escape(RADAR_MOM_RULE)}</p>
 </header>
 <div class="wrap">
 <table>
