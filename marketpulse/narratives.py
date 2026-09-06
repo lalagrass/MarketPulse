@@ -48,14 +48,22 @@ COVERAGE_COVERED = "covered"
 COVERAGE_PARTIAL = "partial"
 COVERAGE_UNCOVERED = "uncovered"
 COVERAGE_UNKNOWN = "unknown"
+# Sprint 008 DO-1: a fifth state, alongside the four above, not replacing them.
+# It means "the narrative named its theme(s) directly via theme_ids", so the
+# named_symbols membership test was never consulted for this narrative.
+COVERAGE_DECLARED = "declared"
 
 DEFAULT_NARRATIVES_DIR = Path("narratives")
 
-# Display copy locked by spec 007. Do not rewrite from the numbers (D10).
+# Display copy locked by spec 007 / 008. Do not rewrite from the numbers (D10).
 TITLE_STRONG_UNCOVERED = "強但沒人講"
 TITLE_COVERED_WEAK = "有人講但弱"
 TITLE_REVISIT_DUE = "到期重看"
 TITLE_REVISIT_CONDITIONAL = "條件型（無法判斷是否到期）"
+TITLE_OUT_OF_CLASSIFICATION = "分類外代號"  # sprint 008 DO-1
+TITLE_STORY_PROGRESS = "故事進度"  # sprint 008 DO-2
+TITLE_RECENT_EVENTS = "最近事件"  # sprint 008 DO-2
+UNKNOWN_THEME_ID_NOTE = "未知 theme_id（不在 themes/v1.yaml）"  # sprint 008 DO-1
 NARRATIVE_COL_HEADER = "敘事"
 NARRATIVE_MISSING = "—"
 EMPTY_LIST = "（無）"
@@ -63,6 +71,8 @@ GAP_LIST_LIMIT = 5
 CLAIM_PREVIEW_LEN = 30
 STRONG_RANK_MAX = 3
 REVISIT_SEP = " · "
+RECENT_EVENTS_LIMIT = 3  # sprint 008 DO-2
+EVENT_TEXT_PREVIEW_LEN = 40  # sprint 008 DO-2
 
 # `revisit` is required — a story with no date to come back to rots quietly
 # (sprint 004 DO-1, mirrors the skill's UNKNOWN rule). Snapshots written
@@ -100,6 +110,10 @@ class Narrative:
     named_symbols: tuple[str, ...]
     inferred_symbols: tuple[str, ...]
     note: str
+    # Sprint 008 DO-1: optional, defaults to empty. A story can name the
+    # theme(s) it is about before its symbols converge. Does not touch the
+    # meaning of named_symbols / inferred_symbols — those stay symbol records.
+    theme_ids: tuple[str, ...] = ()
     stage: str = STAGE_OPEN
     revisit: str = ""
     log: tuple[LogEntry, ...] = ()
@@ -209,6 +223,7 @@ def _parse_narrative(body: dict, *, enforce_revisit: bool) -> Narrative:
         named_symbols=tuple(str(s) for s in (body.get("named_symbols") or [])),
         inferred_symbols=tuple(str(s) for s in (body.get("inferred_symbols") or [])),
         note=str(body.get("note") or "").strip(),
+        theme_ids=tuple(str(t) for t in (body.get("theme_ids") or [])),
         stage=stage,
         revisit=revisit,
         log=log,
@@ -306,6 +321,12 @@ def coverage_report(snapshot: NarrativeSnapshot, themes: ThemeSet) -> dict[str, 
     all_members = {m for theme in themes.themes for m in theme.members}
     report: dict[str, str] = {}
     for narrative in snapshot.narratives:
+        if narrative.theme_ids:
+            # Sprint 008 DO-1: theme_ids explicit > named_symbols test. This
+            # narrative declared its theme(s); the four-state logic below is
+            # left exactly as it was for every narrative that did not.
+            report[narrative.narrative_id] = COVERAGE_DECLARED
+            continue
         if not narrative.named_symbols:
             report[narrative.narrative_id] = COVERAGE_UNKNOWN
             continue
@@ -340,36 +361,126 @@ def weak_rank_threshold(n_themes: int) -> int:
     return math.ceil(n_themes / 2)
 
 
+def _member_sets(themes: ThemeSet) -> dict[str, set[str]]:
+    return {theme.theme_id: set(theme.members) for theme in themes.themes}
+
+
+def _mentioned_theme_ids(
+    narrative: Narrative,
+    member_sets: dict[str, set[str]],
+) -> set[str]:
+    """The theme ids one narrative mentions.
+
+    Sprint 008 DO-1 priority, fixed: explicit `theme_ids` win outright; only
+    when a narrative has none do we fall back to the named_symbols ∩ members
+    test (the same test coverage_report uses — uncovered / unknown fall out
+    of it as the empty set by construction). No merge, no vote. theme_ids
+    that name no real theme are dropped here and surfaced separately by
+    unknown_theme_ids().
+    """
+    if narrative.theme_ids:
+        return {tid for tid in narrative.theme_ids if tid in member_sets}
+    if not narrative.named_symbols:
+        return set()
+    named = set(narrative.named_symbols)
+    return {tid for tid, members in member_sets.items() if named & members}
+
+
 def theme_mention_dates(
     snapshot: NarrativeSnapshot,
     themes: ThemeSet,
 ) -> dict[str, date | None]:
     """theme_id → snapshot_date of the PIT snapshot if that theme is mentioned.
 
-    Coverage is the inverse of coverage_report(): a narrative whose named
-    symbols sit in no theme (uncovered) or that names nothing (unknown)
-    mentions no theme. Remaining narratives mention a theme when their
-    named_symbols intersect that theme's members — the same membership
-    test coverage_report uses. inferred_symbols and branch baskets are
-    not consulted; coverage_report does not look at them either.
+    A theme is mentioned when some narrative in the snapshot declares it via
+    `theme_ids`, or (no theme_ids) names a symbol that sits in that theme.
+    inferred_symbols and branch baskets are not consulted.
 
-    Date shown is the snapshot_date of this PIT snapshot (spec 007:
-    latest snapshot_date <= as_of), not first_noted and not a log date.
+    Date shown is the snapshot_date of this PIT snapshot (spec 007: latest
+    snapshot_date <= as_of), not first_noted and not a log date. For the
+    "most recent time this theme was mentioned" across the whole PIT history
+    (spec 008 DO-3 B2), use theme_last_mention_dates().
     """
     dates: dict[str, date | None] = {theme.theme_id: None for theme in themes.themes}
     if snapshot.snapshot_date is None or not snapshot.narratives:
         return dates
-    report = coverage_report(snapshot, themes)
-    members = {theme.theme_id: set(theme.members) for theme in themes.themes}
+    member_sets = _member_sets(themes)
     for narrative in snapshot.narratives:
-        status = report.get(narrative.narrative_id)
-        if status in (COVERAGE_UNCOVERED, COVERAGE_UNKNOWN, None):
-            continue
-        named = set(narrative.named_symbols)
-        for theme_id, theme_members in members.items():
-            if named & theme_members:
-                dates[theme_id] = snapshot.snapshot_date
+        for theme_id in _mentioned_theme_ids(narrative, member_sets):
+            dates[theme_id] = snapshot.snapshot_date
     return dates
+
+
+def theme_last_mention_dates(
+    as_of: date,
+    themes: ThemeSet,
+    narratives_dir: Path = DEFAULT_NARRATIVES_DIR,
+) -> dict[str, date | None]:
+    """theme_id → the latest snapshot_date <= as_of on which any snapshot
+    mentioned that theme (spec 008 DO-3 B2: the narrative column showed the
+    PIT snapshot_date for every mentioned theme — a boolean wearing a date.
+    This scans every snapshot file, so the column can say when a theme was
+    genuinely last talked about).
+
+    Same mention test as theme_mention_dates (theme_ids first, then
+    named_symbols ∩ members), applied per snapshot. first_noted > as_of and
+    log-after-as_of trimming are handled by _parse; first_noted is re-checked
+    here. No cache layer — there are two files (contract #6).
+    """
+    dates: dict[str, date | None] = {theme.theme_id: None for theme in themes.themes}
+    member_sets = _member_sets(themes)
+    if not narratives_dir.exists():
+        return dates
+    for path in _snapshot_files(narratives_dir):
+        snapshot_date, narratives = _parse_snapshot_file(path)
+        if snapshot_date > as_of:
+            continue
+        for narrative in narratives:
+            if narrative.first_noted > as_of:
+                continue
+            for theme_id in _mentioned_theme_ids(narrative, member_sets):
+                current = dates.get(theme_id)
+                if current is None or snapshot_date > current:
+                    dates[theme_id] = snapshot_date
+    return dates
+
+
+def unknown_theme_ids(
+    snapshot: NarrativeSnapshot,
+    themes: ThemeSet,
+) -> dict[str, tuple[str, ...]]:
+    """narrative_id → the theme_ids it lists that are not in themes/v1.yaml.
+
+    Spec 008 DO-1 acceptance 4: a typo in theme_ids must be visible on the
+    screen, never silently swallowed. Whether load should also raise is spec
+    unresolved question 1 — this function is the "make it visible" half and
+    is independent of that decision.
+    """
+    known = {theme.theme_id for theme in themes.themes}
+    out: dict[str, tuple[str, ...]] = {}
+    for narrative in snapshot.narratives:
+        bad = tuple(t for t in narrative.theme_ids if t not in known)
+        if bad:
+            out[narrative.narrative_id] = bad
+    return out
+
+
+def out_of_classification_symbols(
+    snapshot: NarrativeSnapshot,
+    themes: ThemeSet,
+) -> list[tuple[str, str]]:
+    """(narrative_id, symbol) for every named_symbol that is in no theme's
+    membership (spec 008 DO-1: the `分類外代號` block). This is the display of
+    a classification gap, not an auto-fix — the symbol is not slotted into
+    any theme. Narrative order, then the order symbols are listed.
+    """
+    all_members = {m for theme in themes.themes for m in theme.members}
+    out: list[tuple[str, str]] = []
+    for narrative in snapshot.narratives:
+        for symbol in narrative.named_symbols:
+            if symbol not in all_members:
+                out.append((narrative.narrative_id, symbol))
+    return out
 
 
 def parse_revisit_date(revisit: str) -> date | None:

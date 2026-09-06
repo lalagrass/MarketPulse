@@ -76,6 +76,7 @@ narratives:
     stance: confirming
     stage: mapped
     revisit: 2026-10-01；若 optical_cpo 主題 rank 跌出前 3 則提前重評
+    theme_ids: [optical_cpo]
     named_symbols: []
     inferred_symbols: []
     note: >

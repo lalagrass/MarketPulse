@@ -11,9 +11,11 @@ from marketpulse.quality import HORIZON_FOOTNOTE
 from marketpulse.narratives import (
     EMPTY_LIST,
     TITLE_COVERED_WEAK,
+    TITLE_OUT_OF_CLASSIFICATION,
     TITLE_REVISIT_CONDITIONAL,
     TITLE_REVISIT_DUE,
     TITLE_STRONG_UNCOVERED,
+    UNKNOWN_THEME_ID_NOTE,
     Narrative,
     NarrativeOverlay,
     NarrativeSnapshot,
@@ -478,6 +480,103 @@ def test_brief_ends_with_revisit_due_and_conditional() -> None:
     assert TITLE_REVISIT_CONDITIONAL in text
     assert "due_n · — · 2026-08-30 · a note" in text
     assert "cond_n · Broadcom 下一次財報電話會議" in text
+
+
+# ── sprint 008 DO-1: theme_ids in the brief ──
+
+
+def _eleven_theme_set() -> ThemeSet:
+    return ThemeSet(
+        classification_version="test",
+        taxonomy_frozen_at="2026-01-01",
+        notes="",
+        themes=tuple(Theme(f"t{i:02d}", f"主題{i}", (f"S{i:02d}",)) for i in range(1, 12)),
+    )
+
+
+def _overlay_with(narratives: tuple[Narrative, ...]) -> NarrativeOverlay:
+    return NarrativeOverlay(
+        snapshot=NarrativeSnapshot(snapshot_date=date(2026, 8, 31), narratives=narratives),
+        themes=_eleven_theme_set(),
+    )
+
+
+def _n(nid: str, *, theme_ids=(), named=()) -> Narrative:
+    return Narrative(
+        narrative_id=nid,
+        name=nid,
+        first_noted=date(2026, 8, 1),
+        source="self",
+        source_ref="x",
+        stance="new",
+        named_symbols=tuple(named),
+        inferred_symbols=(),
+        note="",
+        theme_ids=tuple(theme_ids),
+    )
+
+
+def test_do1_declared_theme_leaves_strong_uncovered() -> None:
+    """Acceptance 1: a narrative that declares t01 via theme_ids pulls the
+    rank-1 theme out of 強但沒人講; t02 / t03 (nobody declared them) stay."""
+    overlay = _overlay_with((_n("n_optical", theme_ids=("t01",)),))
+    text = render_brief(_eleven_day(), date(2026, 8, 31), overlay=overlay)
+    strong = text.split(TITLE_STRONG_UNCOVERED, 1)[1].split(TITLE_COVERED_WEAK, 1)[0]
+    assert "主題一  #1" not in strong
+    assert "主題二  #2" in strong
+    assert "主題三  #3" in strong
+
+
+def test_do1_named_symbols_fallback_still_covers_when_no_theme_ids() -> None:
+    """Acceptance 2: with no theme_ids, S01 in t01's members still covers t01
+    (the pre-008 path is intact)."""
+    overlay = _overlay_with((_n("n_named", named=("S01",)),))
+    text = render_brief(_eleven_day(), date(2026, 8, 31), overlay=overlay)
+    strong = text.split(TITLE_STRONG_UNCOVERED, 1)[1].split(TITLE_COVERED_WEAK, 1)[0]
+    assert "主題一  #1" not in strong
+
+
+def test_do1_out_of_classification_block_lists_unclassified_named_symbol() -> None:
+    """Acceptance 3: a named symbol in no theme shows in 分類外代號 as
+    `narrative_id · symbol`; it is not auto-slotted anywhere."""
+    overlay = _overlay_with((_n("n_gap", named=("9999",)),))
+    text = render_brief(_eleven_day(), date(2026, 8, 31), overlay=overlay)
+    block = text.split(TITLE_OUT_OF_CLASSIFICATION, 1)[1]
+    assert "n_gap · 9999" in block.splitlines()[1]
+
+
+def test_do1_out_of_classification_block_empty_prints_placeholder() -> None:
+    overlay = _overlay_with((_n("n_ok", named=("S01",)),))
+    text = render_brief(_eleven_day(), date(2026, 8, 31), overlay=overlay)
+    assert TITLE_OUT_OF_CLASSIFICATION in text
+    block = text.split(TITLE_OUT_OF_CLASSIFICATION, 1)[1]
+    assert block.splitlines()[1] == EMPTY_LIST
+
+
+def test_do1_unknown_theme_id_message_appears_in_brief() -> None:
+    """Acceptance 4: an unknown theme_id is visible on screen (not raised,
+    not silently dropped). The valid sibling id still classifies."""
+    overlay = _overlay_with((_n("n_typo", theme_ids=("t01", "bogus_id")),))
+    text = render_brief(_eleven_day(), date(2026, 8, 31), overlay=overlay)
+    assert UNKNOWN_THEME_ID_NOTE in text
+    line = [ln for ln in text.splitlines() if UNKNOWN_THEME_ID_NOTE in ln][0]
+    assert "n_typo" in line and "bogus_id" in line
+    strong = text.split(TITLE_STRONG_UNCOVERED, 1)[1].split(TITLE_COVERED_WEAK, 1)[0]
+    assert "主題一  #1" not in strong  # t01 still declared despite the typo sibling
+
+
+def test_do1_no_narratives_adds_no_new_blocks() -> None:
+    """Acceptance 5 (byte-identity precondition): with no narrative snapshot
+    loaded, none of the DO-1 additions render."""
+    text_none = render_brief(_eleven_day(), date(2026, 8, 31), overlay=None)
+    empty_overlay = NarrativeOverlay(
+        snapshot=NarrativeSnapshot(snapshot_date=None, narratives=()),
+        themes=_eleven_theme_set(),
+    )
+    text_empty = render_brief(_eleven_day(), date(2026, 8, 31), overlay=empty_overlay)
+    for text in (text_none, text_empty):
+        assert TITLE_OUT_OF_CLASSIFICATION not in text
+        assert UNKNOWN_THEME_ID_NOTE not in text
 
 
 def test_brief_render_does_not_change_narratives_mtime_or_bytes() -> None:

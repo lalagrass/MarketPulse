@@ -15,13 +15,18 @@ from marketpulse import RANK_DISCLOSURE, REPLAY_DISCLOSURE
 from marketpulse.narratives import (
     EMPTY_LIST,
     GAP_LIST_LIMIT,
+    REVISIT_SEP,
     STRONG_RANK_MAX,
     TITLE_COVERED_WEAK,
+    TITLE_OUT_OF_CLASSIFICATION,
     TITLE_STRONG_UNCOVERED,
+    UNKNOWN_THEME_ID_NOTE,
     NarrativeOverlay,
     NarrativeSnapshot,
+    out_of_classification_symbols,
     render_revisit_due,
     theme_mention_dates,
+    unknown_theme_ids,
     weak_rank_threshold,
 )
 from marketpulse.quality import quality_line
@@ -258,6 +263,17 @@ def render_gap_lists(day: pd.DataFrame, overlay: NarrativeOverlay | None) -> str
     lines.append(TITLE_COVERED_WEAK)
     lines.extend(weak_rows[:GAP_LIST_LIMIT] or [EMPTY_LIST])
     lines.append("")
+    # 分類外代號 (spec 008 DO-1): named_symbols that sit in no theme. Only
+    # shown once a narrative snapshot is actually loaded — with no narratives
+    # there is nothing to classify, and the brief stays byte-identical to the
+    # pre-008 output (DO-1 acceptance 5).
+    if overlay is not None and overlay.snapshot.narratives:
+        lines.append(TITLE_OUT_OF_CLASSIFICATION)
+        pairs = out_of_classification_symbols(overlay.snapshot, overlay.themes)
+        lines.extend(
+            [f"{nid}{REVISIT_SEP}{symbol}" for nid, symbol in pairs] or [EMPTY_LIST]
+        )
+        lines.append("")
     return "\n".join(lines)
 
 
@@ -310,6 +326,15 @@ def render_brief(
     if show_narratives:
         if overlay is not None and overlay.error:
             lines.extend([overlay.error, ""])
+        if overlay is not None and overlay.snapshot.narratives and overlay.themes.themes:
+            unknown = unknown_theme_ids(overlay.snapshot, overlay.themes)
+            for narrative_id, bad in unknown.items():
+                lines.append(
+                    f"{UNKNOWN_THEME_ID_NOTE}：{narrative_id}{REVISIT_SEP}"
+                    f"{', '.join(bad)}"
+                )
+            if unknown:
+                lines.append("")
         lines.append(render_gap_lists(day, overlay).rstrip("\n"))
         lines.append("")
     statuses = set(str(s) for s in day["status"])

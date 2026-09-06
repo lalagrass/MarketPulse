@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from marketpulse.narratives import (
+    COVERAGE_COVERED,
+    COVERAGE_DECLARED,
     COVERAGE_UNCOVERED,
     COVERAGE_UNKNOWN,
     EMPTY_LIST,
@@ -19,13 +21,15 @@ from marketpulse.narratives import (
     history,
     load_as_of,
     load_as_of_lenient,
+    out_of_classification_symbols,
     parse_revisit_date,
     render_revisit_due,
     theme_mention_dates,
+    unknown_theme_ids,
     weak_rank_threshold,
 )
 from marketpulse.narratives import coverage_report as narrative_coverage_report
-from marketpulse.themes import load_themes
+from marketpulse.themes import Theme, ThemeSet, load_themes
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -457,20 +461,20 @@ def test_weak_rank_threshold_is_ceil_half() -> None:
     assert weak_rank_threshold(0) == 0
 
 
-def test_theme_mention_dates_real_snapshot_uses_coverage_report() -> None:
-    """2330 hits foundry_advanced (covered). 2454 hits nothing (uncovered).
-    optical_cpo names nothing (unknown) — matching narrative_id to theme_id
-    is not coverage."""
+def test_theme_mention_dates_real_snapshot_mixes_declared_and_named() -> None:
+    """Sprint 008 DO-1: on the real 2026-09-06 snapshot, optical_cpo now
+    carries `theme_ids: [optical_cpo]` so it is mentioned by declaration;
+    foundry_advanced is still mentioned only through the named_symbols
+    fallback (nvhbm names 2330). 2454 (asic_xpu) still hits nothing."""
     themes = load_themes(REPO_ROOT / "themes" / "v1.yaml")
     snapshot = load_as_of(date(2026, 9, 6), REPO_ROOT / "narratives")
     dates = theme_mention_dates(snapshot, themes)
-    assert dates["foundry_advanced"] == date(2026, 9, 6)
-    assert dates["optical_cpo"] is None
+    assert dates["foundry_advanced"] == date(2026, 9, 6)  # named_symbols fallback
+    assert dates["optical_cpo"] == date(2026, 9, 6)  # theme_ids declaration
     assert dates["memory"] is None
     assert dates["ai_server"] is None
-    assert all(
-        (tid == "foundry_advanced") == (when is not None) for tid, when in dates.items()
-    )
+    mentioned = {tid for tid, when in dates.items() if when is not None}
+    assert mentioned == {"foundry_advanced", "optical_cpo"}
 
 
 def test_theme_mention_dates_pit_empty_when_snapshots_postdate_as_of() -> None:
@@ -586,3 +590,124 @@ def test_revisit_due_does_not_change_narratives_mtime_or_bytes() -> None:
     after = _fingerprint(n_dir)
     assert after == before
     assert before, "narratives/ should not be empty"
+
+
+# ── sprint 008 DO-1: theme_ids (declare the theme before symbols converge) ──
+
+
+def _themes_ab() -> ThemeSet:
+    return ThemeSet(
+        classification_version="test",
+        taxonomy_frozen_at="2026-01-01",
+        notes="",
+        themes=(
+            Theme("t_a", "主題A", ("A01", "A02")),
+            Theme("t_b", "主題B", ("B01", "B02")),
+        ),
+    )
+
+
+def _narr(nid: str, *, theme_ids=(), named=()) -> Narrative:
+    return Narrative(
+        narrative_id=nid,
+        name=nid,
+        first_noted=date(2026, 9, 1),
+        source="self",
+        source_ref="x",
+        stance="new",
+        named_symbols=tuple(named),
+        inferred_symbols=(),
+        note="",
+        theme_ids=tuple(theme_ids),
+    )
+
+
+def test_do1_theme_ids_declared_status_and_mention() -> None:
+    """Explicit: a narrative that lists theme_ids gets coverage `declared`
+    (fifth state, alongside the four), and its themes are mentioned even
+    when named_symbols is empty."""
+    snap = NarrativeSnapshot(
+        snapshot_date=date(2026, 9, 6),
+        narratives=(_narr("story", theme_ids=("t_a",)),),
+    )
+    themes = _themes_ab()
+    assert narrative_coverage_report(snap, themes)["story"] == COVERAGE_DECLARED
+    dates = theme_mention_dates(snap, themes)
+    assert dates["t_a"] == date(2026, 9, 6)
+    assert dates["t_b"] is None
+
+
+def test_do1_empty_theme_ids_falls_back_to_named_symbols() -> None:
+    """Empty theme_ids: the pre-008 named_symbols path is unchanged."""
+    snap = NarrativeSnapshot(
+        snapshot_date=date(2026, 9, 6),
+        narratives=(_narr("story", named=("A01",)),),
+    )
+    themes = _themes_ab()
+    assert narrative_coverage_report(snap, themes)["story"] == COVERAGE_COVERED
+    assert theme_mention_dates(snap, themes)["t_a"] == date(2026, 9, 6)
+
+
+def test_do1_theme_ids_beats_named_symbols_when_both_present() -> None:
+    """Priority is fixed: theme_ids wins, named_symbols is not also counted."""
+    snap = NarrativeSnapshot(
+        snapshot_date=date(2026, 9, 6),
+        narratives=(_narr("story", theme_ids=("t_a",), named=("B01",)),),
+    )
+    themes = _themes_ab()
+    assert narrative_coverage_report(snap, themes)["story"] == COVERAGE_DECLARED
+    dates = theme_mention_dates(snap, themes)
+    assert dates["t_a"] == date(2026, 9, 6)
+    assert dates["t_b"] is None  # B01 membership is NOT consulted
+
+
+def test_do1_unknown_theme_id_is_surfaced_not_raised(tmp_path: Path) -> None:
+    """Acceptance 4: a theme_id not in themes/v1.yaml does not blow up the
+    load; unknown_theme_ids() reports it so the screen can show it."""
+    _write(
+        tmp_path,
+        "2026-09-06.yaml",
+        """
+        snapshot_date: 2026-09-06
+        narratives:
+          - narrative_id: typo_story
+            name: Typo
+            first_noted: 2026-09-03
+            source: self
+            source_ref: x
+            stance: new
+            revisit: 2026-10-01
+            theme_ids: [optical_cpo, opitcal_cpo]
+            named_symbols: []
+            inferred_symbols: []
+            note: n/a
+        """,
+    )
+    snap = load_as_of(date(2026, 9, 6), tmp_path)  # must not raise
+    themes = load_themes(REPO_ROOT / "themes" / "v1.yaml")
+    assert unknown_theme_ids(snap, themes) == {"typo_story": ("opitcal_cpo",)}
+    # the real theme in the same list is still mentioned
+    assert theme_mention_dates(snap, themes)["optical_cpo"] == date(2026, 9, 6)
+
+
+def test_do1_out_of_classification_lists_named_symbols_in_no_theme() -> None:
+    """Acceptance 3: asic_xpu's 2454 is in no theme → listed. nvhbm's 2330
+    is in foundry_advanced → not listed. Declared themes are irrelevant here
+    (this block is about named_symbols)."""
+    themes = load_themes(REPO_ROOT / "themes" / "v1.yaml")
+    snap = load_as_of(date(2026, 9, 6), REPO_ROOT / "narratives")
+    pairs = out_of_classification_symbols(snap, themes)
+    assert ("asic_xpu", "2454") in pairs
+    assert all(nid != "nvhbm" for nid, _ in pairs)
+
+
+def test_do1_optical_cpo_real_file_declares_its_theme() -> None:
+    """The one real-file edit this sprint: optical_cpo now carries
+    theme_ids: [optical_cpo]. nvhbm (no theme_ids) still falls back to 2330
+    → foundry_advanced. asic_xpu still uncovered."""
+    themes = load_themes(REPO_ROOT / "themes" / "v1.yaml")
+    snap = load_as_of(date(2026, 9, 6), REPO_ROOT / "narratives")
+    report = narrative_coverage_report(snap, themes)
+    assert report["optical_cpo"] == COVERAGE_DECLARED
+    assert report["nvhbm"] == COVERAGE_COVERED
+    assert report["asic_xpu"] == COVERAGE_UNCOVERED
