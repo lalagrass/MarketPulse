@@ -198,10 +198,34 @@ R3 本身不變。關掉顯示層新欄位（`show_narratives=False` / `--no-nar
 本專案永遠用不上。realized 版沒有值得裝的套件——`df.std(axis=1)` 與
 `df.corr()` 上三角平均就是全部，§3「先找現成實作」在這裡的合格結論是「不裝」。
 
+### D16 — Momentum 標籤必須可還原，否則不顯示
+
+**2026-09-06 sprint 010：R1 的 display-only 豁免收窄，PO 已採納。**
+
+```text
+條文：Momentum 是 display-only 標籤（5D／Breadth／Volume／Rank Δ5 的方向），
+      因「不改變 rank」而不受 R1「無綜合評分」約束
+起因：MVP 建置期寫下（coding-contract §5、CLAUDE.md），未見量測支持
+物證：009-evidence 真實輸出——光通訊/CPO rank #1、RS20 +24.8%、breadth 10/10、
+      5D +5.4% → 標 Stable；高速材料/CCL #3、RS20 +10.0% → 標 Weakening。
+      010 階段 1「只看輸出」角色（未讀任何文件）第 6 條獨立指出四分類與 Momentum
+      「用詞太像、看起來應該對得上又對不上」。同一現象早記於
+      docs/sprints/past-momentum-visibility.md
+詮釋：「不改變 rank」擋住的是污染，擋不住「四個輸入塌成一個讀者無法還原的判決」。
+      R1 真正要防的是後者，豁免條款讓它從側門進來
+決定：收窄——豁免僅適用於「讀者能從同一列可見數字還原出該標籤」的情形。
+      現行 Momentum 不滿足；011 重做時必須連帶讓它可還原，否則改成不顯示
+重看：011 驗收後
+```
+
+R1 本身不變。這一條只約束 display-only 豁免能走多遠。
+
 ---
 
 ## 修訂紀錄
 
+- 2026-09-06 sprint 010 驗收：新增 D16（Momentum 的 display-only 豁免收窄為
+  「必須可還原」，PO 拍板 4 採納）。
 - 2026-09-06 sprint 010 收斂：新增 D15（不為「今日排名有沒有資訊量」另立新指標，
   研究物證見條內）；R3 補一個具體反例（程式自動判定 branch 並寫回 YAML，已駁回）。
 - 2026-09-06 sprint 007：D14 新增（brief／radar 逐字元不變由規則降級為預設值）；

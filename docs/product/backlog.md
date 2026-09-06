@@ -29,6 +29,10 @@ ENG 進 DO 的次數是 **0**。這不是優先序判斷的結果，是規則的
 | product.py / radar.py 重複的格式化層 | ENG | 2026-09-04 技術債盤點 | 十個 helper 各自處理 n/a，四種不同的 sentinel。建議在下次動到任一 renderer 時順手抽出 |
 | `radar.py` 180 行 f-string HTML | ENG | 2026-09-04 技術債盤點 | 含內嵌 CSS，且插值未跳脫。建議拆出 `radar.css` 並過 `html.escape()` |
 | radar 表格 `Momentum` 欄沒有欄寬 | ENG | 009 驗收 | 009 DO-3.1 只給 `敘事` 補了右側空白（最後一欄，畫面零改變），真正的病灶是 `Momentum` 標籤長度 4–9 讓 `敘事` 欄左緣浮動。修它會動到 `--no-narratives` 表頭，需一併決定 |
+| radar 新鮮度改成「距今差幾個交易日」 | 使用 | 010 驗收 | **010 DO-2 的洞，責任在規劃端。**`caught_up` 比的是 `last_raw_attempt.date == as_of`，而 `last_raw_attempt`（`data.py:401`）讀的是 `data/raw/` 最新那一天——結構上偵測不到「根本沒跑過 refresh」。repo 目前無處拿 `date.today()` 比對，需要一個交易日概念，不是純接線 |
+| `DISPERSION_PCT_DIRECTION` 措辭「名次越擠」不準 | 使用 | 010 驗收 | `dispersion` 是 top-half 減 bottom-half 的平均 RS20（`quality.py:71`），量的是強弱差距、單位百分點；名次永遠 1..11 不會擠。改成「族群之間的強弱差距越小」。一行 |
+| momentum 標籤重做，且必須可還原 | 使用 | 010 拍板 4 | D16 收窄後的第一個受約束項目：讀者要能從同一列可見數字還原出標籤，否則改成不顯示。物證見 `010-report.md` 第 6 節 |
+| TPEx 89 天回補（**PO 已拍板：補齊**） | L1 | 010 拍板 5 | 讀法 A。理由：偏誤方向已知且單向（高估，D6 已載明），而樣本量不足是 k=20 讀數最大的**未載明**不確定；且 A 可逆、移出 TWSE 檔幾乎不可逆。動資料層，需自己一輪的 Appetite |
 | gazetteer（`pyahocorasick` ＋ 凍結 ISIN 表）、`narrate add` | L2 | 009 spec 明確押後 | 009 Appetite 把它們推到 010：新相依＋新資料＋第二層寫入端 |
 
 ### 橫斷面動能指標盤點（2026-09-04 評估，結論：不新增）
@@ -72,7 +76,7 @@ composite、IBD RS Rating、12−1、residual momentum、Elo 皆然）。004 的
 | `above_count` 全 NaN → NaN | L1 | 邊界假 0 |
 | Brief／radar B＋C 固定短註 | 使用 | 字面鎖定 |
 
-### Sprint 010 已排入（2026-09-06）
+### Sprint 010 已排入（2026-09-06；已於同日併入 `dev@874302d`，三項全數通過）
 
 **本輪主題：已經算出來、但沒有送到畫面上的東西。**三項全部是顯示層，零新計算、
 零新相依、零新資料；硬邊界是 `theme_daily.parquet` 與 `market_daily.parquet` 前後不變。
@@ -153,6 +157,9 @@ tpex   351 檔   20250501 → 20260903      ← 少 89 天
 
 | 項目 | Sprint |
 |---|---|
+| 品質行改寫成讀得懂的（百分位寫明窗口與方向、† 補註腳、D6 補白話、`entry is None` 印無基準） | 010 |
+| `radar.html` 標頭補新鮮度（複用 `format_ops_status`；**但問錯了問題，見待排**） | 010 |
+| 2×2「被講過」定義與 `敘事` 欄統一；`尚未生效`／`最近事件` 補溢出提示 | 010 |
 | F4 測試名實不符、pending 真實目錄測試脆弱（009 驗收拍板 2／3） | 009 |
 | `above_count` 全 NaN → NaN；空 `above_cols` → NaN | 005–006 |
 | 虛無基準放在持續性數字旁（σ＋超越計數） | 003–004 |
@@ -171,6 +178,10 @@ tpex   351 檔   20250501 → 20260903      ← 少 89 天
 
 ## 修訂紀錄
 
+- 2026-09-06 sprint 010 驗收：三項全數通過，併入 `dev@874302d`，搬到「已完成」。
+  新增待排四項——radar 新鮮度改「距今差幾個交易日」（DO-2 的洞，規劃端造成）、
+  `DISPERSION_PCT_DIRECTION` 措辭、momentum 重做且必須可還原（D16）、
+  TPEx 89 天回補（PO 拍板採讀法 A：補齊）。
 - 2026-09-06 sprint 010 收斂：三項進 DO（全為顯示層）。待排移出「靜默截斷」與
   「`entry is None` 文案」（併入 010 DO-1／DO-3）。`arch` 那列補上查證結果（8.0.0、
   維護中、NCSA），押後理由改為「動 compute 層」而非「不確定可不可行」。
