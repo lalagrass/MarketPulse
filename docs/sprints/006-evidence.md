@@ -142,6 +142,59 @@ Renamed: `test_quality_line_null_baseline_absent_matches_sprint002` → `test_qu
 
 Column gap (first data line of the real table above): `+0.0338` and `+0.0840` are separated by many spaces, not `se=0.0181+0.0840`. Cells joined with `"  ".join`. Unit test: `test_format_rank_ic_table_cells_have_column_gap`.
 
+## 驗收條件 6 — `refresh`／`brief`／`radar` 產物逐字元不變
+
+DO-1 驗收條件 6。DO-3 把 `calc.py` 的 `above_cols` 空路徑從 `0` 改成 `np.nan`，那條路徑寫進 snapshot，所以產物有可能變。`brief`／`radar` 讀 snapshot，要比產物必須兩邊各自重算 snapshot。
+
+兩邊都先把 snapshot 寫進 `/tmp` 的獨立 data-dir（symlink 本機 `data/normalized`、`data/raw`、`data/processed`；**不寫 repo 的 `data/` 或 `reports/`**），再跑 `brief` 與 `radar`。沒有跑 `refresh`（會打官網、會寫 `reports/`）。
+
+**005**（`sprint/005-horizon-ic`）:
+
+```text
+uv run marketpulse analyze --data-dir /tmp/mp-acc6-005-data
+uv run marketpulse brief  --data-dir /tmp/mp-acc6-005-data > /tmp/mp-acc6-005-brief.txt
+uv run marketpulse radar  --data-dir /tmp/mp-acc6-005-data --output /tmp/mp-acc6-005-radar.html > /tmp/mp-acc6-005-radar.stdout
+# ASCII 產物去掉最後一行 HTML 路徑（兩邊路徑本來就不同）
+sed '$d' /tmp/mp-acc6-005-radar.stdout > /tmp/mp-acc6-005-radar.txt
+```
+
+analyze: `rows=4477  themes=11  classification=theme-v0.2.0-eleven`，`market_daily` 387 rows。
+
+**006**（`sprint/006-ic-null`）: 同上，路徑換成 `006`。analyze 列數相同。
+
+```text
+$ diff -u /tmp/mp-acc6-005-brief.txt /tmp/mp-acc6-006-brief.txt
+$ diff -u /tmp/mp-acc6-005-radar.txt /tmp/mp-acc6-006-radar.txt
+$ diff -u /tmp/mp-acc6-005-radar.html /tmp/mp-acc6-006-radar.html
+$
+```
+
+三份 diff 都是空的。`cmp` 通過。sha1:
+
+| 檔 | sha1 |
+|---|---|
+| brief（兩邊） | `1792af4beeb16dc7de7ec5d846a80a921b77fc52` |
+| radar ASCII（兩邊） | `e36e8c3f7c8d79438af5ddfae9e30f39d7c8f336` |
+| radar HTML（兩邊） | `f53c276ae298db6bf886e034d0210b2a05a83ecf` |
+
+`above_cols` 為空這條路徑**沒有被真實資料踩到**。`themes/v1.yaml` 11 個主題的成分，對照 `data/normalized/bars.parquet`（1988 檔、2024-12-27→2026-09-03）全部都在：
+
+| theme_id | name | members | present | missing |
+|---|---|---|---|---|
+| ai_server | AI伺服器 | 10 | 10 | — |
+| pcb | PCB | 6 | 6 | — |
+| high_speed_materials | 高速材料/CCL | 4 | 4 | — |
+| optical_cpo | 光通訊/CPO | 10 | 10 | — |
+| passive_components | 被動元件 | 7 | 7 | — |
+| memory | 記憶體 | 7 | 7 | — |
+| semiconductor_test | 半導體測試/測試介面 | 5 | 5 | — |
+| ai_power | AI電力/電源 | 5 | 5 | — |
+| thermal | 散熱/液冷 | 5 | 5 | — |
+| foundry_advanced | 先進製程 | 6 | 6 | — |
+| heavy_electric | 重電 | 7 | 7 | — |
+
+兩邊重算後的 `theme_daily.parquet`：`above_count` 都是 NaN 209 列、`==0` 416 列，列對列無差異；其餘欄位與 `market_daily.parquet` 也無差異。空路徑的單元測試仍在（合成 ghost 主題），只是現行 11 主題餵不進去。
+
 ## Notes the spec did not ask for (labelled)
 
 1. **Tiled monotone cannot feed the “sigma ≫ 0, n_ge=0” synthetic.** A constant daily cross-section has Spearman +1 for every pairing, including every circular shift, so `null_std=0` and `sigma` is n/a. The test uses a slow random walk per theme (the same construction `persistence_null_test` uses for its k=1 sanity check). The cyclic 3-day fixture stays for lag alignment.
