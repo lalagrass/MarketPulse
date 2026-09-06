@@ -10,7 +10,7 @@ As of: 2026-09-06
 | DO-3 | `767f85dcde1e01641c09c6d47b58f3c0c9f1ecbe` | fix(calc): above_count NaN when no members in above columns |
 | DO-1 | `d2607f8bd34c64ae93a5e61223abce6c28e603d4` | feat(quality): circular-shift null for each Rank-IC cell |
 | DO-2 | `d2607f8bd34c64ae93a5e61223abce6c28e603d4` | (same commit: ‡ mark, cyclic lag test, tautology removed) |
-| docs | *(this file)* | docs: 006-evidence |
+| docs | `bc85675dcd10b35ccc16ec5b88e8219893471e62` | docs: 006-evidence |
 
 DO-1 and DO-2 share one commit because the table rewrite, the ‡ mark, and the cyclic pairing live in the same `format_rank_ic_table` / `_rank_ic_terms` change.
 
@@ -36,7 +36,7 @@ Command: `uv run pytest`
  6 files changed, 558 insertions(+), 76 deletions(-)
 ```
 
-(After this evidence commit, `docs/sprints/006-evidence.md` is also in the diff.)
+Product diff above is `sprint/005-horizon-ic..d2607f8`. After the evidence commit the stat also includes `docs/sprints/006-evidence.md`.
 
 `persistence_null_test` is not in the diff hunks. The new path calls `_null_min_lag`, `_null_shift_candidates`, `MIN_RETAINED_FRACTION`, and `_row_wise_pearson`; it does not change them.
 
