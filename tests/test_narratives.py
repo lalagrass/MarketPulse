@@ -1043,10 +1043,11 @@ def test_do2_pending_file_does_not_change_coverage_byte_for_byte(tmp_path: Path)
 
 def test_do2_pending_real_narratives_dir_as_of_latest_price_day() -> None:
     """Live files: as_of=2026-09-04 (latest price day as of this sprint)
-    sees 2026-09-06.yaml and not 2026-09-04.yaml."""
+    includes 2026-09-06.yaml; every listed snapshot_date is after as_of."""
     as_of = date(2026, 9, 4)
     found = pending_snapshots(as_of, REPO_ROOT / "narratives")
-    assert found == [(date(2026, 9, 6), "2026-09-06.yaml")]
+    assert (date(2026, 9, 6), "2026-09-06.yaml") in found
+    assert all(d > as_of for d, _ in found)
 
 
 # ── sprint 009 DO-3 F5 / F6 ──

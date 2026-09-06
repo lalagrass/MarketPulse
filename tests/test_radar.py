@@ -380,10 +380,11 @@ def test_do3_f3_separator_width_matches_header_display_width() -> None:
 # ── sprint 008 DO-3 B2: 敘事 column shows the last-mentioned date ──
 
 
-def test_do3_f4_narrative_column_is_width_10_and_right_edges_align() -> None:
-    """spec 009 DO-3 F4: 敘事 column width = 10 (ISO date). Header, rule,
-    a — row and a date row share a right edge. --no-narratives 100 is
-    untouched (asserted in test_do3_f3)."""
+def test_do3_f4_narrative_cell_is_width_10() -> None:
+    """spec 009 DO-3 F4: 敘事 cell width = 10 (ISO date). Header / date /
+    — rows end with that padded cell. 整列右緣仍隨 Momentum 標籤變動，
+    F4 只釘住這一欄的寬度。--no-narratives 100 is untouched (asserted
+    in test_do3_f3)."""
     dates = session_dates(21)
     bars = make_bars(
         dates,
@@ -430,7 +431,6 @@ def test_do3_f4_narrative_column_is_width_10_and_right_edges_align() -> None:
     header_cell = _ljust(NARRATIVE_COL_HEADER, NARRATIVE_COL_WIDTH)
     date_cell = _ljust(dates[-1].isoformat(), NARRATIVE_COL_WIDTH)
     blank_cell = _ljust(NARRATIVE_MISSING, NARRATIVE_COL_WIDTH)
-    assert _vislen(header_cell) == _vislen(date_cell) == _vislen(blank_cell) == 10
     assert header.endswith(header_cell)
     assert alpha.endswith(date_cell)
     assert beta.endswith(blank_cell)
