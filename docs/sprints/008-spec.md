@@ -1,6 +1,6 @@
 # Sprint 008 — 讓故事說得出自己在講哪個主題，以及它走到哪一步
 
-狀態：待實作
+狀態：已完成 2026-09-06（`sprint/008-theme-ids`，未併；驗收見 `008-report.md`）
 契約：CLAUDE.md 與 docs/coding-contract.md 全數適用
 層次：第二層（故事）＋ 顯示 ＋ 一格工程
 起因：`docs/sprints/007-report.md` 的 F2／F1／F3／B2；**加上 PO 2026-09-06 的產品意圖**——
