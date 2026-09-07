@@ -1,6 +1,6 @@
 # Sprint 011 — 資料在說謊的時候，畫面要出聲
 
-狀態：待實作
+狀態：已完成 2026-09-07（`sprint/011-say-when-the-data-lies`，**未 merge**，見 `011-report.md`）
 契約：`CLAUDE.md` 與 `docs/coding-contract.md` 全數適用
 層次：**第一層的資料正確性 ＋ 顯示層。沒有任何公式改變，第二層一個字不動。**
 
