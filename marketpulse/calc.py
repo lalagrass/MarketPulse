@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from datetime import date
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, InvalidOperation
 
 import numpy as np
 import pandas as pd
@@ -37,11 +38,34 @@ RANK_N20 = 20
 # not a fitted value (contract D10).
 MAX_SESSION_GAP_BDAYS = 10
 
-# spec 011 DO-1. TWSE / TPEx ordinary-share daily limit. Not a tunable (D10).
-# List every close-to-close move whose |r| exceeds this; do not drop, adjust,
-# or invent extra filters. False positives (IPO first five days, tick rounding
-# that lands just over the line) are listed as-is.
-LIMIT_MOVE = 0.10
+# spec 011 DO-1 / 012 DO-2. TWSE / TPEx ordinary-share daily limit and the
+# exchange's own tick ladder. Both are exchange rules, not tunables (D10).
+#
+# The limit price is NOT prev_close × 1.1. It is that price rounded into the
+# tick of the band it lands in - 漲停無條件捨去, 跌停無條件進位 - so a legal
+# limit move is at most ±10% and is often visibly less: 前收 9.98 → 9.98 × 1.1
+# = 10.978 → band [10, 50) tick 0.05 → 漲停 10.95, i.e. +9.72%.
+#
+# 011 compared a float ratio against 0.10 instead, which both (a) listed 1640
+# legal limit closes whose |r| is exactly 0.10 in decimal but > 0.10 in
+# IEEE-754, and (b) could not see a break that stayed inside 10% because the
+# real limit price was lower. 012-evidence §0.1-§0.2 has the arithmetic. The
+# 011 comment here blamed "tick rounding that lands just over the line";
+# rounding is toward the limit price, so it can never do that. That was wrong.
+#
+# List every close outside the limit price; do not drop, adjust, or invent
+# extra filters. False positives (IPO first five days, ex-rights reference
+# prices, a shift(1) that spans a trading halt) are listed as-is.
+DAILY_LIMIT = Decimal("0.10")
+# (upper bound of band, tick). Bands are half-open: price < upper.
+TICK_BANDS = (
+    (Decimal("10"), Decimal("0.01")),
+    (Decimal("50"), Decimal("0.05")),
+    (Decimal("100"), Decimal("0.10")),
+    (Decimal("500"), Decimal("0.50")),
+    (Decimal("1000"), Decimal("1.00")),
+)
+TICK_TOP = Decimal("5.00")
 LIMIT_WINDOW = 20
 NO_THEME = "—"
 
@@ -131,17 +155,78 @@ def _symbol_theme_names(themes: ThemeSet | None) -> dict[str, list[str]]:
     return out
 
 
+def price_decimal(value: object) -> Decimal | None:
+    """A quoted price as the decimal the exchange quoted, not a float ratio.
+
+    TWSE / TPEx quote at most two decimals, so ``str(float)`` (shortest
+    round-trip repr) reproduces the quoted decimal exactly.
+    """
+    if value is None or pd.isna(value):
+        return None
+    try:
+        return Decimal(str(float(value)))
+    except (InvalidOperation, ValueError, OverflowError):
+        return None
+
+
+def tick_size(price: Decimal) -> Decimal:
+    """Exchange tick for the band ``price`` falls in (D10: a rule, not a knob)."""
+    for upper, tick in TICK_BANDS:
+        if price < upper:
+            return tick
+    return TICK_TOP
+
+
+def limit_up_price(prev_close: Decimal) -> Decimal:
+    """前收 × 1.1, 無條件捨去 to the tick of the band the result lands in."""
+    raw = prev_close * (Decimal(1) + DAILY_LIMIT)
+    tick = tick_size(raw)
+    return (raw / tick).quantize(Decimal(1), rounding=ROUND_FLOOR) * tick
+
+
+def limit_down_price(prev_close: Decimal) -> Decimal:
+    """前收 × 0.9, 無條件進位 to the tick of the band the result lands in."""
+    raw = prev_close * (Decimal(1) - DAILY_LIMIT)
+    tick = tick_size(raw)
+    return (raw / tick).quantize(Decimal(1), rounding=ROUND_CEILING) * tick
+
+
+def limit_prices(prev_close: object) -> tuple[Decimal, Decimal] | None:
+    """(跌停價, 漲停價) for a previous close, or None when there is no usable
+    previous close to compute them from."""
+    prev = price_decimal(prev_close)
+    if prev is None or prev <= 0:
+        return None
+    return limit_down_price(prev), limit_up_price(prev)
+
+
+def _outside_limit(close: object, prev_close: object) -> bool:
+    """True when ``close`` cannot be reached from ``prev_close`` in one session
+    under the exchange's own arithmetic. No previous close → not comparable."""
+    prices = limit_prices(prev_close)
+    if prices is None:
+        return prev_close is not None and not pd.isna(prev_close)
+    price = price_decimal(close)
+    if price is None:
+        return False
+    low, high = prices
+    return price < low or price > high
+
+
 def impossible_daily_returns(
     bars: pd.DataFrame,
     themes: ThemeSet | None = None,
-    *,
-    limit: float = LIMIT_MOVE,
 ) -> pd.DataFrame:
-    """close-to-close single-day returns with |r| > the exchange daily limit.
+    """close-to-close moves that land outside the exchange's limit prices.
+
+    Compares the quoted close against 漲停價 / 跌停價 computed from the previous
+    close in decimal arithmetic (spec 012 DO-2), not a float return against
+    0.10 (spec 011 DO-1, wrong on both counts - see the note on DAILY_LIMIT).
+    ``return_1`` is still reported, for reading; it is not what selects a row.
 
     Scans every (symbol, date) in ``bars``. Does not drop rows, adjust prices,
-    or change any snapshot number (spec 011 DO-1). Theme names are joined with
-    '、'; a symbol in no theme is ``NO_THEME``.
+    or change any snapshot number. Theme names are joined with '、'; a symbol
+    in no theme is ``NO_THEME``.
     """
     columns = ["date", "symbol", "name", "return_1", "themes"]
     if bars is None or bars.empty:
@@ -152,7 +237,21 @@ def impossible_daily_returns(
     frame = frame.sort_values(["symbol", "date"])
     prev = frame.groupby("symbol", sort=False)["close"].shift(1)
     frame["return_1"] = frame["close"] / prev - 1
-    hits = frame.loc[frame["return_1"].abs() > limit].copy()
+    # One Decimal pair per distinct previous close, reused across rows: the
+    # comparison is exact for every row, the arithmetic runs once per price.
+    cache: dict[object, tuple[Decimal, Decimal] | None] = {}
+    outside = []
+    for close, prior in zip(frame["close"], prev):
+        key = None if prior is None or pd.isna(prior) else float(prior)
+        if key not in cache:
+            cache[key] = limit_prices(prior)
+        prices = cache[key]
+        if prices is None:
+            outside.append(key is not None)
+            continue
+        price = price_decimal(close)
+        outside.append(price is not None and (price < prices[0] or price > prices[1]))
+    hits = frame.loc[pd.Series(outside, index=frame.index)].copy()
     if hits.empty:
         return pd.DataFrame(columns=columns)
     names = (
@@ -173,7 +272,7 @@ def impossible_daily_returns(
 def format_impossible_returns(hits: pd.DataFrame) -> str:
     """Ugly on purpose: every row, date · symbol · magnitude · theme (A1/A2)."""
     n = 0 if hits is None or hits.empty else len(hits)
-    lines = [f"impossible daily returns (|close-to-close| > {LIMIT_MOVE:.0%}): {n}"]
+    lines = [f"impossible daily returns (close outside 漲跌停價, ±{DAILY_LIMIT:.0%} to tick): {n}"]
     if n == 0:
         return lines[0]
     for rec in hits.itertuples(index=False):

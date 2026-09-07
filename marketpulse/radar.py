@@ -14,7 +14,7 @@ if TYPE_CHECKING:  # avoid a runtime import cycle (cli imports radar)
 
 from marketpulse import RANK_DISCLOSURE, REPLAY_DISCLOSURE
 from marketpulse.calc import (
-    LIMIT_MOVE,
+    DAILY_LIMIT,
     LIMIT_WINDOW,
     ROLE_FOLLOWER,
     ROLE_LAGGARD,
@@ -93,11 +93,11 @@ MOM_COL_WIDTH = max(
 
 
 def format_limit_window_line(count: int, n: int = LIMIT_WINDOW) -> str:
-    """A4: trailing-n session count of |close-to-close| > LIMIT_MOVE. Always
-    printed when the caller handed us a scan result — including 0."""
+    """A4: trailing-n session count of closes outside the exchange limit price.
+    Always printed when the caller handed us a scan result — including 0."""
     return (
         f"不可能的單日報酬：近 {n} 個交易日 {count} 筆"
-        f"（交易所單日 ±{LIMIT_MOVE:.0%}）"
+        f"（超出交易所漲跌停價；±{DAILY_LIMIT:.0%} 依檔位捨去／進位）"
     )
 
 ROLE_ORDER = (ROLE_LEADER, ROLE_FOLLOWER, ROLE_LAGGARD)

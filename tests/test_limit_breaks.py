@@ -3,19 +3,26 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from marketpulse.calc import (
-    LIMIT_MOVE,
+    DAILY_LIMIT,
     LIMIT_WINDOW,
+    TICK_BANDS,
+    TICK_TOP,
     NO_THEME,
     compute_snapshots,
     format_impossible_returns,
     impossible_daily_returns,
     impossible_returns_in_window,
+    limit_down_price,
+    limit_up_price,
+    price_decimal,
+    tick_size,
 )
 from marketpulse.radar import format_limit_window_line, render_radar, render_radar_html
 from marketpulse.themes import Theme, ThemeSet
@@ -42,8 +49,123 @@ def _break_panel() -> tuple[list[date], pd.DataFrame, ThemeSet]:
 
 
 def test_limit_move_is_the_exchange_ten_percent() -> None:
-    assert LIMIT_MOVE == 0.10
+    assert DAILY_LIMIT == Decimal("0.10")
     assert LIMIT_WINDOW == 20
+
+
+# ── spec 012 DO-2: the exchange's tick ladder and its limit prices ──
+
+
+@pytest.mark.parametrize(
+    ("price", "tick"),
+    [
+        ("0.01", "0.01"),
+        ("9.99", "0.01"),
+        ("10", "0.05"),  # band boundary: 10 belongs to the 10–50 band
+        ("49.95", "0.05"),
+        ("50", "0.10"),
+        ("99.9", "0.10"),
+        ("100", "0.50"),
+        ("499.5", "0.50"),
+        ("500", "1.00"),
+        ("999", "1.00"),
+        ("1000", "5.00"),
+        ("12345", "5.00"),
+    ],
+)
+def test_tick_size_at_every_band_boundary(price: str, tick: str) -> None:
+    assert tick_size(Decimal(price)) == Decimal(tick)
+
+
+def test_tick_bands_are_the_exchange_ladder() -> None:
+    assert [(str(u), str(t)) for u, t in TICK_BANDS] == [
+        ("10", "0.01"),
+        ("50", "0.05"),
+        ("100", "0.10"),
+        ("500", "0.50"),
+        ("1000", "1.00"),
+    ]
+    assert TICK_TOP == Decimal("5.00")
+
+
+@pytest.mark.parametrize(
+    ("prev", "up", "down"),
+    [
+        # The three closes 011 listed that are legal limit prices
+        # (012-evidence §0.1). 1504 twice, 6442 once.
+        ("49.5", "54.40", "44.55"),
+        ("51.0", "56.10", "45.90"),
+        ("1300", "1430.00", "1170.00"),
+        # 012-evidence §0.2: rounding down into the next band up makes the
+        # legal limit move visibly less than 10%.
+        ("9.98", "10.95", "8.99"),
+        ("10", "11.00", "9.00"),
+        ("50", "55.00", "45.00"),
+        ("100", "110.00", "90.00"),
+        ("500", "550.00", "450.00"),
+        ("1000", "1100.00", "900.00"),
+    ],
+)
+def test_limit_prices_use_the_tick_of_the_band_they_land_in(
+    prev: str, up: str, down: str
+) -> None:
+    assert limit_up_price(Decimal(prev)) == Decimal(up)
+    assert limit_down_price(Decimal(prev)) == Decimal(down)
+
+
+@pytest.mark.parametrize(
+    ("prev", "close"),
+    [(49.5, 44.55), (51.0, 56.1), (1300.0, 1430.0)],
+)
+def test_exact_limit_close_is_not_listed(prev: float, close: float) -> None:
+    """The 1640 rows 011 listed because 44.55/49.5 - 1 > 0.10 in IEEE-754."""
+    dates = session_dates(2)
+    bars = make_bars(
+        dates,
+        {"AAA": [prev, close], "BBB": [100.0, 100.0], "CCC": [50.0, 50.0]},
+        twse=("AAA", "BBB"),
+        tpex=("CCC",),
+    )
+    assert abs(close / prev - 1) > 0.10  # the float comparison 011 used
+    hits = impossible_daily_returns(bars, two_theme_set())
+    assert hits.empty
+
+
+def test_close_past_the_limit_price_is_listed() -> None:
+    """One tick beyond 漲停價 — inside ±10% of prev, and still a break."""
+    dates = session_dates(2)
+    prev, close = 9.98, 11.00  # 漲停價 10.95; +10.2%
+    bars = make_bars(
+        dates,
+        {"AAA": [prev, close], "BBB": [100.0, 100.0], "CCC": [50.0, 50.0]},
+        twse=("AAA", "BBB"),
+        tpex=("CCC",),
+    )
+    hits = impossible_daily_returns(bars, two_theme_set())
+    assert list(hits["symbol"]) == ["AAA"]
+
+
+def test_close_inside_ten_percent_but_past_the_limit_price_is_listed() -> None:
+    """The gap ±10% could not see: 前收 9.98 → 漲停 10.95, so 10.96 is a break
+    at +9.82%, below the 011 threshold entirely (012-evidence §0.2)."""
+    dates = session_dates(2)
+    prev, close = 9.98, 10.96
+    assert abs(close / prev - 1) < 0.10
+    bars = make_bars(
+        dates,
+        {"AAA": [prev, close], "BBB": [100.0, 100.0], "CCC": [50.0, 50.0]},
+        twse=("AAA", "BBB"),
+        tpex=("CCC",),
+    )
+    hits = impossible_daily_returns(bars, two_theme_set())
+    assert list(hits["symbol"]) == ["AAA"]
+
+
+def test_price_decimal_keeps_the_quoted_decimal() -> None:
+    assert price_decimal(44.55) == Decimal("44.55")
+    assert price_decimal(1430.0) == Decimal("1430.0")
+    assert price_decimal(None) is None
+    assert price_decimal(float("nan")) is None
 
 
 def test_impossible_return_names_date_symbol_and_magnitude() -> None:
@@ -126,7 +248,9 @@ def test_scan_does_not_mutate_input_bars() -> None:
 def test_format_lists_every_row_and_total() -> None:
     _dates, bars, themes = _break_panel()
     text = format_impossible_returns(impossible_daily_returns(bars, themes))
-    assert text.startswith("impossible daily returns (|close-to-close| > 10%): 1")
+    assert text.startswith(
+        "impossible daily returns (close outside 漲跌停價, ±10% to tick): 1"
+    )
     assert "AAA" in text
     assert f"{(30.0 / 105.0 - 1) * 100:+.1f}%" in text
     assert "Alpha" in text
