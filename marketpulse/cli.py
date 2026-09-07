@@ -31,6 +31,8 @@ from marketpulse.data import (
     download_session,
     empty_session_verdicts,
     format_empty_session_verdicts,
+    iter_raw_dates,
+    load_holiday_calendar,
     last_complete_session,
     last_raw_attempt,
     normalize_all,
@@ -325,7 +327,13 @@ def _run_validate(data_dir: Path, themes_path: Path | None = None) -> None:
     if path.exists():
         themes = load_themes(path)
     typer.echo(format_impossible_returns(impossible_daily_returns(bars, themes)))
-    typer.echo(format_empty_session_verdicts(empty_session_verdicts(data_dir)))
+    # 012 DO-3: the official closure table decides first; mtime is a marked
+    # last resort, and the calendar goes to the formatter so it can say which
+    # years it could not cover.
+    calendar = load_holiday_calendar(data_dir, {d.year for d in iter_raw_dates(data_dir)})
+    typer.echo(
+        format_empty_session_verdicts(empty_session_verdicts(data_dir, calendar), calendar)
+    )
     issues = validate_normalized(bars, index)
     if issues:
         typer.echo("ISSUES:")
