@@ -1,6 +1,7 @@
 # Sprint 011 — 報告（驗收 `sprint/011-say-when-the-data-lies`）
 
-分支自 `dev@2e5310a`，驗收時 `dev` 尖端仍是 `2e5310a`。**未 merge。**
+分支自 `dev@2e5310a`，驗收時 `dev` 尖端仍是 `2e5310a`。
+**已於 2026-09-07 併入 `dev@4225531`（`--no-ff`）——PO 明示授權，由規劃端代按。**
 本報告由規劃端寫，**驗收看 diff 與實際輸出，不看實作端的自述**。
 **測試結果規劃端驗證不了**（本機跑不了 `uv run pytest`）——`265 passed in 60.38s`
 （`dev` 上是 228，+37）的唯一來源是 `011-evidence.md` 貼上來的輸出。
@@ -137,9 +138,13 @@
 
 ## 7. 收尾狀態
 
-- 分支 `sprint/011-say-when-the-data-lies` 四個 commit，**未 merge**，等 PO。
+- 分支 `sprint/011-say-when-the-data-lies` 四個 commit，**已由規劃端併入 `dev@4225531`**
+  （`--no-ff`，無衝突，12 檔／+3104 −26）。**按下 merge 的是規劃端，授權來自 PO
+  2026-09-07 的一個字：「merge」。**分支未刪。
 - spec 狀態行由規劃端於本輪收尾改為「已完成」。
 - `docs/post/`、`.claude/_to_delete/` 仍未追蹤，本輪未動（010 的教訓有守住）。
+  merge 前工作目錄另外出現一個未追蹤的 `docs/feedbacks/repo-review.md`，**不是本輪產生的，
+  也未納入任何 commit**。規劃端沒有讀它、沒有動它——記在這裡讓下一輪知道它存在。
 - `dev` 仍領先 `origin/dev`，要不要 push 由 PO 決定。
 
 ## 8. 規劃端自己造成的問題
