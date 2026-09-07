@@ -449,8 +449,13 @@ def test_quality_line_null_baseline_present_appends_numbers_only() -> None:
     assert "190/1000" in line
     assert "p81" not in line
     assert STALE_MARKER not in line
+    # 011 C3 put 弱 inside「強弱差距」; that is the statistic's name, not a
+    # verdict. Strip the gloss before the 010 banned-word check.
+    from marketpulse.quality import DISPERSION_PCT_DIRECTION
+
+    verdict_line = line.replace(DISPERSION_PCT_DIRECTION, "")
     for banned in ("不顯著", "弱", "noise", "僅供參考", "OK", "NG"):
-        assert banned not in line
+        assert banned not in verdict_line
 
 
 def test_quality_line_null_baseline_stale_marks_with_dagger() -> None:
@@ -654,6 +659,28 @@ def test_do1_percentile_gloss_names_the_window_and_direction() -> None:
     # no threshold / conditional warning wording leaked in (D10)
     for banned in ("低於", "高於", "若", "超過", "以下時", "才", "警"):
         assert banned not in line
+
+
+def test_dispersion_direction_does_not_say_ranks_crowd() -> None:
+    """spec 011 DO-3 C3: dispersion is a top-half vs bottom-half RS20 gap,
+    not crowded ranks. The quality line must not say 名次越擠."""
+    from marketpulse.quality import DISPERSION_PCT_DIRECTION
+
+    assert "名次越擠" not in DISPERSION_PCT_DIRECTION
+    assert "強弱差距" in DISPERSION_PCT_DIRECTION
+    row = pd.Series(
+        {
+            "date": date(2026, 3, 2),
+            "rank_persistence_20": 0.2,
+            "rank_churn": 9.0,
+            "rank_churn_pct": 0.9,
+            "dispersion": 0.158,
+            "dispersion_pct": 0.18,
+        }
+    )
+    line = quality_line(row, null_baseline=None)
+    assert "名次越擠" not in line
+    assert DISPERSION_PCT_DIRECTION in line
 
 
 def test_do1_dagger_note_present_only_when_persistence_group_is_stale() -> None:

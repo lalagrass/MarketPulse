@@ -14,18 +14,18 @@ MarketPulse is a **local Taiwan stock theme-rotation radar** that:
 
 **Known limit of the signal — measured, sprint 004 follow-up.** Rank persistence
 is the mean over T of Spearman(rank[T], rank[T−k]). Against a circular-shift
-null on 367 sessions (2024-12-27 → 2026-09-03, retained_fraction 69.25%):
+null on 369 sessions (2024-12-27 → 2026-09-04, retained_fraction 69.41%):
 
 ```text
 k     observed   null            distance      exceedance
-1     0.9307     0.0590 ± 0.0254   +34.36σ      0/1000
-5     0.7167     0.0602 ± 0.0258   +25.44σ      0/1000
-20    0.1404     0.0637 ± 0.0270    +2.84σ      0/1000
+1     0.9307     0.0597 ± 0.0221   +39.41σ      0/1000
+5     0.7167     0.0609 ± 0.0227   +28.92σ      0/1000
+20    0.1396     0.0645 ± 0.0254    +2.96σ      0/1000
 ```
 
-**Read it as B＋C, not "confirmed".** 20 日排名持續性 0.14，在 367 個 session 上
-高出其循環位移虛無 2.8σ，1000 次位移沒有一次追上。這代表月尺度排名帶有可偵測的
-結構，不代表它穩定。1 日（34σ）與 5 日（25σ）遠強於它——真正的讀數是結構隨天期
+**Read it as B＋C, not "confirmed".** 20 日排名持續性 0.14，在 369 個 session 上
+高出其循環位移虛無 3.0σ，1000 次位移沒有一次追上。這代表月尺度排名帶有可偵測的
+結構，不代表它穩定。1 日（39σ）與 5 日（29σ）遠強於它——真正的讀數是結構隨天期
 急速衰減。此數字在凍結成分股上量得（non-goals D6），該偏誤方向為高估。
 
 Do not write copy, docs or UI that presents the 20-day rank ordering as a stable

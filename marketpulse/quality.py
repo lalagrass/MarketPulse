@@ -58,7 +58,7 @@ NO_BASELINE_TEXT = "無基準"
 # points — no conditional wording, no threshold (D10 red line).
 PERCENTILE_WINDOW_LABEL = f"近 {PERCENTILE_WINDOW} 個交易日"
 CHURN_PCT_DIRECTION = "越高＝名次相對前一交易日洗牌越多"
-DISPERSION_PCT_DIRECTION = "越低＝族群名次越擠、當日名次差異的資訊量越低"
+DISPERSION_PCT_DIRECTION = "越低＝族群之間的強弱差距越小"
 NULL_BASELINE_FILENAME = "signal_quality_null.json"
 DISPLAY_NULL_K = 20  # quality_line shows persistence_20; pair with k=20 null
 NULL_METHOD_VERSION = 1
