@@ -8,6 +8,8 @@ import re
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from http.client import IncompleteRead
 from pathlib import Path
@@ -420,41 +422,205 @@ def cached_label(path: Path, market: str, session: date) -> str:
 
 EMPTY_HOLIDAY = "官方休市"
 EMPTY_FETCH_FAILED = "抓取失敗"
+EMPTY_UNKNOWN = "未知：臨時停市或抓取失敗"
+EMPTY_HOLIDAY_MTIME = "官方休市（依 mtime，該年度無官方表）"
+# Verdicts that rest on a file's mtime rather than on the official calendar.
+# One `cp -r` or one restore-from-backup and these go wrong silently — that is
+# why 012 DO-3 counts them out loud.
+MTIME_DERIVED = frozenset({EMPTY_FETCH_FAILED, EMPTY_HOLIDAY_MTIME})
+MTIME_MARK = "← 依 mtime"
 MAX_PREMATURE_RETRY = 3
 
+# TWSE 市場開休市日期. Official, free, same origin as the EOD feeds (D13).
+# The endpoint IGNORES every year parameter tried (yy / queryYear / year, in
+# both western and ROC years, 2026-09-07): it always answers with the current
+# year and names it in `queryYear`. So the cache is keyed by the year the
+# PAYLOAD claims, never by the year we asked for, and past years cannot be
+# fetched after the fact — the cache can only accumulate from now on. TPEx's
+# tradingDate behaves the same way and returns HTML inside JSON.
+TWSE_HOLIDAY_SCHEDULE = (
+    "https://www.twse.com.tw/rwd/zh/holidaySchedule/holidaySchedule?response=json"
+)
+# The table lists BOTH closures and the trading days around them
+# (「農曆春節前最後交易日」,「農曆春節後開始交易日」,「國曆新年開始交易日」).
+# A row is a trading day when its 名稱 says 交易日 without saying 無交易 —
+# 「市場無交易，僅辦理結算交割作業」 is a closure and must stay one.
+HOLIDAY_TRADING_MARK = "交易日"
+HOLIDAY_NO_TRADE_MARK = "無交易"
 
-def empty_session_verdicts(data_dir: Path) -> list[tuple[date, str]]:
+
+@dataclass(frozen=True)
+class HolidayCalendar:
+    """Official closure dates, and which years we actually have a table for.
+
+    A year we could not load is not an empty year — it is a year whose
+    verdicts have to fall back to mtime, out loud (spec 012 DO-3).
+    """
+
+    closures: frozenset[date]
+    years: frozenset[int]
+
+    def covers(self, year: int) -> bool:
+        return year in self.years
+
+    @property
+    def available(self) -> bool:
+        return bool(self.years)
+
+
+def calendar_path(data_dir: Path, year: int) -> Path:
+    return data_dir / "raw" / "calendar" / f"{year}.json"
+
+
+def parse_holiday_payload(payload: object) -> tuple[int | None, set[date]]:
+    """(the year the payload claims, its closure dates). Rows that name a
+    trading day are not closures; see HOLIDAY_TRADING_MARK."""
+    if not isinstance(payload, dict):
+        return None, set()
+    year = payload.get("queryYear")
+    try:
+        year = int(year) if year is not None else None
+    except (TypeError, ValueError):
+        year = None
+    closures: set[date] = set()
+    for row in payload.get("data") or []:
+        if not isinstance(row, (list, tuple)) or not row:
+            continue
+        name = str(row[1]) if len(row) > 1 else ""
+        if HOLIDAY_TRADING_MARK in name and HOLIDAY_NO_TRADE_MARK not in name:
+            continue
+        try:
+            closures.add(date.fromisoformat(str(row[0]).strip()))
+        except ValueError:
+            continue
+    return year, closures
+
+
+def load_holiday_calendar(
+    data_dir: Path,
+    years: Iterable[int],
+    *,
+    fetch: bool = True,
+    today: date | None = None,
+) -> HolidayCalendar:
+    """Cached official closures for ``years``. Fetches at most one payload per
+    call, and only when the current year's cache file is absent — the endpoint
+    has one year to give, so asking twice buys nothing."""
+    wanted = sorted(set(years))
+    closures: set[date] = set()
+    covered: set[int] = set()
+    for year in wanted:
+        path = calendar_path(data_dir, year)
+        if not path.exists():
+            continue
+        try:
+            claimed, dates = parse_holiday_payload(load_json(path))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        if claimed != year:
+            continue
+        closures |= dates
+        covered.add(year)
+    current = (today or date.today()).year
+    if fetch and current in wanted and current not in covered:
+        try:
+            payload = fetch_json(TWSE_HOLIDAY_SCHEDULE)
+            claimed, dates = parse_holiday_payload(payload)
+        except Exception:  # noqa: BLE001 - offline / format change falls back
+            claimed, dates = None, set()
+        if claimed is not None:
+            save_json(calendar_path(data_dir, claimed), payload)
+            if claimed in wanted:
+                closures |= dates
+                covered.add(claimed)
+    return HolidayCalendar(frozenset(closures), frozenset(covered))
+
+
+def empty_session_verdicts(
+    data_dir: Path,
+    calendar: HolidayCalendar | None = None,
+) -> list[tuple[date, str]]:
     """Weekday raw dates where neither market is usable.
 
-    抓取失敗: at least one file's UTC mtime date is before the session
-    (we asked before the day happened). 官方休市: we asked on or after
-    the session date and the official feed was empty.
+    In order (spec 012 DO-3):
+
+    1. on the official closure table  → 官方休市, reproducible, no mtime
+    2. weekend                        → not a session at all; not listed here
+    3. not on the table, no data      → 未知：臨時停市或抓取失敗. The typhoon
+       closures the table never carries land here, and so do fetch failures.
+       mtime is only a clue in this branch, and it is marked as one:
+       抓取失敗 means a file's UTC mtime date is before its session (we asked
+       before the day happened).
+
+    A year with no official table at all falls back to the 011 mtime verdict,
+    labelled 官方休市（依 mtime）— never silently.
     """
+    sessions = [d for d in iter_raw_dates(data_dir) if d.weekday() < 5]
+    if calendar is None:
+        calendar = load_holiday_calendar(data_dir, {d.year for d in sessions})
     rows: list[tuple[date, str]] = []
-    for session in iter_raw_dates(data_dir):
-        if session.weekday() >= 5:
-            continue
+    for session in sessions:
         twse_path, tpex_path = raw_paths(data_dir, session)
         twse_ok = raw_file_usable(twse_path, "twse", session)
         tpex_ok = raw_file_usable(tpex_path, "tpex", session)
         if twse_ok or tpex_ok:
             continue
+        if session in calendar.closures:
+            rows.append((session, EMPTY_HOLIDAY))
+            continue
         premature = fetched_before_session(twse_path, session) or fetched_before_session(
             tpex_path, session
         )
-        rows.append((session, EMPTY_FETCH_FAILED if premature else EMPTY_HOLIDAY))
+        if premature:
+            rows.append((session, EMPTY_FETCH_FAILED))
+        elif calendar.covers(session.year):
+            rows.append((session, EMPTY_UNKNOWN))
+        else:
+            rows.append((session, EMPTY_HOLIDAY_MTIME))
     return rows
 
 
-def format_empty_session_verdicts(rows: list[tuple[date, str]]) -> str:
+def mtime_derived_sessions(rows: list[tuple[date, str]]) -> list[date]:
+    """The dates whose verdict rests on a file mtime — the number DO-3 exists
+    to shrink."""
+    return [d for d, verdict in rows if verdict in MTIME_DERIVED]
+
+
+def format_empty_session_verdicts(
+    rows: list[tuple[date, str]],
+    calendar: HolidayCalendar | None = None,
+) -> str:
     lines = [f"empty sessions: {len(rows)}"]
     for session, verdict in rows:
-        lines.append(f"  {session.isoformat()}  {verdict}")
+        mark = f"  {MTIME_MARK}" if verdict in MTIME_DERIVED else ""
+        lines.append(f"  {session.isoformat()}  {verdict}{mark}")
+    mtime_dates = mtime_derived_sessions(rows)
+    lines.append(
+        f"靠 mtime 才判得出來的日期共 {len(mtime_dates)} 天"
+        + ("：" + " ".join(d.isoformat() for d in mtime_dates) if mtime_dates else "")
+    )
+    if calendar is not None:
+        uncovered = sorted({d.year for d, _ in rows} - set(calendar.years))
+        if uncovered:
+            lines.append(
+                "本次判定未使用官方休市表的年份："
+                + "、".join(str(y) for y in uncovered)
+                + "（TWSE 端點只提供當年度；這些日期退回 011 的 mtime 行為）"
+            )
+        if not calendar.available:
+            lines.append("本次判定未使用官方休市表：一年都沒讀到，全部退回 mtime 行為")
     return "\n".join(lines)
 
 
-def premature_empty_sessions(data_dir: Path) -> list[date]:
-    return [d for d, verdict in empty_session_verdicts(data_dir) if verdict == EMPTY_FETCH_FAILED]
+def premature_empty_sessions(
+    data_dir: Path,
+    calendar: HolidayCalendar | None = None,
+) -> list[date]:
+    return [
+        d
+        for d, verdict in empty_session_verdicts(data_dir, calendar)
+        if verdict == EMPTY_FETCH_FAILED
+    ]
 
 
 def last_raw_attempt(data_dir: Path) -> dict[str, Any] | None:

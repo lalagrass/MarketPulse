@@ -34,7 +34,7 @@ from marketpulse.radar import (
     rotation_mark,
     rotation_state,
 )
-from marketpulse.product import _vislen
+from marketpulse.product import _ljust, _vislen
 from marketpulse.themes import Theme, ThemeSet
 from tests.conftest import make_bars, make_index, session_dates, two_theme_set
 
@@ -368,13 +368,17 @@ def test_do3_f3_separator_width_matches_header_display_width() -> None:
     assert set(rule) == {"-"}
     assert len(rule) == _vislen(header)  # measured, not a hand-typed 114
     # 008 was 110 (敘事 unpadded, vislen 4). Width 10 adds 6 display cols.
-    assert _vislen(header) == 116
+    # spec 012 DO-1 adds the status-mark column to the header (+1) and pads
+    # Momentum from "Momentum" (8) to MOM_COL_WIDTH (34): 116 + 1 + 26 = 143.
+    assert _vislen(header) == 143
 
     off = render_radar(snap, dates[-1], show_narratives=False)
     off_lines = off.splitlines()
-    off_header = [ln for ln in off_lines if ln.startswith("Sector ") and "1D" in ln][0]
+    off_header = [ln for ln in off_lines if ln.lstrip().startswith("Sector ") and "1D" in ln][0]
     off_rule = off_lines[off_lines.index(off_header) + 1]
-    assert len(off_rule) == 100  # dev's value, deliberately untouched (007 sha1)
+    # 012 DO-1: measured here too. Was a hand-typed 100, shorter than the rows.
+    assert len(off_rule) == _vislen(off_header)
+    assert len(off_rule) == 143 - _vislen(_ljust(NARRATIVE_COL_HEADER, NARRATIVE_COL_WIDTH)) - 2
 
 
 # ── sprint 008 DO-3 B2: 敘事 column shows the last-mentioned date ──
@@ -412,8 +416,6 @@ def test_do3_f4_narrative_cell_is_width_10() -> None:
         ),
         themes=two_theme_set(),
     )
-    from marketpulse.product import _ljust
-
     text = render_radar(snap, dates[-1], show_narratives=True, overlay=overlay)
     lines = text.splitlines()
     header = [ln for ln in lines if NARRATIVE_COL_HEADER in ln][0]
@@ -424,10 +426,9 @@ def test_do3_f4_narrative_cell_is_width_10() -> None:
     assert NARRATIVE_MISSING in beta
     assert NARRATIVE_COL_WIDTH == 10
     assert _vislen(header) == len(rule)
-    # 敘事 cell is vislen 10 on header / date / —. Momentum is unpadded
-    # (and must stay so: padding it would change --no-narratives), so
-    # full-line vislen still varies with the Momentum label; the column
-    # itself is what F4 asked to pin.
+    # 敘事 cell is vislen 10 on header / date / —. Since spec 012 DO-1 the
+    # Momentum column ahead of it is padded too, so full-line vislen no longer
+    # varies with the Momentum label; F4 still pins this column itself.
     header_cell = _ljust(NARRATIVE_COL_HEADER, NARRATIVE_COL_WIDTH)
     date_cell = _ljust(dates[-1].isoformat(), NARRATIVE_COL_WIDTH)
     blank_cell = _ljust(NARRATIVE_MISSING, NARRATIVE_COL_WIDTH)

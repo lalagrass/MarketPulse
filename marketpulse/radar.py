@@ -14,7 +14,7 @@ if TYPE_CHECKING:  # avoid a runtime import cycle (cli imports radar)
 
 from marketpulse import RANK_DISCLOSURE, REPLAY_DISCLOSURE
 from marketpulse.calc import (
-    LIMIT_MOVE,
+    DAILY_LIMIT,
     LIMIT_WINDOW,
     ROLE_FOLLOWER,
     ROLE_LAGGARD,
@@ -24,6 +24,7 @@ from marketpulse.calc import (
 from marketpulse.momentum import (
     DIR_DOWN,
     DIR_MARK,
+    MOM_MARK,
     MOM_UNKNOWN,
     MomentumEvidence,
     momentum_evidence,
@@ -77,13 +78,26 @@ RADAR_MOM_RULE = (
 )
 FIVE_DAY_DROP_NOTE = "（比五日前回落 ≥2pp）"
 
+# spec 012 DO-1. `Momentum` was the only ASCII column without a width, so the
+# 敘事 column that follows it moved from row to row and the header rule was
+# shorter than the data rows (011-report §4). The widest cell is the longest
+# state label plus four votes, each vote possibly "n/a" instead of an arrow.
+# Derived from the labels themselves so it cannot go stale; the cell CONTENT
+# is unchanged (011 DO-3 四票原樣保留), only its padding is new.
+MOM_COL_WIDTH = max(
+    _vislen(f"{state} 5D{mark} Br{mark} Vol{mark} Δ5{mark}")
+    for state in MOM_MARK
+    if state != MOM_UNKNOWN
+    for mark in DIR_MARK.values()
+)
+
 
 def format_limit_window_line(count: int, n: int = LIMIT_WINDOW) -> str:
-    """A4: trailing-n session count of |close-to-close| > LIMIT_MOVE. Always
-    printed when the caller handed us a scan result — including 0."""
+    """A4: trailing-n session count of closes outside the exchange limit price.
+    Always printed when the caller handed us a scan result — including 0."""
     return (
         f"不可能的單日報酬：近 {n} 個交易日 {count} 筆"
-        f"（交易所單日 ±{LIMIT_MOVE:.0%}）"
+        f"（超出交易所漲跌停價；±{DAILY_LIMIT:.0%} 依檔位捨去／進位）"
     )
 
 ROLE_ORDER = (ROLE_LEADER, ROLE_FOLLOWER, ROLE_LAGGARD)
@@ -224,10 +238,14 @@ def render_radar(
     day = radar_day(snapshot, as_of)
     if day.empty:
         return f"MarketPulse — {as_of.isoformat()}\n\nNo snapshot for this date.\n"
+    # spec 012 DO-1: one leading space for the status-mark column the data
+    # rows carry (STATUS_MARK["OK"] is itself a space), so header and rows are
+    # the same width and the rule below can be measured from either.
     header = (
-        f"{_ljust('Sector', NAME_WIDTH)} "
+        f" {_ljust('Sector', NAME_WIDTH)} "
         f"{'1D':>7}  {'5D':>7}  {'20D':>7}  {'RS20':>7}  "
-        f"{'Breadth':>7}  {'Volume':>6}  {RANK_TRIPLET_HEADER:<15}  Rot  Momentum"
+        f"{'Breadth':>7}  {'Volume':>6}  {RANK_TRIPLET_HEADER:<15}  Rot  "
+        f"{_ljust('Momentum', MOM_COL_WIDTH)}"
     )
     if show_narratives:
         header = f"{header}  {_ljust(NARRATIVE_COL_HEADER, NARRATIVE_COL_WIDTH)}"
@@ -251,11 +269,10 @@ def render_radar(
         "Momentum: Strong  Improving  Stable  Weakening  Weak  (5D / Breadth / Volume / Rank Δ5)",
         "",
         header,
-        # DO-3 F3: the 敘事 column made the header wider; the rule was a
-        # hand-typed 114 that overshot the real display width. Measure it.
-        # (The 100 for the narratives-off case is dev's own value — leaving
-        # it alone keeps 007's sha1 intact.)
-        "-" * (100 if not show_narratives else _vislen(header)),
+        # DO-3 F3 (008): measure the rule, do not hand-type it. spec 012 DO-1:
+        # measure it in BOTH modes — the narratives-off case was a hand-typed
+        # 100 that is now shorter than the rows it underlines.
+        "-" * _vislen(header),
         ]
     )
     for rec in day.itertuples(index=False):
@@ -279,7 +296,7 @@ def render_radar(
             f"{_fmt_x(vol):>6}  "
             f"{rank_triplet:<15}  "
             f"{rotation_mark(delta):<3}  "
-            f"{_fmt_mom_ascii(mom)}"
+            f"{_ljust(_fmt_mom_ascii(mom), MOM_COL_WIDTH)}"
         )
         if show_narratives:
             row = (

@@ -9,6 +9,7 @@ from marketpulse.calc import compute_snapshots, compute_stock_metrics
 from marketpulse.momentum import (
     DIR_DOWN,
     DIR_FLAT,
+    DIR_UNKNOWN,
     DIR_UP,
     MOM_IMPROVING,
     MOM_STABLE,
@@ -16,9 +17,11 @@ from marketpulse.momentum import (
     MOM_UNKNOWN,
     MOM_WEAK,
     MOM_WEAKENING,
+    MomentumEvidence,
     classify_momentum,
     momentum_evidence,
 )
+from marketpulse.product import _ljust, _vislen
 from marketpulse.radar import render_radar, render_radar_detail, render_radar_html
 from tests.conftest import make_bars, make_index, session_dates, two_theme_set
 
@@ -472,7 +475,9 @@ def test_momentum_does_not_change_rank_order() -> None:
     assert last.iloc[1]["theme_name"] in names[1]
 
 
-def test_no_narratives_rule_width_still_100() -> None:
+def test_no_narratives_rule_width_is_measured_from_the_header() -> None:
+    """spec 012 DO-1: was a hand-typed 100. The rule is now measured in both
+    modes, so it cannot fall short of the rows it underlines."""
     dates = session_dates(21)
     bars = make_bars(
         dates,
@@ -483,7 +488,57 @@ def test_no_narratives_rule_width_still_100() -> None:
     snap = compute_snapshots(bars, make_index(dates, [1000.0] * 21), two_theme_set(), thin_min=1)
     off = render_radar(snap, dates[-1], show_narratives=False)
     lines = off.splitlines()
-    header = [ln for ln in lines if ln.startswith("Sector ") and "1D" in ln][0]
+    header = [ln for ln in lines if ln.lstrip().startswith("Sector ") and "1D" in ln][0]
     rule = lines[lines.index(header) + 1]
-    assert len(rule) == 100
+    assert len(rule) == _vislen(header)
     assert "Momentum" in header
+
+
+def test_do1_row_width_is_the_same_for_every_momentum_state() -> None:
+    """spec 012 DO-1: the Momentum cell has a fixed column width, so two rows
+    of one snapshot that carry different labels and different votes occupy the
+    same number of display columns. Content is unchanged (011 DO-3)."""
+    dates = session_dates(21)
+    bars = make_bars(
+        dates,
+        {
+            "AAA": [100.0] * 20 + [120.0],
+            "BBB": [100.0] * 21,
+            "CCC": [100.0 + i for i in range(21)],
+        },
+        twse=("AAA", "BBB"),
+        tpex=("CCC",),
+    )
+    snap = compute_snapshots(bars, make_index(dates, [1000.0] * 21), two_theme_set(), thin_min=1)
+    for show in (True, False):
+        text = render_radar(snap, dates[-1], show_narratives=show)
+        lines = text.splitlines()
+        start = [n for n, ln in enumerate(lines) if ln.lstrip().startswith("Sector ") and "1D" in ln][0]
+        block = [ln for ln in lines[start:] if ln.strip()][: 2 + len(snap["theme_id"].unique())]
+        labels = {ln.split("  ")[-1] for ln in block[2:]}
+        assert len(labels) >= 1
+        assert len({_vislen(ln) for ln in block}) == 1, sorted(
+            (_vislen(ln), ln) for ln in block
+        )
+
+
+def test_do1_momentum_cell_occupies_a_constant_width() -> None:
+    """Same claim at the cell level: whatever the four votes are, the padded
+    cell is MOM_COL_WIDTH wide."""
+    from marketpulse.radar import MOM_COL_WIDTH, _fmt_mom_ascii
+
+    widths = set()
+    for state in (MOM_STRONG, MOM_IMPROVING, MOM_STABLE, MOM_WEAKENING, MOM_WEAK):
+        for direction in (DIR_UP, DIR_DOWN, DIR_FLAT, DIR_UNKNOWN):
+            evidence = MomentumEvidence(
+                state=state,
+                five=direction,
+                twenty=direction,
+                breadth=direction,
+                volume=direction,
+                rank=direction,
+            )
+            cell = _fmt_mom_ascii(evidence)
+            assert _vislen(cell) <= MOM_COL_WIDTH
+            widths.add(_vislen(_ljust(cell, MOM_COL_WIDTH)))
+    assert widths == {MOM_COL_WIDTH}
