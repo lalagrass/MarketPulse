@@ -129,7 +129,7 @@ def compute_basket_metrics(
 
     out: list[BasketMetrics] = []
     for narrative_id, branch in branches:
-        members = list(branch.basket)
+        members = list(branch.if_true)
         if not members or ts is None:
             out.append(
                 BasketMetrics(

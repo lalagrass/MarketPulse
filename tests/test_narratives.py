@@ -34,6 +34,7 @@ from marketpulse.narratives import (
     story_last_changed,
     theme_last_mention_dates,
     theme_mention_dates,
+    unknown_either_way_theme_ids,
     unknown_theme_ids,
     weak_rank_threshold,
 )
@@ -441,7 +442,7 @@ def test_do1_branch_status_defaults_to_live(tmp_path: Path) -> None:
     snap = load_as_of(date(2026, 9, 10), tmp_path)
     (story,) = snap.narratives
     assert story.branches[0].status == "live"
-    assert story.branches[0].basket == ("1234",)
+    assert story.branches[0].if_true == ("1234",)  # legacy `basket:` → if_true (014 F2)
 
 
 def test_do1_new_2026_09_06_sample_file_parses() -> None:
@@ -561,7 +562,8 @@ def test_render_revisit_due_date_type_and_conditional() -> None:
                 "due_one",
                 revisit="2026-09-01",
                 branches=(
-                    Branch("b1", "this claim is definitely longer than thirty chars", ("1",), "w", "live"),
+                    Branch("b1", "this claim is definitely longer than thirty chars",
+                           if_true=("1",), watch="w", status="live"),
                 ),
             ),
             _narrative("future_one", revisit="2026-12-01"),
@@ -1262,3 +1264,168 @@ def test_do3_f6_coverage_and_mentioned_agree_on_the_same_narrative() -> None:
             assert mentioned
         else:
             raise AssertionError(f"unexpected status {status} for {narrative.narrative_id}")
+
+
+# ── sprint 014 DO-1: one branch, three baskets ──
+
+
+def _branch_yaml(tmp_path: Path, branch_body: str, *, name: str = "2026-09-10.yaml") -> Path:
+    (tmp_path / name).write_text(
+        textwrap.dedent(
+            f"""
+            snapshot_date: 2026-09-10
+            narratives:
+              - narrative_id: n1
+                name: N1
+                first_noted: 2026-09-01
+                source: self
+                source_ref: x
+                stance: new
+                revisit: 2026-10-01
+                named_symbols: []
+                inferred_symbols: []
+                note: n/a
+                branches:
+{textwrap.indent(textwrap.dedent(branch_body).strip(), " " * 18)}
+            """
+        ),
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+def test_do1_legacy_basket_reads_as_if_true_others_empty(tmp_path: Path) -> None:
+    """F2: a branch that writes only the old `basket:` puts those symbols in
+    `if_true`, and the other two baskets are empty."""
+    _branch_yaml(
+        tmp_path,
+        """
+        - branch_id: b
+          claim: c
+          basket: ["1234", "5678"]
+          watch: w
+        """,
+    )
+    (story,) = load_as_of(date(2026, 9, 10), tmp_path).narratives
+    (branch,) = story.branches
+    assert branch.if_true == ("1234", "5678")
+    assert branch.if_false == ()
+    assert branch.either_way == ()
+
+
+def test_do1_three_keys_each_parse(tmp_path: Path) -> None:
+    _branch_yaml(
+        tmp_path,
+        """
+        - branch_id: b
+          claim: c
+          baskets:
+            if_true: ["1234"]
+            if_false: ["5678", "9012"]
+            either_way: [optical_cpo, foundry_advanced]
+          watch: w
+        """,
+    )
+    (story,) = load_as_of(date(2026, 9, 10), tmp_path).narratives
+    (branch,) = story.branches
+    assert branch.if_true == ("1234",)
+    assert branch.if_false == ("5678", "9012")
+    assert branch.either_way == ("optical_cpo", "foundry_advanced")
+
+
+def test_do1_all_three_baskets_empty_does_not_raise(tmp_path: Path) -> None:
+    _branch_yaml(
+        tmp_path,
+        """
+        - branch_id: b
+          claim: c
+          baskets: {}
+          watch: w
+        """,
+    )
+    (story,) = load_as_of(date(2026, 9, 10), tmp_path).narratives
+    (branch,) = story.branches
+    assert (branch.if_true, branch.if_false, branch.either_way) == ((), (), ())
+
+
+def test_do1_branch_with_no_basket_field_at_all_does_not_raise(tmp_path: Path) -> None:
+    _branch_yaml(
+        tmp_path,
+        """
+        - branch_id: b
+          claim: c
+          watch: w
+        """,
+    )
+    (story,) = load_as_of(date(2026, 9, 10), tmp_path).narratives
+    assert story.branches[0].if_true == ()
+
+
+def test_do1_unknown_either_way_theme_id_is_named_not_swallowed(tmp_path: Path) -> None:
+    """F4: an id that is not in themes/v1.yaml (a typo, or a stock symbol
+    written into the theme-only basket) must be reportable by id."""
+    _branch_yaml(
+        tmp_path,
+        """
+        - branch_id: b
+          claim: c
+          baskets:
+            either_way: [optical_cpo, opitcal_cpo, "2330"]
+          watch: w
+        """,
+    )
+    snap = load_as_of(date(2026, 9, 10), tmp_path)
+    themes = load_themes(REPO_ROOT / "themes" / "v1.yaml")
+    assert unknown_either_way_theme_ids(snap, themes) == [
+        ("n1", "b", "opitcal_cpo"),
+        ("n1", "b", "2330"),
+    ]
+
+
+def test_do1_basket_and_baskets_together_raises_naming_the_branch(tmp_path: Path) -> None:
+    _branch_yaml(
+        tmp_path,
+        """
+        - branch_id: b
+          claim: c
+          basket: ["1234"]
+          baskets:
+            if_true: ["5678"]
+          watch: w
+        """,
+    )
+    with pytest.raises(ValueError, match="b"):
+        load_as_of(date(2026, 9, 10), tmp_path)
+
+
+def test_do1_unknown_basket_key_raises(tmp_path: Path) -> None:
+    """A typo'd key would otherwise drop a whole basket off the panel silently."""
+    _branch_yaml(
+        tmp_path,
+        """
+        - branch_id: b
+          claim: c
+          baskets:
+            if_ture: ["1234"]
+          watch: w
+        """,
+    )
+    with pytest.raises(ValueError, match="if_ture"):
+        load_as_of(date(2026, 9, 10), tmp_path)
+
+
+def test_do1_real_narratives_branch_members_unchanged() -> None:
+    """F1: both real snapshot files load, and every branch keeps exactly the
+    members it had before 014 (they all use the legacy `basket:`)."""
+    snap = load_as_of(date(2026, 9, 6), REPO_ROOT / "narratives")
+    got = {
+        (n.narrative_id, b.branch_id): (b.if_true, b.if_false, b.either_way)
+        for n in snap.narratives
+        for b in n.branches
+    }
+    assert got == {
+        ("asic_xpu", "mediatek_asic_share"): (("2454",), (), ()),
+        ("asic_xpu", "xpu_not_squeezing_gpu"): ((), (), ()),
+        ("nvhbm", "hbm4_base_die_tsmc"): (("2330",), (), ()),
+    }
+    assert load_as_of(date(2026, 9, 4), REPO_ROOT / "narratives").snapshot_date == date(2026, 9, 4)

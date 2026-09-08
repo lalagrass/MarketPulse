@@ -20,7 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _branch(bid: str, basket: tuple[str, ...], status: str = "live") -> Branch:
-    return Branch(branch_id=bid, claim=f"claim {bid}", basket=basket, watch="w", status=status)
+    return Branch(branch_id=bid, claim=f"claim {bid}", if_true=basket, watch="w", status=status)
 
 
 def _panel(n: int, symbols: dict[str, list[float]], twse, tpex):
