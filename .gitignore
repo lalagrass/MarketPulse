@@ -12,6 +12,12 @@ build/
 
 data/raw/*
 !data/raw/.gitkeep
+# 例外：官方休市表。TWSE 端點只回當年度（yy/queryYear/year 全部被忽略，
+# 2026-09-07 複驗），所以過去年度的表取不到、以後也取不到——這是本 repo
+# 唯一一份「小且不可再生」的資料，2.9KB/年。上面那條 ignore 擋的是 836MB
+# 的 EOD 快取，而 EOD 的端點吃日期參數、隨時可以重抓；這份不行。
+# 見 docs/sprints/012-report.md §5.1。
+!data/raw/calendar/
 data/normalized/*
 !data/normalized/.gitkeep
 data/snapshots/*
