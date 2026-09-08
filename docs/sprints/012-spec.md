@@ -1,6 +1,6 @@
 # Sprint 012 — 用交易所自己的算術，不要用它的比率近似
 
-狀態：待實作
+狀態：已完成 2026-09-08
 契約：`CLAUDE.md` 與 `docs/coding-contract.md` 全數適用
 層次：**第一層（輸入正確性）＋ 工程**。第二層的 YAML 與 `narratives.py` 一個字不動。
 
