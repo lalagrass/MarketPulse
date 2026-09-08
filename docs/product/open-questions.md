@@ -209,3 +209,23 @@ sprint 003 DO-1 把虛無基準併進持續性那一行，正是把尺度限制�
 **這一題結案。**不要再排「調研故事追蹤工具」這種項目。
 下次值得重開的條件：`narratives/` 累積超過 50 則、或開始有非 podcast 的文字來源進來
 （那時語料庫規模才可能讓 TDT 系工具成立）。
+
+**2026-09-08 追記——重開條件之一字面上成立了，但不重開。**
+`docs/posts/`（股癌的臉書貼文摘要）就是「非 podcast 的文字來源」。
+**不重開的理由是規模：**四則貼文、一週幾則，語料庫前提仍然不成立。
+本輪換了檢索詞（thesis ledger，而不是 narrative tracking／TDT）確實查到東西——
+[`SergioYin/invest-thesis-ledger`](https://github.com/SergioYin/invest-thesis-ledger)
+（MIT、零相依、0 star，有 `catalysts` 與「來源逾期 >180 天」兩個可抄的欄位，但沒有
+支持／削弱的方向、也沒有生命週期）與
+[Helm Terminal 的 thesis-tracking 工具調查](https://helmterminal.dev/blog/thesis-tracking-apps)
+（商用品項多半有 Supported／Challenged 狀態但不引用原文；共同缺陷是不標跨部位的
+共同驅動因子——那正是「一場法說同時動四條線」那個問題）。
+另查兩份最大的社群 skill 清單
+（[VoltAgent](https://github.com/VoltAgent/awesome-agent-skills)、
+[travisvn](https://github.com/travisvn/awesome-claude-skills)），
+投資研究／論證映射／證據追蹤這一格是空的。
+**結論不變：手寫 YAML 就是對的規模。**
+記錄方式的正式名字是**論證映射**，最小語法抄 [Argdown](https://argdown.org/syntax/)
+的 `+`（支持）／`-`（反對）兩個符號即可，不裝 Argdown（Node.js、要 parser、
+會變成第二個真理來源）。
+**重開條件改寫為：**`narratives/` 超過 50 則，或單一來源的文字量大到人讀不完。
