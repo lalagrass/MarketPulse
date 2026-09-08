@@ -1429,3 +1429,102 @@ def test_do1_real_narratives_branch_members_unchanged() -> None:
         ("nvhbm", "hbm4_base_die_tsmc"): (("2330",), (), ()),
     }
     assert load_as_of(date(2026, 9, 4), REPO_ROOT / "narratives").snapshot_date == date(2026, 9, 4)
+
+
+# ── sprint 014 DO-3: the revisit date and its condition are two fields ──
+
+
+def _revisit_yaml(tmp_path: Path, fields: str, *, snapshot_date: str = "2026-09-10") -> Path:
+    (tmp_path / f"{snapshot_date}.yaml").write_text(
+        textwrap.dedent(
+            f"""
+            snapshot_date: {snapshot_date}
+            narratives:
+              - narrative_id: n1
+                name: N1
+                first_noted: 2026-09-01
+                source: self
+                source_ref: x
+                stance: new
+                named_symbols: []
+                inferred_symbols: []
+                note: note text
+{textwrap.indent(textwrap.dedent(fields).strip(), " " * 16)}
+            """
+        ),
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+def test_do3_iso_revisit_at_or_before_as_of_is_due_not_conditional(tmp_path: Path) -> None:
+    """F11."""
+    _revisit_yaml(tmp_path, "revisit: 2026-09-10")
+    snap = load_as_of(date(2026, 9, 10), tmp_path)
+    due, cond = render_revisit_due(snap, date(2026, 9, 10)).split(TITLE_REVISIT_CONDITIONAL, 1)
+    assert "n1 · — · 2026-09-10" in due
+    assert "n1" not in cond
+    assert EMPTY_LIST in cond
+
+
+def test_do3_iso_revisit_after_as_of_is_in_neither_block(tmp_path: Path) -> None:
+    _revisit_yaml(tmp_path, "revisit: 2026-12-01")
+    snap = load_as_of(date(2026, 9, 10), tmp_path)
+    text = render_revisit_due(snap, date(2026, 9, 10))
+    due, cond = text.split(TITLE_REVISIT_CONDITIONAL, 1)
+    assert "n1" not in due and "n1" not in cond
+
+
+def test_do3_revisit_note_rides_along_on_the_same_line(tmp_path: Path) -> None:
+    """F12: the date decides the block, the note is shown next to it."""
+    _revisit_yaml(
+        tmp_path,
+        """
+        revisit: 2026-10-15
+        revisit_note: 或 Broadcom 下一次財報電話會議（以先到者為準）
+        """,
+    )
+    snap = load_as_of(date(2026, 10, 20), tmp_path)
+    (story,) = snap.narratives
+    assert story.revisit == "2026-10-15"
+    assert story.revisit_note == "或 Broadcom 下一次財報電話會議（以先到者為準）"
+    due, cond = render_revisit_due(snap, date(2026, 10, 20)).split(
+        TITLE_REVISIT_CONDITIONAL, 1
+    )
+    (line,) = [ln for ln in due.splitlines() if ln.startswith("n1")]
+    assert "2026-10-15" in line
+    assert "或 Broadcom 下一次財報電話會議（以先到者為準）" in line
+    assert "n1" not in cond
+
+
+def test_do3_legacy_free_text_revisit_still_conditional_and_does_not_raise(
+    tmp_path: Path,
+) -> None:
+    """F13: exactly the pre-014 behaviour for a file that never split the field."""
+    _revisit_yaml(tmp_path, "revisit: 2026-10-15 或 Broadcom 下一次財報電話會議（以先到者為準）")
+    snap = load_as_of(date(2026, 10, 20), tmp_path)
+    assert parse_revisit_date(snap.narratives[0].revisit) is None
+    due, cond = render_revisit_due(snap, date(2026, 10, 20)).split(
+        TITLE_REVISIT_CONDITIONAL, 1
+    )
+    assert "n1" not in due
+    assert "n1 · 2026-10-15 或 Broadcom 下一次財報電話會議（以先到者為準）" in cond
+
+
+def test_do3_empty_revisit_still_raises_after_the_004_cutoff(tmp_path: Path) -> None:
+    """F14: `revisit_note` does not satisfy the required-field rule."""
+    _revisit_yaml(tmp_path, "revisit_note: Broadcom 下一次財報電話會議")
+    with pytest.raises(ValueError, match="revisit"):
+        load_as_of(date(2026, 9, 10), tmp_path)
+
+
+def test_do3_real_narratives_are_all_still_conditional() -> None:
+    """This sprint does not touch narratives/, so all three stories keep their
+    free-text `revisit` and 到期重看 stays （無）."""
+    snap = load_as_of(date(2026, 9, 8), REPO_ROOT / "narratives")
+    assert [parse_revisit_date(n.revisit) for n in snap.narratives] == [None, None, None]
+    assert [n.revisit_note for n in snap.narratives] == ["", "", ""]
+    due, cond = render_revisit_due(snap, date(2026, 9, 8)).split(TITLE_REVISIT_CONDITIONAL, 1)
+    assert EMPTY_LIST in due
+    for nid in ("asic_xpu", "nvhbm", "optical_cpo"):
+        assert nid in cond

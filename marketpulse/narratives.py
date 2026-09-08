@@ -146,7 +146,12 @@ class Narrative:
     # meaning of named_symbols / inferred_symbols — those stay symbol records.
     theme_ids: tuple[str, ...] = ()
     stage: str = STAGE_OPEN
+    # Sprint 014 DO-3: `revisit` is the ISO date to come back on; the
+    # condition that really fires the revisit ("or Broadcom's next call")
+    # lives in `revisit_note`. Free text left in `revisit` by a pre-014 file
+    # still parses and still lands in the conditional bucket.
     revisit: str = ""
+    revisit_note: str = ""
     log: tuple[LogEntry, ...] = ()
     branches: tuple[Branch, ...] = ()
 
@@ -276,10 +281,12 @@ def _parse_narrative(body: dict, *, enforce_revisit: bool) -> Narrative:
         )
 
     revisit = str(body.get("revisit") or "").strip()
+    # 004's rule is unchanged by the 014 split: `revisit_note` does not
+    # satisfy it. A condition with no date is exactly the story that rots.
     if enforce_revisit and not revisit:
         raise ValueError(
             f"narrative {narrative_id!r}: missing required field 'revisit' "
-            "(a date or a condition string; a story with no date to come back to rots)"
+            "(an ISO date; put the condition in 'revisit_note')"
         )
 
     branches = tuple(
@@ -304,6 +311,7 @@ def _parse_narrative(body: dict, *, enforce_revisit: bool) -> Narrative:
         theme_ids=tuple(str(t) for t in (body.get("theme_ids") or [])),
         stage=stage,
         revisit=revisit,
+        revisit_note=str(body.get("revisit_note") or "").strip(),
         log=log,
         branches=branches,
     )
@@ -699,7 +707,13 @@ def out_of_classification_symbols(
 
 
 def parse_revisit_date(revisit: str) -> date | None:
-    """ISO date or nothing. Do not parse natural language (spec 007 DO-2)."""
+    """ISO date or nothing. Do not parse natural language (spec 007 DO-2).
+
+    Sprint 014 DO-3 does not loosen this — it gives the condition its own
+    field (`revisit_note`) so `revisit` can be the pure date this function
+    has always wanted. Pre-014 files with free text here still return None
+    and still land in the conditional block.
+    """
     text = (revisit or "").strip()
     if not text:
         return None
@@ -714,15 +728,24 @@ def _claim_preview(text: str, n: int = CLAIM_PREVIEW_LEN) -> str:
 
 
 def render_revisit_due(snapshot: NarrativeSnapshot, as_of: date) -> str:
-    """Due-revisit block. Read-only: does not write narratives/ or change stage."""
+    """Due-revisit block. Read-only: does not write narratives/ or change stage.
+
+    A narrative with an ISO `revisit` is placed by that date alone; its
+    `revisit_note` rides along on the same line (spec 014 DO-3 F12) so the
+    reader sees the condition without it deciding which block the line
+    lands in. Nothing here parses the note.
+    """
     due_lines: list[str] = []
     cond_lines: list[str] = []
     for narrative in snapshot.narratives:
+        condition = (narrative.revisit_note or "").strip()
+        tail = f"{REVISIT_SEP}{condition}" if condition else ""
         parsed = parse_revisit_date(narrative.revisit)
         if parsed is None:
             if (narrative.revisit or "").strip():
                 cond_lines.append(
-                    f"{narrative.narrative_id}{REVISIT_SEP}{narrative.revisit.strip()}"
+                    f"{narrative.narrative_id}{REVISIT_SEP}"
+                    f"{narrative.revisit.strip()}{tail}"
                 )
             continue
         if parsed > as_of:
@@ -733,14 +756,14 @@ def render_revisit_due(snapshot: NarrativeSnapshot, as_of: date) -> str:
                     f"{narrative.narrative_id}{REVISIT_SEP}"
                     f"{branch.branch_id}{REVISIT_SEP}"
                     f"{parsed.isoformat()}{REVISIT_SEP}"
-                    f"{_claim_preview(branch.claim)}"
+                    f"{_claim_preview(branch.claim)}{tail}"
                 )
         else:
             due_lines.append(
                 f"{narrative.narrative_id}{REVISIT_SEP}"
                 f"{NARRATIVE_MISSING}{REVISIT_SEP}"
                 f"{parsed.isoformat()}{REVISIT_SEP}"
-                f"{_claim_preview(narrative.note or narrative.name)}"
+                f"{_claim_preview(narrative.note or narrative.name)}{tail}"
             )
 
     def _block(title: str, lines: list[str]) -> list[str]:
