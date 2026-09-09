@@ -1,0 +1,91 @@
+# Sprint 014 — 規劃端驗收
+
+日期：2026-09-08　　分支：`sprint/014-three-baskets`（四個 commit，驗收時未併）
+實作端的回報另見 `014-report.md`。本檔只寫規劃端讀 diff 之後的判斷。
+
+## 1. 做到的
+
+三項 DO 全過。規劃端自己讀了 diff 與測試名，不靠自述：
+
+- **F3** — `014-evidence.md` §4 的 `diff baskets_dev.txt baskets_do1.txt` 為空，byte-identical。
+- **D14** — `brief` 與 `radar` 兩份 diff 全空。
+- **測試** — `326 passed in 59.21s`（`dev` 是 `301 passed`）。這邊跑不了測試，
+  唯一來源是實作端貼進 evidence 的輸出行，此處據實記錄。
+- **測試名掃描** — 25 個新測試名逐一看過，沒有一個承載目視宣稱。
+  `test_do2_two_branches_are_visually_separated` 名字帶 `visually`，但 body 的斷言是
+  純機械事實（3 非空、1 空、3 非空），docstring 明寫「Whether it reads at a glance is
+  the product owner's call」。**實質合規，但名字仍建議改**——待排的
+  `scripts/acceptance-check.sh` 只 grep 名字，看不到 docstring。
+
+## 2. 沒做到的
+
+- **F5／F7／F8 在版控內的資料上觸發不了**，`到期重看` 仍 0/3。
+  實作端如實回報並用未進版控的示範資料產生物證。**這不是實作端的問題**：
+  spec 的前提決定 4 明寫「不動 `narratives/` 的內容」。
+  已於同日由 PO 審核規劃端草稿後補上 `narratives/2026-09-08.yaml`。
+
+## 3. 做了但 spec 沒要求的 — 三項全部接受
+
+- **`cli.py` 9 行（`--themes-path`）— 不退回，而且不是 scope creep，是 spec 自相矛盾。**
+  同一份 spec 的「前提決定 3：第三籃收 `theme_ids`」與「Appetite：只動兩個模組」
+  不可能同時成立——`either_way` 展開必然要 `ThemeSet`，而 `baskets` 指令原本不載 themes。
+  **規劃端的錯**，與 009 DO-3.1（欄寬前提寫錯）同類。替代方案（在 `baskets.py`
+  埋寫死路徑）明確更糟。
+- **兩個新 raise（`basket`／`baskets` 並存、未知籃子鍵）** — 接受。失敗模式與 F4 同一類
+  （一整籃靜默消失），同一條理由該有同一個處置；也接上 008 `unknown_theme_ids`
+  「typo 要看得見」的紀律。
+- **支線之間空一行** — 接受。為 F10 而做，且自己標了出來。
+
+## 4. 規劃端自己的錯，共兩件
+
+1. **Appetite 與前提決定 3 互相矛盾**（見 §3 第一項）。
+2. **F8 的判準寫錯了。**spec 寫「同一組 `theme_ids`」，實作端照做，
+   `baskets.py` 用 `frozenset(row.declared)` 比整組相等。真實資料上
+   `semiconductor_test` 出現在三條支線的 `either_way`，但三組寫法不同
+   （`[foundry_advanced, semiconductor_test]`／`[semiconductor_test, high_speed_materials]`／
+   `[semiconductor_test]`），所以提示一次都沒觸發。
+   **正確判準是「同一個 `theme_id` 出現在 N 條支線」，不是整組相等。**排 015。
+
+這是規劃端連續第三輪把自己的機制診斷寫進驗收條件（009 欄寬、014 Appetite、014 F8）。
+`non-goals` 的「驗收條件寫現象不寫機制」那條，重看日期到了。
+
+## 5. 第一次真實面板的判讀 —— 本輪最重要的產出
+
+2026-09-09 PO 在 Mac 上跑出第一份有內容的 `baskets` 面板。三件事：
+
+### 5.1 面板說了一句錯話，來源是一個已知的資料汙點
+
+```text
+6669  08-31 收 7,095  →  09-02 收 2,610（−63%）  →  09-04 2,565  →  09-08 2,340
+（直接讀 data/raw/twse/*.json，非推論）
+```
+
+斷點後價格穩在 2,3xx，所以是**價格水準永久重設**（除權／減資／分割一類，未還原），
+不是單日暴跌。它落在 RS5／RS20／RS60 三個窗內：
+
+- `asic_xpu/xpu_not_squeezing_gpu` 成真籃三檔等權，6669 一檔拉低約 21 個百分點。
+  **面板印的 −24.0% 扣掉它剩約 −4～5%。**
+- `memory_passthrough/nand_price_passthrough` 反面籃五檔，拉低約 12.6 個百分點。
+  **面板印的 −15.0% 扣掉它約 −2～3%，接近平盤**——「整機廠被成本吃掉」這個讀法站不住。
+- `breadth` 只受方向影響，不受幅度影響，所以 33%／20% 是真的：整機廠確實偏弱，
+  但不是 −15%。
+
+**這是 §8／Q3「只量測回報、不改價格方法」第一次真的傷到產品輸出。**
+在此之前它只是一個診斷數字。排 015 DO-1。
+
+### 5.2 面板也說了一句對的，而且是產品第一次產出兩層合起來才有的東西
+
+`optical_cpo/laser_inp_tight`：鏟子（CCL）RS60 +17.6%、成真（磊晶雷射）+44.5%、
+反面（模組）−7.8%。三個條件同時成立——錢在花、成真強、反面弱，
+就是設計裡最乾淨的那一格。60 日兩側差 52 個百分點。
+短端有反向訊號（RS5 成真 −6.9 vs 反面 −0.4），不判定，`revisit` 已是 2026-10-01。
+
+### 5.3 `nvhbm` 是「嘴上有、盤面沒有」
+
+三邊 RS20 都在 ±2% 內，反面 60 日還贏一點。這條故事目前沒有被交易。
+這正是兩層不一致的那一格，也是第二層存在的理由。
+
+## 6. 結論
+
+**建議 merge。**三項 DO 通過，兩件超出 spec 的都是規劃端的錯或正確的判斷。
+下一輪由 5.1 決定主題：**第二層說的每一句話，在價格重設被標示出來之前都是可疑的。**

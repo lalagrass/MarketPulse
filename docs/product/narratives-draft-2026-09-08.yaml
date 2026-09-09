@@ -1,0 +1,167 @@
+# 草稿 — 規劃端填的三籃，交 PO 逐格審核後才搬進 narratives/。
+#
+# 為什麼是草稿而不是直接寫進 narratives/：籃子成員是 PO 的判斷，
+# 規劃端只寫 docs/。審過之後：
+#   cp docs/product/narratives-draft-2026-09-08.yaml narratives/2026-09-08.yaml
+#
+# 來源：docs/podcasts/EP693、EP694 與 docs/posts/ 四則貼文。
+# 代號一律取自 themes/v1.yaml 已有的 65 檔（外加 2454，它本來就在 named_symbols）。
+#
+# 規劃端在填的時候撞到一件事，寫在最下面 —— 先看它再看內容。
+
+snapshot_date: 2026-09-08
+
+narratives:
+  - narrative_id: asic_xpu
+    name: 客製化 ASIC / XPU
+    first_noted: 2026-09-03
+    source: podcast
+    source_ref: 股癌 EP693
+    stance: new
+    stage: open
+    revisit: 2026-10-15
+    revisit_note: 或 Broadcom 下一次財報電話會議，以先到者為準
+    named_symbols: ["2454"]
+    inferred_symbols: []
+    note: >
+      聯發科 39 億美元 ECB，輝達認購 35 億、票息 0%、溢價約 15%，Alphabet 亦參與。
+      EP694：Hock Tan 首度正面點名聯發科為競爭對手。
+      反向證據（posts/20260903）：同一場法說說 Broadcom v8i 已出貨、領先更早啟動的
+      MediaTek v8t，且 TPU 成本不到 GPU 一半。兩個方向目前都只存在 note 裡。
+    branches:
+      - branch_id: mediatek_asic_share
+        claim: 聯發科在雲端客製 ASIC 拿到實質份額
+        baskets:
+          if_true: ["2454"]
+          if_false: []          # 台股買不到 Broadcom 的對立面，見文末
+          either_way: [foundry_advanced, semiconductor_test]
+        watch: 下一季 Broadcom／NVDA 法說是否再點名；聯發科法說是否單獨揭露 ASIC 營收
+        status: live
+      - branch_id: xpu_not_squeezing_gpu
+        claim: XPU 興起擴大整體 TAM，未壓縮 GPU 廠
+        baskets:
+          if_true: ["2382", "3231", "6669"]
+          if_false: []          # 同上
+          either_way: [foundry_advanced, thermal, ai_power]
+        watch: NVDA 資料中心毛利率；機櫃互聯／網通／儲存方案營收占比
+        status: live
+    log:
+      - date: 2026-09-05
+        source_ref: 股癌 EP694
+        kind: evidence
+        text: >
+          Broadcom FY 電話會議：Hock Tan 首度正面點名聯發科為真正的競爭對手。
+          同場提到六大客製晶片客戶中 Anthropic 與 OpenAI 信評較弱，
+          Broadcom 與 NVIDIA 均出手協助確保硬體開出。
+        bears_on: [mediatek_asic_share, xpu_not_squeezing_gpu]
+
+  - narrative_id: nvhbm
+    name: NVHBM / 記憶體架構變革
+    first_noted: 2026-09-03
+    source: podcast
+    source_ref: 股癌 EP693
+    stance: new
+    stage: open
+    revisit: 2026-10-15
+    revisit_note: 台積電 2026-10 法說（HBM4 base die 代工客戶／資本支出揭露）
+    named_symbols: ["2330"]
+    inferred_symbols: []
+    note: >
+      記憶體控制器由運算晶片移入 HBM base die，HBM4 世代 base die 規劃由台積電
+      以先進製程代工。posts/20260908 的 High-NA EUV 三大客戶量產年份是同一條
+      「先進製程價值上移」的線。
+    branches:
+      - branch_id: hbm4_base_die_tsmc
+        claim: HBM4 base die 由台積電先進製程代工，價值往代工端移轉
+        baskets:
+          if_true: ["2330"]
+          if_false: ["2408", "2344", "2337"]   # 記憶體原廠自己做 base die
+          either_way: [semiconductor_test, high_speed_materials]
+        watch: 台積電法說是否確認 HBM base die 訂單；記憶體三雄 HBM4 時程
+        status: live
+    log: []
+
+  - narrative_id: optical_cpo
+    name: 光通訊 / CPO
+    first_noted: 2026-09-03
+    source: podcast
+    source_ref: 股癌 EP693
+    stance: confirming
+    stage: mapped
+    revisit: 2026-10-01
+    revisit_note: 若 optical_cpo 主題 rank 跌出前 3 則提前重評
+    theme_ids: [optical_cpo]
+    named_symbols: []
+    inferred_symbols: []
+    note: >
+      EP694 的 Broadcom Fabric／光通訊 Guidance 佳，屬同向確認。
+      posts/20260903 另給一條更下游的：EML／CW 雷射需求已超過業界供給，
+      雷射與 InP 產能年增三倍以上。
+    branches:
+      - branch_id: laser_inp_tight
+        claim: EML／CW 雷射與 InP 磊晶產能是這一輪的瓶頸，議價力在上游磊晶端
+        baskets:
+          if_true: ["3081", "2455", "3234"]
+          if_false: ["4979", "6442", "3163"]   # 模組端吃掉漲價，毛利被壓
+          either_way: [high_speed_materials]
+        watch: 雷射／磊晶廠月營收；模組廠毛利率
+        status: live
+    log:
+      - date: 2026-09-05
+        source_ref: 股癌 EP694
+        kind: evidence
+        text: >
+          Broadcom 在 Fabric、光通訊與互聯架構的 Guidance 給得極佳，屬對既有強勢的
+          同向確認，不帶新資訊。
+        bears_on: []
+
+  # ── 以下是規劃端提案的新故事，PO 沒點頭之前不算數 ──────────────────
+  - narrative_id: memory_passthrough
+    name: 記憶體／NAND 漲價轉嫁得動
+    first_noted: 2026-09-07
+    source: post
+    source_ref: 股癌臉書貼文 2026-09-07（NTAP 27Q1）
+    stance: new
+    stage: open
+    revisit: 2026-10-12
+    revisit_note: 台廠 9 月月營收公布（每月 10 日前後）；下一輪美系儲存法說
+    named_symbols: []
+    inferred_symbols: []
+    note: >
+      NTAP 法說：下游全部照買、還願意備庫存；漲價反映從 2–3 季縮短到當季；
+      高優先 AI 工作負載即使漲價照買，低優先才延後或從全快閃降級為混合快閃。
+      這是目前唯一一條台股兩邊都買得到的故事。
+    branches:
+      - branch_id: nand_price_passthrough
+        claim: 記憶體漲價轉嫁得動，漲價的一方吃到價差、用料的一方吸收成本
+        baskets:
+          if_true: ["2337", "2344", "2408", "8299", "3260"]
+          if_false: ["2382", "3231", "6669", "2324", "2356"]
+          either_way: [semiconductor_test]
+        watch: 記憶體廠與整機廠的月營收與毛利率方向是否背離
+        status: live
+    log:
+      - date: 2026-09-07
+        source_ref: 股癌臉書貼文 2026-09-07
+        kind: claim
+        text: >
+          過去成本大漲客戶會縮，這次所有客戶都繼續衝；企業儲存廠對終端有定價權，
+          成本得以順利轉嫁下游。
+        bears_on: [nand_price_passthrough]
+
+# ── 規劃端填的時候撞到的事，比上面的內容重要 ────────────────────────
+#
+# **themes/v1.yaml 這 65 檔是照「AI 供應鏈受惠者」建的，裡面沒有對立面。**
+# 所以 asic_xpu 的兩條支線 if_false 只能留空——台股買不到 Broadcom，
+# 也沒有「XPU 沒吃到 GPU」的純標的。這不是漏填，是宇宙的形狀。
+#
+# 填得出兩邊的只有兩條，而且都是同一個原因：對立雙方剛好都在既有主題裡——
+#   nvhbm            台積電 ←→ 記憶體三雄
+#   memory_passthrough  記憶體廠 ←→ 整機廠
+#
+# 這件事對 015 的意義：
+#   (1) 三籃能不能運作，取決於宇宙裡有沒有對立面，不取決於 schema。
+#   (2) 「if_false 留空」要當成一個可以印出來的狀態——「這個對立在台股不可交易」，
+#       那本身對讀的人有用，不是缺資料。
+#   (3) 要讓更多故事填得出兩邊，得擴 themes/v1.yaml 或允許籃子放主題外的代號。
+#       前者會動到第一層的每一個數字（凍結成分股），後者不會。**傾向後者。**
