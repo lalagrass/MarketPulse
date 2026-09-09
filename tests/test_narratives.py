@@ -34,6 +34,7 @@ from marketpulse.narratives import (
     story_last_changed,
     theme_last_mention_dates,
     theme_mention_dates,
+    unknown_either_way_theme_ids,
     unknown_theme_ids,
     weak_rank_threshold,
 )
@@ -441,7 +442,7 @@ def test_do1_branch_status_defaults_to_live(tmp_path: Path) -> None:
     snap = load_as_of(date(2026, 9, 10), tmp_path)
     (story,) = snap.narratives
     assert story.branches[0].status == "live"
-    assert story.branches[0].basket == ("1234",)
+    assert story.branches[0].if_true == ("1234",)  # legacy `basket:` → if_true (014 F2)
 
 
 def test_do1_new_2026_09_06_sample_file_parses() -> None:
@@ -561,7 +562,8 @@ def test_render_revisit_due_date_type_and_conditional() -> None:
                 "due_one",
                 revisit="2026-09-01",
                 branches=(
-                    Branch("b1", "this claim is definitely longer than thirty chars", ("1",), "w", "live"),
+                    Branch("b1", "this claim is definitely longer than thirty chars",
+                           if_true=("1",), watch="w", status="live"),
                 ),
             ),
             _narrative("future_one", revisit="2026-12-01"),
@@ -1262,3 +1264,267 @@ def test_do3_f6_coverage_and_mentioned_agree_on_the_same_narrative() -> None:
             assert mentioned
         else:
             raise AssertionError(f"unexpected status {status} for {narrative.narrative_id}")
+
+
+# ── sprint 014 DO-1: one branch, three baskets ──
+
+
+def _branch_yaml(tmp_path: Path, branch_body: str, *, name: str = "2026-09-10.yaml") -> Path:
+    (tmp_path / name).write_text(
+        textwrap.dedent(
+            f"""
+            snapshot_date: 2026-09-10
+            narratives:
+              - narrative_id: n1
+                name: N1
+                first_noted: 2026-09-01
+                source: self
+                source_ref: x
+                stance: new
+                revisit: 2026-10-01
+                named_symbols: []
+                inferred_symbols: []
+                note: n/a
+                branches:
+{textwrap.indent(textwrap.dedent(branch_body).strip(), " " * 18)}
+            """
+        ),
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+def test_do1_legacy_basket_reads_as_if_true_others_empty(tmp_path: Path) -> None:
+    """F2: a branch that writes only the old `basket:` puts those symbols in
+    `if_true`, and the other two baskets are empty."""
+    _branch_yaml(
+        tmp_path,
+        """
+        - branch_id: b
+          claim: c
+          basket: ["1234", "5678"]
+          watch: w
+        """,
+    )
+    (story,) = load_as_of(date(2026, 9, 10), tmp_path).narratives
+    (branch,) = story.branches
+    assert branch.if_true == ("1234", "5678")
+    assert branch.if_false == ()
+    assert branch.either_way == ()
+
+
+def test_do1_three_keys_each_parse(tmp_path: Path) -> None:
+    _branch_yaml(
+        tmp_path,
+        """
+        - branch_id: b
+          claim: c
+          baskets:
+            if_true: ["1234"]
+            if_false: ["5678", "9012"]
+            either_way: [optical_cpo, foundry_advanced]
+          watch: w
+        """,
+    )
+    (story,) = load_as_of(date(2026, 9, 10), tmp_path).narratives
+    (branch,) = story.branches
+    assert branch.if_true == ("1234",)
+    assert branch.if_false == ("5678", "9012")
+    assert branch.either_way == ("optical_cpo", "foundry_advanced")
+
+
+def test_do1_all_three_baskets_empty_does_not_raise(tmp_path: Path) -> None:
+    _branch_yaml(
+        tmp_path,
+        """
+        - branch_id: b
+          claim: c
+          baskets: {}
+          watch: w
+        """,
+    )
+    (story,) = load_as_of(date(2026, 9, 10), tmp_path).narratives
+    (branch,) = story.branches
+    assert (branch.if_true, branch.if_false, branch.either_way) == ((), (), ())
+
+
+def test_do1_branch_with_no_basket_field_at_all_does_not_raise(tmp_path: Path) -> None:
+    _branch_yaml(
+        tmp_path,
+        """
+        - branch_id: b
+          claim: c
+          watch: w
+        """,
+    )
+    (story,) = load_as_of(date(2026, 9, 10), tmp_path).narratives
+    assert story.branches[0].if_true == ()
+
+
+def test_do1_unknown_either_way_theme_id_is_named_not_swallowed(tmp_path: Path) -> None:
+    """F4: an id that is not in themes/v1.yaml (a typo, or a stock symbol
+    written into the theme-only basket) must be reportable by id."""
+    _branch_yaml(
+        tmp_path,
+        """
+        - branch_id: b
+          claim: c
+          baskets:
+            either_way: [optical_cpo, opitcal_cpo, "2330"]
+          watch: w
+        """,
+    )
+    snap = load_as_of(date(2026, 9, 10), tmp_path)
+    themes = load_themes(REPO_ROOT / "themes" / "v1.yaml")
+    assert unknown_either_way_theme_ids(snap, themes) == [
+        ("n1", "b", "opitcal_cpo"),
+        ("n1", "b", "2330"),
+    ]
+
+
+def test_do1_basket_and_baskets_together_raises_naming_the_branch(tmp_path: Path) -> None:
+    _branch_yaml(
+        tmp_path,
+        """
+        - branch_id: b
+          claim: c
+          basket: ["1234"]
+          baskets:
+            if_true: ["5678"]
+          watch: w
+        """,
+    )
+    with pytest.raises(ValueError, match="b"):
+        load_as_of(date(2026, 9, 10), tmp_path)
+
+
+def test_do1_unknown_basket_key_raises(tmp_path: Path) -> None:
+    """A typo'd key would otherwise drop a whole basket off the panel silently."""
+    _branch_yaml(
+        tmp_path,
+        """
+        - branch_id: b
+          claim: c
+          baskets:
+            if_ture: ["1234"]
+          watch: w
+        """,
+    )
+    with pytest.raises(ValueError, match="if_ture"):
+        load_as_of(date(2026, 9, 10), tmp_path)
+
+
+def test_do1_real_narratives_branch_members_unchanged() -> None:
+    """F1: both real snapshot files load, and every branch keeps exactly the
+    members it had before 014 (they all use the legacy `basket:`)."""
+    snap = load_as_of(date(2026, 9, 6), REPO_ROOT / "narratives")
+    got = {
+        (n.narrative_id, b.branch_id): (b.if_true, b.if_false, b.either_way)
+        for n in snap.narratives
+        for b in n.branches
+    }
+    assert got == {
+        ("asic_xpu", "mediatek_asic_share"): (("2454",), (), ()),
+        ("asic_xpu", "xpu_not_squeezing_gpu"): ((), (), ()),
+        ("nvhbm", "hbm4_base_die_tsmc"): (("2330",), (), ()),
+    }
+    assert load_as_of(date(2026, 9, 4), REPO_ROOT / "narratives").snapshot_date == date(2026, 9, 4)
+
+
+# ── sprint 014 DO-3: the revisit date and its condition are two fields ──
+
+
+def _revisit_yaml(tmp_path: Path, fields: str, *, snapshot_date: str = "2026-09-10") -> Path:
+    (tmp_path / f"{snapshot_date}.yaml").write_text(
+        textwrap.dedent(
+            f"""
+            snapshot_date: {snapshot_date}
+            narratives:
+              - narrative_id: n1
+                name: N1
+                first_noted: 2026-09-01
+                source: self
+                source_ref: x
+                stance: new
+                named_symbols: []
+                inferred_symbols: []
+                note: note text
+{textwrap.indent(textwrap.dedent(fields).strip(), " " * 16)}
+            """
+        ),
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+def test_do3_iso_revisit_at_or_before_as_of_is_due_not_conditional(tmp_path: Path) -> None:
+    """F11."""
+    _revisit_yaml(tmp_path, "revisit: 2026-09-10")
+    snap = load_as_of(date(2026, 9, 10), tmp_path)
+    due, cond = render_revisit_due(snap, date(2026, 9, 10)).split(TITLE_REVISIT_CONDITIONAL, 1)
+    assert "n1 · — · 2026-09-10" in due
+    assert "n1" not in cond
+    assert EMPTY_LIST in cond
+
+
+def test_do3_iso_revisit_after_as_of_is_in_neither_block(tmp_path: Path) -> None:
+    _revisit_yaml(tmp_path, "revisit: 2026-12-01")
+    snap = load_as_of(date(2026, 9, 10), tmp_path)
+    text = render_revisit_due(snap, date(2026, 9, 10))
+    due, cond = text.split(TITLE_REVISIT_CONDITIONAL, 1)
+    assert "n1" not in due and "n1" not in cond
+
+
+def test_do3_revisit_note_rides_along_on_the_same_line(tmp_path: Path) -> None:
+    """F12: the date decides the block, the note is shown next to it."""
+    _revisit_yaml(
+        tmp_path,
+        """
+        revisit: 2026-10-15
+        revisit_note: 或 Broadcom 下一次財報電話會議（以先到者為準）
+        """,
+    )
+    snap = load_as_of(date(2026, 10, 20), tmp_path)
+    (story,) = snap.narratives
+    assert story.revisit == "2026-10-15"
+    assert story.revisit_note == "或 Broadcom 下一次財報電話會議（以先到者為準）"
+    due, cond = render_revisit_due(snap, date(2026, 10, 20)).split(
+        TITLE_REVISIT_CONDITIONAL, 1
+    )
+    (line,) = [ln for ln in due.splitlines() if ln.startswith("n1")]
+    assert "2026-10-15" in line
+    assert "或 Broadcom 下一次財報電話會議（以先到者為準）" in line
+    assert "n1" not in cond
+
+
+def test_do3_legacy_free_text_revisit_still_conditional_and_does_not_raise(
+    tmp_path: Path,
+) -> None:
+    """F13: exactly the pre-014 behaviour for a file that never split the field."""
+    _revisit_yaml(tmp_path, "revisit: 2026-10-15 或 Broadcom 下一次財報電話會議（以先到者為準）")
+    snap = load_as_of(date(2026, 10, 20), tmp_path)
+    assert parse_revisit_date(snap.narratives[0].revisit) is None
+    due, cond = render_revisit_due(snap, date(2026, 10, 20)).split(
+        TITLE_REVISIT_CONDITIONAL, 1
+    )
+    assert "n1" not in due
+    assert "n1 · 2026-10-15 或 Broadcom 下一次財報電話會議（以先到者為準）" in cond
+
+
+def test_do3_empty_revisit_still_raises_after_the_004_cutoff(tmp_path: Path) -> None:
+    """F14: `revisit_note` does not satisfy the required-field rule."""
+    _revisit_yaml(tmp_path, "revisit_note: Broadcom 下一次財報電話會議")
+    with pytest.raises(ValueError, match="revisit"):
+        load_as_of(date(2026, 9, 10), tmp_path)
+
+
+def test_do3_real_narratives_are_all_still_conditional() -> None:
+    """This sprint does not touch narratives/, so all three stories keep their
+    free-text `revisit` and 到期重看 stays （無）."""
+    snap = load_as_of(date(2026, 9, 8), REPO_ROOT / "narratives")
+    assert [parse_revisit_date(n.revisit) for n in snap.narratives] == [None, None, None]
+    assert [n.revisit_note for n in snap.narratives] == ["", "", ""]
+    due, cond = render_revisit_due(snap, date(2026, 9, 8)).split(TITLE_REVISIT_CONDITIONAL, 1)
+    assert EMPTY_LIST in due
+    for nid in ("asic_xpu", "nvhbm", "optical_cpo"):
+        assert nid in cond

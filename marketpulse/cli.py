@@ -762,10 +762,13 @@ def baskets(
     as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default = last complete session"),
     data_dir: Path = typer.Option(DEFAULT_DATA),
     narratives_dir: Path = typer.Option(Path("narratives")),
+    themes_path: Path = typer.Option(DEFAULT_THEMES),
 ) -> None:
-    """Strength panel for every live branch basket (sprint 004 DO-2).
+    """Strength panel for every live branch basket (sprint 004 DO-2, 014 DO-2).
 
-    One line per basket: member count, RS5/RS20/RS60, breadth, value_share.
+    Three lines per live branch — `either_way`, `if_true`, `if_false` — each
+    with member count, RS5/RS20/RS60, breadth, value_share. `themes_path` is
+    read only to expand an `either_way` basket's theme_ids into members.
     Reads price/volume only; writes nothing. Not a rank, not a score — baskets
     print in the order the narratives list them (contract R1 / R3).
     """
@@ -796,7 +799,7 @@ def baskets(
         for b in n.branches
         if b.status == "live"
     ]
-    rows = compute_basket_metrics(bars, index, live, day)
+    rows = compute_basket_metrics(bars, index, live, day, load_themes(themes_path))
     typer.echo(render_basket_panel(rows, day), nl=False)
 
 

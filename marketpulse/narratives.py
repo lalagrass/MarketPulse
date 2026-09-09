@@ -11,6 +11,11 @@ Sprint 004 DO-1 makes the schema additive: a narrative gains `stage`,
 own basket). Every field added before still parses; a file written under the
 old schema still loads (see REVISIT_REQUIRED_FROM for the one grandfather).
 No narrative strength / RS20 / rank / chart lives here (contract R3).
+
+Sprint 014 keeps that additive discipline twice over: a branch's one `basket`
+becomes three (`baskets.if_true` / `if_false` / `either_way`, DO-1) and
+`revisit` splits into an ISO date plus a free-text `revisit_note` (DO-3).
+Both old spellings still parse and still mean what they meant.
 """
 
 from __future__ import annotations
@@ -43,6 +48,15 @@ BRANCH_LIVE = "live"
 BRANCH_WEAKENED = "weakened"
 BRANCH_DEAD = "dead"
 BRANCH_STATUSES = (BRANCH_LIVE, BRANCH_WEAKENED, BRANCH_DEAD)
+
+# Sprint 014 DO-1: one branch, three baskets. `either_way` holds theme_ids
+# (the shovel-sellers are whole themes and theme membership is frozen); the
+# other two hold symbols. Display order is fixed by spec 014 DO-2 and lives
+# in baskets.py — this tuple is the parse/`Branch` field order, not that.
+BASKET_IF_TRUE = "if_true"
+BASKET_IF_FALSE = "if_false"
+BASKET_EITHER_WAY = "either_way"
+BASKET_KINDS = (BASKET_IF_TRUE, BASKET_IF_FALSE, BASKET_EITHER_WAY)
 
 COVERAGE_COVERED = "covered"
 COVERAGE_PARTIAL = "partial"
@@ -100,11 +114,20 @@ class LogEntry:
 
 @dataclass(frozen=True)
 class Branch:
+    """One sub-thread of a story, with three baskets instead of one (sprint 014
+    DO-1). `if_true` / `if_false` are symbol lists — who wins and who is on the
+    other side of the claim. `either_way` is a list of theme_ids, not symbols:
+    the shovel-sellers upstream, who get paid whichever way the claim lands.
+    They are three flat lists, never combined into a number (contract R1).
+    """
+
     branch_id: str
     claim: str
-    basket: tuple[str, ...]
-    watch: str
-    status: str
+    if_true: tuple[str, ...] = ()
+    if_false: tuple[str, ...] = ()
+    either_way: tuple[str, ...] = ()   # theme_ids, resolved against themes/v1.yaml
+    watch: str = ""
+    status: str = BRANCH_LIVE
 
 
 @dataclass(frozen=True)
@@ -123,7 +146,12 @@ class Narrative:
     # meaning of named_symbols / inferred_symbols — those stay symbol records.
     theme_ids: tuple[str, ...] = ()
     stage: str = STAGE_OPEN
+    # Sprint 014 DO-3: `revisit` is the ISO date to come back on; the
+    # condition that really fires the revisit ("or Broadcom's next call")
+    # lives in `revisit_note`. Free text left in `revisit` by a pre-014 file
+    # still parses and still lands in the conditional bucket.
     revisit: str = ""
+    revisit_note: str = ""
     log: tuple[LogEntry, ...] = ()
     branches: tuple[Branch, ...] = ()
 
@@ -165,6 +193,40 @@ def _as_date(value: object) -> date:
     return value if isinstance(value, date) else date.fromisoformat(str(value))
 
 
+def _parse_baskets(body: dict, *, narrative_id: str, branch_id: str) -> dict[str, tuple[str, ...]]:
+    """`baskets: {if_true, if_false, either_way}`, or the pre-014 `basket:`.
+
+    The old single `basket:` reads as `if_true` — that is what it always
+    meant. Writing both on one branch is a contradiction with no obvious
+    winner, so it raises rather than silently picking one; likewise an
+    unrecognised key under `baskets:`, which would otherwise let a typo drop
+    a whole basket off the panel without a word.
+    """
+    raw = body.get("baskets")
+    legacy = body.get("basket")
+    if raw is None:
+        return {BASKET_IF_TRUE: tuple(str(s) for s in (legacy or [])),
+                BASKET_IF_FALSE: (),
+                BASKET_EITHER_WAY: ()}
+    if legacy is not None:
+        raise ValueError(
+            f"narrative {narrative_id!r} branch {branch_id!r}: both 'basket' and "
+            "'baskets' are set; keep one (the old 'basket' means 'baskets.if_true')"
+        )
+    if not isinstance(raw, dict):
+        raise ValueError(
+            f"narrative {narrative_id!r} branch {branch_id!r}: 'baskets' must be a "
+            f"mapping with keys {BASKET_KINDS}, got {type(raw).__name__}"
+        )
+    unknown = [k for k in raw if str(k) not in BASKET_KINDS]
+    if unknown:
+        raise ValueError(
+            f"narrative {narrative_id!r} branch {branch_id!r}: unknown basket key(s) "
+            f"{sorted(str(k) for k in unknown)}; expected {BASKET_KINDS}"
+        )
+    return {kind: tuple(str(s) for s in (raw.get(kind) or [])) for kind in BASKET_KINDS}
+
+
 def _parse_branch(body: dict, *, narrative_id: str) -> Branch:
     branch_id = str(body.get("branch_id") or "").strip()
     if not branch_id:
@@ -175,10 +237,13 @@ def _parse_branch(body: dict, *, narrative_id: str) -> Branch:
             f"narrative {narrative_id!r} branch {branch_id!r}: status {status!r} "
             f"not one of {BRANCH_STATUSES}"
         )
+    baskets = _parse_baskets(body, narrative_id=narrative_id, branch_id=branch_id)
     return Branch(
         branch_id=branch_id,
         claim=str(body.get("claim") or "").strip(),
-        basket=tuple(str(s) for s in (body.get("basket") or [])),
+        if_true=baskets[BASKET_IF_TRUE],
+        if_false=baskets[BASKET_IF_FALSE],
+        either_way=baskets[BASKET_EITHER_WAY],
         watch=str(body.get("watch") or "").strip(),
         status=status,
     )
@@ -216,10 +281,12 @@ def _parse_narrative(body: dict, *, enforce_revisit: bool) -> Narrative:
         )
 
     revisit = str(body.get("revisit") or "").strip()
+    # 004's rule is unchanged by the 014 split: `revisit_note` does not
+    # satisfy it. A condition with no date is exactly the story that rots.
     if enforce_revisit and not revisit:
         raise ValueError(
             f"narrative {narrative_id!r}: missing required field 'revisit' "
-            "(a date or a condition string; a story with no date to come back to rots)"
+            "(an ISO date; put the condition in 'revisit_note')"
         )
 
     branches = tuple(
@@ -244,6 +311,7 @@ def _parse_narrative(body: dict, *, enforce_revisit: bool) -> Narrative:
         theme_ids=tuple(str(t) for t in (body.get("theme_ids") or [])),
         stage=stage,
         revisit=revisit,
+        revisit_note=str(body.get("revisit_note") or "").strip(),
         log=log,
         branches=branches,
     )
@@ -596,6 +664,30 @@ def unknown_theme_ids(
     return out
 
 
+def unknown_either_way_theme_ids(
+    snapshot: NarrativeSnapshot,
+    themes: ThemeSet,
+) -> list[tuple[str, str, str]]:
+    """(narrative_id, branch_id, theme_id) for every `either_way` entry that is
+    not a theme_id in themes/v1.yaml.
+
+    Spec 014 DO-1 F4, and the same rule as unknown_theme_ids(): the id has to
+    reach the screen, because an `either_way` basket resolves to its themes'
+    members and an id that resolves to nothing would otherwise just look like
+    an empty basket. A stock symbol written into `either_way` (spec 014 open
+    question 1: don't mix) lands here too, by construction — it is not a
+    theme_id, so it is named rather than merged in.
+    """
+    known = {theme.theme_id for theme in themes.themes}
+    out: list[tuple[str, str, str]] = []
+    for narrative in snapshot.narratives:
+        for branch in narrative.branches:
+            for theme_id in branch.either_way:
+                if theme_id not in known:
+                    out.append((narrative.narrative_id, branch.branch_id, theme_id))
+    return out
+
+
 def out_of_classification_symbols(
     snapshot: NarrativeSnapshot,
     themes: ThemeSet,
@@ -615,7 +707,13 @@ def out_of_classification_symbols(
 
 
 def parse_revisit_date(revisit: str) -> date | None:
-    """ISO date or nothing. Do not parse natural language (spec 007 DO-2)."""
+    """ISO date or nothing. Do not parse natural language (spec 007 DO-2).
+
+    Sprint 014 DO-3 does not loosen this — it gives the condition its own
+    field (`revisit_note`) so `revisit` can be the pure date this function
+    has always wanted. Pre-014 files with free text here still return None
+    and still land in the conditional block.
+    """
     text = (revisit or "").strip()
     if not text:
         return None
@@ -630,15 +728,24 @@ def _claim_preview(text: str, n: int = CLAIM_PREVIEW_LEN) -> str:
 
 
 def render_revisit_due(snapshot: NarrativeSnapshot, as_of: date) -> str:
-    """Due-revisit block. Read-only: does not write narratives/ or change stage."""
+    """Due-revisit block. Read-only: does not write narratives/ or change stage.
+
+    A narrative with an ISO `revisit` is placed by that date alone; its
+    `revisit_note` rides along on the same line (spec 014 DO-3 F12) so the
+    reader sees the condition without it deciding which block the line
+    lands in. Nothing here parses the note.
+    """
     due_lines: list[str] = []
     cond_lines: list[str] = []
     for narrative in snapshot.narratives:
+        condition = (narrative.revisit_note or "").strip()
+        tail = f"{REVISIT_SEP}{condition}" if condition else ""
         parsed = parse_revisit_date(narrative.revisit)
         if parsed is None:
             if (narrative.revisit or "").strip():
                 cond_lines.append(
-                    f"{narrative.narrative_id}{REVISIT_SEP}{narrative.revisit.strip()}"
+                    f"{narrative.narrative_id}{REVISIT_SEP}"
+                    f"{narrative.revisit.strip()}{tail}"
                 )
             continue
         if parsed > as_of:
@@ -649,14 +756,14 @@ def render_revisit_due(snapshot: NarrativeSnapshot, as_of: date) -> str:
                     f"{narrative.narrative_id}{REVISIT_SEP}"
                     f"{branch.branch_id}{REVISIT_SEP}"
                     f"{parsed.isoformat()}{REVISIT_SEP}"
-                    f"{_claim_preview(branch.claim)}"
+                    f"{_claim_preview(branch.claim)}{tail}"
                 )
         else:
             due_lines.append(
                 f"{narrative.narrative_id}{REVISIT_SEP}"
                 f"{NARRATIVE_MISSING}{REVISIT_SEP}"
                 f"{parsed.isoformat()}{REVISIT_SEP}"
-                f"{_claim_preview(narrative.note or narrative.name)}"
+                f"{_claim_preview(narrative.note or narrative.name)}{tail}"
             )
 
     def _block(title: str, lines: list[str]) -> list[str]:
