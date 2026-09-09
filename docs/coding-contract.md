@@ -189,6 +189,33 @@ the page renders. Sprint 002 shipped a silent failure of exactly this kind and
 caught it by looking, not by testing. Such criteria are verified by eye and
 reported to the product owner; do not treat a green suite as evidence for them.
 
+### 9.1 Tests that read the real `narratives/` directory
+
+`narratives/` is data the product owner edits. A test that asserts on it will
+break whenever a new snapshot lands — which is not a regression, it is the
+product being used. Two rules, both earned:
+
+- **Pin `as_of` to a date that a future snapshot cannot overtake.** Use a date
+  at or before the newest snapshot the test is about, never "today" and never
+  the latest price day.
+- **Assert inclusion, not equality**, unless the test's whole point is that a
+  dated snapshot must never be edited in place (see below).
+
+```text
+條文：斷言真實 narratives/ 的測試，as_of 釘在不會被新快照追上的日期，斷言用包含式
+起因：009 拍板 3（pending 測試脆弱，98e7198 改成 inclusion）——只修了一半
+物證：014 的 test_do3_real_narratives_are_all_still_conditional 用 as_of=2026-09-08，
+      PO 在同一天寫下 narratives/2026-09-08.yaml，測試立刻紅。
+      同一輪的 test_do1_real_narratives_branch_members_unchanged 釘在 2026-09-06，
+      新快照追不上，仍然綠
+重看：下一次 PO 寫快照之後
+```
+
+**The one deliberate exception:** a test that pins an *older* snapshot with an
+equality assertion is a guard for "dated snapshots are never edited in place"
+(design §28.4), not a fragile test. `test_do1_real_narratives_branch_members_unchanged`
+is one of these. Keep it, and say so in its docstring.
+
 ## 10. Current implementation slices
 
 *[BUILD PHASE — COMPLETE. Slice A–D all shipped; see `docs/sprints/` for the

@@ -1416,7 +1416,15 @@ def test_do1_unknown_basket_key_raises(tmp_path: Path) -> None:
 
 def test_do1_real_narratives_branch_members_unchanged() -> None:
     """F1: both real snapshot files load, and every branch keeps exactly the
-    members it had before 014 (they all use the legacy `basket:`)."""
+    members it had before 014 (they all use the legacy `basket:`).
+
+    Pinned to 2026-09-06 with an equality assertion on purpose: this is the
+    "a dated snapshot is never edited in place" guard (design §28.4 /
+    contract §9.1), not a fragile test. A later snapshot file cannot make
+    this one red — it can only add a newer date load_as_of would pick
+    instead. Keep it even when a future PO snapshot changes what the
+    *latest* narratives look like.
+    """
     snap = load_as_of(date(2026, 9, 6), REPO_ROOT / "narratives")
     got = {
         (n.narrative_id, b.branch_id): (b.if_true, b.if_false, b.either_way)
@@ -1519,12 +1527,19 @@ def test_do3_empty_revisit_still_raises_after_the_004_cutoff(tmp_path: Path) -> 
 
 
 def test_do3_real_narratives_are_all_still_conditional() -> None:
-    """This sprint does not touch narratives/, so all three stories keep their
-    free-text `revisit` and 到期重看 stays （無）."""
-    snap = load_as_of(date(2026, 9, 8), REPO_ROOT / "narratives")
-    assert [parse_revisit_date(n.revisit) for n in snap.narratives] == [None, None, None]
-    assert [n.revisit_note for n in snap.narratives] == ["", "", ""]
-    due, cond = render_revisit_due(snap, date(2026, 9, 8)).split(TITLE_REVISIT_CONDITIONAL, 1)
+    """as_of pinned to 2026-09-06 (contract §9.1): on that date the three
+    stories load from narratives/2026-09-06.yaml, written before DO-3 split
+    the field, so their `revisit` is still free text — evidence that the
+    old format keeps parsing on a real file, not a fixture. A later
+    snapshot (e.g. one written by the PO after this test was added) cannot
+    make this go red: it lands on a newer date, this test's as_of does not
+    move to it.
+    """
+    snap = load_as_of(date(2026, 9, 6), REPO_ROOT / "narratives")
+    for narrative in snap.narratives:
+        assert parse_revisit_date(narrative.revisit) is None
+        assert narrative.revisit_note == ""
+    due, cond = render_revisit_due(snap, date(2026, 9, 6)).split(TITLE_REVISIT_CONDITIONAL, 1)
     assert EMPTY_LIST in due
     for nid in ("asic_xpu", "nvhbm", "optical_cpo"):
         assert nid in cond
