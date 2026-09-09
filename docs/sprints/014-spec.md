@@ -1,6 +1,6 @@
 # Sprint 014 — 一則故事三個籃子
 
-狀態：待實作
+狀態：已完成 2026-09-08
 契約：`CLAUDE.md` 與 `docs/coding-contract.md` 全數適用
 層次：第二層（故事）
 分支：`sprint/014-three-baskets`，自 `dev`
