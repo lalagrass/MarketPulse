@@ -31,7 +31,10 @@ from marketpulse.product import (
     STATE_LAGGING,
     STATE_LEADING,
     STATE_WEAKENING,
+    TRUNCATION_MARK,
+    _ljust,
     _mention_lookup,
+    _vislen,
     brief_state,
     chart_window,
     effective_rank_period,
@@ -900,3 +903,49 @@ def test_do2_pending_no_files_brief_matches_dev_byte_for_byte() -> None:
     )
     assert a == b
     assert TITLE_PENDING not in a
+
+
+# --- sprint 016 DO-2: an over-wide cell used to run into the next column -----
+
+
+def test_ljust_pads_when_the_cell_fits() -> None:
+    assert _ljust("abc", 6) == "abc   "
+    assert _ljust("", 4) == "    "
+    assert _ljust("誰贏都賺", 10) == "誰贏都賺  "
+
+
+def test_ljust_leaves_an_exactly_wide_cell_alone() -> None:
+    """The boundary case, half-width and full-width: no mark, no padding."""
+    assert _ljust("abcdef", 6) == "abcdef"
+    assert _ljust("誰贏都賺", 8) == "誰贏都賺"
+    assert TRUNCATION_MARK not in _ljust("誰贏都賺", 8)
+
+
+def test_ljust_truncated_cell_is_exactly_the_declared_width() -> None:
+    """H3: the column stays the declared width and the cut is visible."""
+    name = "memory_passthrough/nand_price_passthrough"
+    assert _vislen(name) == 41
+    out = _ljust(name, 36)
+    assert _vislen(out) == 36
+    assert out.endswith(TRUNCATION_MARK)
+    assert out == "memory_passthrough/nand_price_passt" + TRUNCATION_MARK
+
+
+def test_ljust_never_cuts_a_full_width_character_in_half() -> None:
+    """`_vislen` counts a full-width character as two columns. When only one
+    column is left, the character is dropped whole and the column is padded,
+    so the cell is still exactly the declared width."""
+    out = _ljust("誰贏都賺", 5)
+    assert out == "誰贏" + TRUNCATION_MARK  # 2 + 2 + 1
+    assert _vislen(out) == 5
+
+    odd = _ljust("誰贏都賺", 4)
+    assert odd == "誰" + TRUNCATION_MARK + " "  # 2 + 1, one column padded
+    assert _vislen(odd) == 4
+    assert "\ufffd" not in odd
+
+
+def test_ljust_degenerate_widths() -> None:
+    assert _ljust("abc", 1) == TRUNCATION_MARK
+    assert _ljust("abc", 0) == ""
+    assert _vislen(_ljust("abc", 0)) == 0

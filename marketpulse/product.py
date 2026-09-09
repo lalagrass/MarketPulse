@@ -123,8 +123,35 @@ def _vislen(text: str) -> int:
     return sum(2 if ord(ch) > 0x2E80 else 1 for ch in text)
 
 
+TRUNCATION_MARK = "…"  # U+2026; _vislen counts it as one column
+
+
 def _ljust(text: str, width: int) -> str:
-    return text + " " * max(0, width - _vislen(text))
+    """Pad a cell to `width` visual columns, or truncate it to `width` and say so.
+
+    Before sprint 016 an over-wide cell got no padding at all and the next
+    column simply ran into it, silently (a 41-column branch name in a 36-column
+    field, `baskets.py` BRANCH_COL_WIDTH). Now the cell is always exactly
+    `width` columns and the cut leaves a visible mark (016 DO-2 H3). A
+    full-width character is never cut in half: it is dropped whole and the
+    column it would have used is padded instead. The mark is a constant, not
+    something computed from the data (contract R1).
+    """
+    visual = _vislen(text)
+    if visual <= width:
+        return text + " " * (width - visual)
+    budget = width - _vislen(TRUNCATION_MARK)
+    if budget < 0:
+        return ""
+    kept: list[str] = []
+    used = 0
+    for ch in text:
+        step = _vislen(ch)
+        if used + step > budget:
+            break
+        kept.append(ch)
+        used += step
+    return "".join(kept) + TRUNCATION_MARK + " " * (budget - used)
 
 
 def status_mark(status: str) -> str:
