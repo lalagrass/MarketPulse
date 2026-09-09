@@ -13,6 +13,7 @@ from typer.testing import CliRunner
 
 from marketpulse.baskets import (
     BASKET_LABEL,
+    BasketMetrics,
     BASKET_ORDER,
     EMPTY_BASKET_LABEL,
     OVERLAP_NOTE,
@@ -418,8 +419,9 @@ def test_do2_disjoint_sides_print_no_overlap_note() -> None:
 
 
 def test_do2_same_either_way_in_two_stories_prints_the_hint() -> None:
-    """F8: the same set of theme_ids as two stories' upstream means that
-    upstream cannot tell the two apart, and the panel says so."""
+    """F8, criterion corrected in 015 DO-3: two stories naming the same
+    upstream means that upstream cannot tell them apart, and the panel says so
+    — now per shared theme_id, whatever else each story wrote beside it."""
     dates, bars, index = _three_basket_panel()
     branches = [
         ("n1", _branch("b1", ("AAA",), either_way=("t_up", "t_down"))),
@@ -427,11 +429,14 @@ def test_do2_same_either_way_in_two_stories_prints_the_hint() -> None:
         ("n3", _branch("b3", ("AAA",), either_way=("t_mixed",))),
     ]
     rows = compute_basket_metrics(bars, index, branches, dates[-1], FAKE_THEMES)
-    assert shared_upstream(rows) == {("n1", "b1"): ("n2",), ("n2", "b2"): ("n1",)}
+    assert shared_upstream(rows) == {
+        ("n1", "b1"): (("t_down", ("n2/b2",)), ("t_up", ("n2/b2",))),
+        ("n2", "b2"): (("t_down", ("n1/b1",)), ("t_up", ("n1/b1",))),
+    }
     panel = render_basket_panel(rows, dates[-1])
-    assert SHARED_UPSTREAM_NOTE.format(others="n2") in panel
-    assert SHARED_UPSTREAM_NOTE.format(others="n1") in panel
-    assert SHARED_UPSTREAM_NOTE.format(others="n3") not in panel
+    assert SHARED_UPSTREAM_NOTE.format(theme_id="t_up", others="n2/b2") in panel
+    assert SHARED_UPSTREAM_NOTE.format(theme_id="t_down", others="n1/b1") in panel
+    assert "t_mixed" not in panel
 
 
 def test_do2_two_branches_of_one_story_are_not_a_shared_upstream() -> None:
@@ -686,3 +691,122 @@ def test_do1_no_number_gets_no_mark() -> None:
     line = next(ln for ln in _body_lines(render_basket_panel(rows, dates[-1]))
                 if BASKET_LABEL[BASKET_IF_TRUE] in ln)
     assert "n/a " in line and "n/a*" not in line
+
+
+# ── sprint 015 DO-3: F8's criterion is one shared theme_id, not one shared set
+
+
+def test_do3_one_shared_id_in_two_stories_is_enough() -> None:
+    """G8: the upstreams are written differently; the id they have in common
+    is what cannot tell the two stories apart, and it is named."""
+    dates, bars, index = _three_basket_panel()
+    branches = [
+        ("n1", _branch("b1", ("AAA",), either_way=("t_up", "t_down"))),
+        ("n2", _branch("b2", ("BBB",), either_way=("t_down", "t_mixed"))),
+    ]
+    rows = compute_basket_metrics(bars, index, branches, dates[-1], FAKE_THEMES)
+    assert shared_upstream(rows) == {
+        ("n1", "b1"): (("t_down", ("n2/b2",)),),
+        ("n2", "b2"): (("t_down", ("n1/b1",)),),
+    }
+    panel = render_basket_panel(rows, dates[-1])
+    assert SHARED_UPSTREAM_NOTE.format(theme_id="t_down", others="n2/b2") in panel
+    assert SHARED_UPSTREAM_NOTE.format(theme_id="t_down", others="n1/b1") in panel
+    # the ids that are not shared are not named
+    assert "t_up" not in panel and "t_mixed" not in panel
+
+
+def test_do3_one_shared_id_across_three_stories_hints_all_three() -> None:
+    """G8/G9 in miniature: three stories, three differently-written upstreams,
+    one id in common — all three branches carry the hint."""
+    dates, bars, index = _three_basket_panel()
+    branches = [
+        ("n1", _branch("b1", ("AAA",), either_way=("t_up", "t_down"))),
+        ("n2", _branch("b2", ("BBB",), either_way=("t_down", "t_mixed"))),
+        ("n3", _branch("b3", ("AAA",), either_way=("t_down",))),
+    ]
+    rows = compute_basket_metrics(bars, index, branches, dates[-1], FAKE_THEMES)
+    shared = shared_upstream(rows)
+    assert set(shared) == {("n1", "b1"), ("n2", "b2"), ("n3", "b3")}
+    assert shared[("n3", "b3")] == (("t_down", ("n1/b1", "n2/b2")),)
+    panel = render_basket_panel(rows, dates[-1])
+    assert panel.count("這條上游不區辨") == 3
+
+
+def test_do3_disjoint_upstreams_hint_nothing() -> None:
+    """No id in common → no hint, on any branch."""
+    dates, bars, index = _three_basket_panel()
+    branches = [
+        ("n1", _branch("b1", ("AAA",), either_way=("t_up",))),
+        ("n2", _branch("b2", ("BBB",), either_way=("t_down",))),
+        ("n3", _branch("b3", ("AAA",), either_way=("t_mixed",))),
+    ]
+    rows = compute_basket_metrics(bars, index, branches, dates[-1], FAKE_THEMES)
+    assert shared_upstream(rows) == {}
+    assert "這條上游不區辨" not in render_basket_panel(rows, dates[-1])
+
+
+def test_do3_a_branch_can_carry_more_than_one_shared_id() -> None:
+    """Two ids shared with two different stories → two hints on one row, one
+    per id. They are not merged into a set: the set was 014's mistake."""
+    dates, bars, index = _three_basket_panel()
+    branches = [
+        ("n1", _branch("b1", ("AAA",), either_way=("t_up", "t_down"))),
+        ("n2", _branch("b2", ("BBB",), either_way=("t_up",))),
+        ("n3", _branch("b3", ("AAA",), either_way=("t_down",))),
+    ]
+    rows = compute_basket_metrics(bars, index, branches, dates[-1], FAKE_THEMES)
+    assert shared_upstream(rows)[("n1", "b1")] == (
+        ("t_down", ("n3/b3",)),
+        ("t_up", ("n2/b2",)),
+    )
+
+
+def test_do3_real_narratives_semiconductor_test_is_named_on_three_branches() -> None:
+    """G9 on the real narratives/ directory.
+
+    `as_of` is pinned to 2026-09-08 — the snapshot this assertion is about —
+    so a snapshot written later cannot overtake it, and the assertions are
+    inclusion, not equality (contract §9.1).
+    """
+    snapshot = load_as_of(date(2026, 9, 8), REPO_ROOT / "narratives")
+    live = [
+        (n.narrative_id, b)
+        for n in snapshot.narratives
+        for b in n.branches
+        if b.status == "live"
+    ]
+    rows = [
+        BasketMetrics(
+            narrative_id=nid,
+            branch_id=b.branch_id,
+            kind=BASKET_EITHER_WAY,
+            claim=b.claim,
+            basket=(),
+            declared=tuple(b.either_way),
+            unknown=(),
+            member_count=0,
+            rs5=None, rs20=None, rs60=None, breadth=None, value_share=None,
+        )
+        for nid, b in live
+    ]
+    shared = shared_upstream(rows)
+    carriers = {
+        bid
+        for (_, bid), notes in shared.items()
+        if any(theme_id == "semiconductor_test" for theme_id, _ in notes)
+    }
+    assert {
+        "mediatek_asic_share",
+        "hbm4_base_die_tsmc",
+        "nand_price_passthrough",
+    } <= carriers
+
+    # 014's whole-set criterion would have fired on none of them: the three
+    # upstreams are written differently (014-review.md §4).
+    declared = {
+        b.branch_id: frozenset(b.either_way)
+        for _, b in live
+        if b.branch_id in carriers
+    }
+    assert len(set(declared.values())) == len(declared)

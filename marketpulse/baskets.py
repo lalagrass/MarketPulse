@@ -94,7 +94,11 @@ PANEL_READING_NOTE = (
 # (spec 014 rabbit hole). It says the two sides are not disjoint; it does not
 # say how much they resemble each other.
 OVERLAP_NOTE = "成真／反面共同 {n} 檔"
-SHARED_UPSTREAM_NOTE = "這條上游不區辨（同一組 theme_ids 也在：{others}）"
+# Sprint 015 DO-3. 014 compared whole `either_way` sets and never fired: the
+# same upstream is written differently in each story. One shared theme_id is
+# what makes an upstream unable to tell two stories apart, so that is what is
+# counted now.
+SHARED_UPSTREAM_NOTE = "這條上游不區辨（{theme_id} 也在：{others}）"
 
 # Sprint 015 DO-1. The mark eats one of the two spaces that already separate
 # the RS columns, so a marked cell and an unmarked cell are the same width and
@@ -397,29 +401,40 @@ def overlap_counts(rows: list[BasketMetrics]) -> dict[tuple[str, str], int]:
     }
 
 
-def shared_upstream(rows: list[BasketMetrics]) -> dict[tuple[str, str], tuple[str, ...]]:
-    """(narrative_id, branch_id) → the OTHER narrative_ids whose `either_way`
-    is the same set of theme_ids (spec 014 DO-2 F8).
+def shared_upstream(
+    rows: list[BasketMetrics],
+) -> dict[tuple[str, str], tuple[tuple[str, tuple[str, ...]], ...]]:
+    """(narrative_id, branch_id) → the shared `either_way` theme_ids on that
+    branch, each with the other branches carrying it (spec 015 DO-3).
 
     When two stories name the same upstream, that upstream cannot tell them
     apart: it is paid either way in both. Saying so is the point — it is a
     warning about what the row can and cannot discriminate, not a score.
+
+    A **single** theme_id in two or more stories is what triggers it. 014
+    compared whole sets (`frozenset(row.declared)`) and so never fired on real
+    narratives, where `semiconductor_test` sits in three differently-written
+    upstreams; the spec's criterion, not the implementation, was wrong
+    (`014-review.md` §4). Two branches of one story sharing an id is still not
+    a failure to discriminate — the story is the unit (G10).
     """
-    by_key: dict[frozenset[str], list[tuple[str, str]]] = {}
+    owners: dict[str, list[tuple[str, str]]] = {}
     for row in rows:
-        if row.kind != BASKET_EITHER_WAY or not row.declared:
+        if row.kind != BASKET_EITHER_WAY:
             continue
-        by_key.setdefault(frozenset(row.declared), []).append(
-            (row.narrative_id, row.branch_id)
-        )
-    out: dict[tuple[str, str], tuple[str, ...]] = {}
-    for owners in by_key.values():
-        narratives = {nid for nid, _ in owners}
-        if len(narratives) < 2:
+        for theme_id in row.declared:
+            holders = owners.setdefault(theme_id, [])
+            if (row.narrative_id, row.branch_id) not in holders:
+                holders.append((row.narrative_id, row.branch_id))
+
+    out: dict[tuple[str, str], list[tuple[str, tuple[str, ...]]]] = {}
+    for theme_id, holders in owners.items():
+        if len({nid for nid, _ in holders}) < 2:
             continue
-        for nid, bid in owners:
-            out[(nid, bid)] = tuple(sorted(narratives - {nid}))
-    return out
+        for key in holders:
+            others = tuple(f"{nid}/{bid}" for nid, bid in holders if (nid, bid) != key)
+            out.setdefault(key, []).append((theme_id, others))
+    return {key: tuple(sorted(notes)) for key, notes in out.items()}
 
 
 def _pct(value: float | None) -> str:
@@ -469,7 +484,7 @@ def _plain_pct(value: float | None) -> str:
 def _row_notes(
     row: BasketMetrics,
     overlaps: dict[tuple[str, str], int],
-    shared: dict[tuple[str, str], tuple[str, ...]],
+    shared: dict[tuple[str, str], tuple[tuple[str, tuple[str, ...]], ...]],
 ) -> str:
     """Trailing notes for one row. Facts about the basket's composition, not
     about its strength — nothing here reads the RS columns."""
@@ -478,9 +493,12 @@ def _row_notes(
     if row.kind == BASKET_EITHER_WAY:
         if row.unknown:
             notes.append(f"{UNKNOWN_THEME_ID_NOTE}: {'、'.join(row.unknown)}")
-        others = shared.get(key)
-        if others:
-            notes.append(SHARED_UPSTREAM_NOTE.format(others="、".join(others)))
+        for theme_id, others in shared.get(key, ()):
+            notes.append(
+                SHARED_UPSTREAM_NOTE.format(
+                    theme_id=theme_id, others="、".join(others)
+                )
+            )
     if row.kind == BASKET_IF_FALSE and overlaps.get(key):
         notes.append(OVERLAP_NOTE.format(n=overlaps[key]))
     return ("  " + "  ".join(notes)) if notes else ""
