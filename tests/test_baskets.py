@@ -4,24 +4,32 @@ writes it (contract R3); no rank, no score (R1)."""
 from __future__ import annotations
 
 import textwrap
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
+import pandas as pd
 from typer.testing import CliRunner
 
 from marketpulse.baskets import (
     BASKET_LABEL,
+    BasketMetrics,
     BASKET_ORDER,
     EMPTY_BASKET_LABEL,
     OVERLAP_NOTE,
     PANEL_READING_NOTE,
+    PRICE_BREAK_HEADER,
+    PRICE_BREAK_LINE,
+    PRICE_BREAK_MARK,
     SHARED_UPSTREAM_NOTE,
     compute_basket_metrics,
     overlap_counts,
     render_basket_panel,
     resolve_either_way,
     shared_upstream,
+    window_dates,
 )
+from marketpulse.calc import _pivot, n_day_return
 from marketpulse.cli import app
 from marketpulse.data import write_normalized
 from marketpulse.narratives import (
@@ -411,8 +419,9 @@ def test_do2_disjoint_sides_print_no_overlap_note() -> None:
 
 
 def test_do2_same_either_way_in_two_stories_prints_the_hint() -> None:
-    """F8: the same set of theme_ids as two stories' upstream means that
-    upstream cannot tell the two apart, and the panel says so."""
+    """F8, criterion corrected in 015 DO-3: two stories naming the same
+    upstream means that upstream cannot tell them apart, and the panel says so
+    — now per shared theme_id, whatever else each story wrote beside it."""
     dates, bars, index = _three_basket_panel()
     branches = [
         ("n1", _branch("b1", ("AAA",), either_way=("t_up", "t_down"))),
@@ -420,11 +429,14 @@ def test_do2_same_either_way_in_two_stories_prints_the_hint() -> None:
         ("n3", _branch("b3", ("AAA",), either_way=("t_mixed",))),
     ]
     rows = compute_basket_metrics(bars, index, branches, dates[-1], FAKE_THEMES)
-    assert shared_upstream(rows) == {("n1", "b1"): ("n2",), ("n2", "b2"): ("n1",)}
+    assert shared_upstream(rows) == {
+        ("n1", "b1"): (("t_down", ("n2/b2",)), ("t_up", ("n2/b2",))),
+        ("n2", "b2"): (("t_down", ("n1/b1",)), ("t_up", ("n1/b1",))),
+    }
     panel = render_basket_panel(rows, dates[-1])
-    assert SHARED_UPSTREAM_NOTE.format(others="n2") in panel
-    assert SHARED_UPSTREAM_NOTE.format(others="n1") in panel
-    assert SHARED_UPSTREAM_NOTE.format(others="n3") not in panel
+    assert SHARED_UPSTREAM_NOTE.format(theme_id="t_up", others="n2/b2") in panel
+    assert SHARED_UPSTREAM_NOTE.format(theme_id="t_down", others="n1/b1") in panel
+    assert "t_mixed" not in panel
 
 
 def test_do2_two_branches_of_one_story_are_not_a_shared_upstream() -> None:
@@ -508,3 +520,293 @@ def test_do2_two_branches_are_visually_separated() -> None:
     start = next(i for i, ln in enumerate(lines) if ln.startswith("branch")) + 1
     block = lines[start:]
     assert [bool(ln.strip()) for ln in block] == [True] * 3 + [False] + [True] * 3
+
+
+# ── sprint 015 DO-1: a price break inside the window is disclosed ─────────
+#
+# Detection is calc.impossible_daily_returns, unchanged. These tests are about
+# what reaches the panel, and about the promise that nothing else moves.
+
+
+def _break_panel(n: int = 70, breaks: dict[str, int] | None = None):
+    """Flat prices, plus one close-to-close drop per named symbol that the
+    exchange's limit arithmetic cannot reach (100 → 50 is far outside 跌停),
+    at the given session index. The level stays reset afterwards, so each
+    symbol produces exactly one break."""
+    dates = session_dates(n)
+    breaks = breaks or {}
+    prices: dict[str, list[float]] = {}
+    for symbol in ("AAA", "BBB", "CCC"):
+        at = breaks.get(symbol)
+        prices[symbol] = [
+            50.0 if at is not None and i >= at else 100.0 for i in range(n)
+        ]
+    bars = make_bars(dates, prices, twse=("AAA", "BBB"), tpex=("CCC",))
+    index = make_index(dates, [1000.0] * n)
+    return dates, bars, index
+
+
+def _unmarked(panel: str) -> str:
+    """The panel with the marks blanked and the break block removed — what it
+    would have printed before sprint 015."""
+    kept = [
+        ln
+        for ln in panel.splitlines()
+        if PRICE_BREAK_HEADER not in ln and "return_1" not in ln
+    ]
+    return "\n".join(ln.replace(PRICE_BREAK_MARK, " ") for ln in kept) + "\n"
+
+
+def test_do1_break_inside_every_window_marks_every_rs_column() -> None:
+    """G1: a member's break three sessions back is inside RS5, RS20 and RS60."""
+    dates, bars, index = _break_panel(breaks={"AAA": 67})
+    branch = _branch("b", ("AAA",))
+    rows = compute_basket_metrics(bars, index, [("n1", branch)], dates[-1], FAKE_THEMES)
+    row = _kind(rows, "b", BASKET_IF_TRUE)
+    assert [b.symbol for b in row.breaks_5] == ["AAA"]
+    assert [b.symbol for b in row.breaks_20] == ["AAA"]
+    assert [b.symbol for b in row.breaks_60] == ["AAA"]
+    assert row.breaks_20[0].date == dates[67]
+    assert row.breaks_20[0].return_1 == -0.5
+
+
+def test_do1_break_outside_the_window_marks_nothing() -> None:
+    """G1: a break older than the longest window is not this panel's problem."""
+    dates, bars, index = _break_panel(breaks={"AAA": 5})
+    branch = _branch("b", ("AAA",))
+    rows = compute_basket_metrics(bars, index, [("n1", branch)], dates[-1], FAKE_THEMES)
+    row = _kind(rows, "b", BASKET_IF_TRUE)
+    assert (row.breaks_5, row.breaks_20, row.breaks_60) == ((), (), ())
+    assert PRICE_BREAK_MARK not in render_basket_panel(rows, dates[-1])
+
+
+def test_do1_the_three_windows_are_judged_independently() -> None:
+    """G1: a break ten sessions back is inside RS20 and RS60 and outside RS5;
+    the RS5 cell keeps its two separating spaces, the other two do not."""
+    dates, bars, index = _break_panel(breaks={"AAA": 60})
+    branch = _branch("b", ("AAA",))
+    rows = compute_basket_metrics(bars, index, [("n1", branch)], dates[-1], FAKE_THEMES)
+    row = _kind(rows, "b", BASKET_IF_TRUE)
+    assert row.breaks_5 == ()
+    assert [b.symbol for b in row.breaks_20] == ["AAA"]
+    assert [b.symbol for b in row.breaks_60] == ["AAA"]
+
+    line = next(ln for ln in _body_lines(render_basket_panel(rows, dates[-1]))
+                if BASKET_LABEL[BASKET_IF_TRUE] in ln)
+    # cells: 籃子, n, RS5, RS20, RS60, breadth, val%
+    cells = line.split()
+    # RS5 unmarked, RS20 and RS60 marked — the mark rides on the number's cell
+    assert not cells[2].endswith(PRICE_BREAK_MARK)
+    assert cells[3].endswith(PRICE_BREAK_MARK)
+    assert cells[4].endswith(PRICE_BREAK_MARK)
+
+
+def test_do1_window_dates_come_from_n_day_returns_own_index() -> None:
+    """Rabbit hole: the window is read off the trading-day index that
+    n_day_return shifts on, and is empty exactly where n_day_return is NaN."""
+    dates, bars, index = _break_panel(n=30)
+    close = _pivot(bars, "close")
+    ts = close.index[-1]
+    assert window_dates(close.index, ts, 5) == tuple(close.index[-5:])
+    assert window_dates(close.index, ts, 20) == tuple(close.index[-20:])
+    assert window_dates(close.index, ts, 60) == ()          # history too short
+    assert pd.isna(n_day_return(close, 60).loc[ts, "AAA"])   # …and so is the RS
+
+
+def test_do1_no_hit_leaves_the_branch_block_untouched() -> None:
+    """G3: a clean branch prints the same bytes whether or not another branch
+    on the same panel carries a mark."""
+    dates, bars, index = _break_panel(breaks={"AAA": 67})
+    clean = ("n2", _branch("b2", ("BBB",)))
+    alone = render_basket_panel(
+        compute_basket_metrics(bars, index, [clean], dates[-1], FAKE_THEMES),
+        dates[-1],
+    )
+    together = render_basket_panel(
+        compute_basket_metrics(
+            bars, index, [("n1", _branch("b1", ("AAA",))), clean], dates[-1], FAKE_THEMES
+        ),
+        dates[-1],
+    )
+    clean_block = [ln for ln in alone.splitlines() if ln.startswith("n2/b2")]
+    assert clean_block
+    assert clean_block[0] in together.splitlines()
+    assert PRICE_BREAK_MARK not in "\n".join(
+        ln for ln in together.splitlines() if ln.startswith("n2/b2")
+    )
+
+
+def test_do1_the_mark_adds_nothing_but_the_mark() -> None:
+    """G4: blanking the marks and dropping the break block gives back exactly
+    the panel that the same rows print with no breaks recorded — the RS
+    numbers and every column position are the same bytes."""
+    dates, bars, index = _break_panel(breaks={"AAA": 67})
+    branch = _branch("b", ("AAA",), if_false=("BBB",))
+    rows = compute_basket_metrics(bars, index, [("n1", branch)], dates[-1], FAKE_THEMES)
+    assert any(r.breaks_20 for r in rows)
+    stripped = [replace(r, breaks_5=(), breaks_20=(), breaks_60=()) for r in rows]
+    assert _unmarked(render_basket_panel(rows, dates[-1])) == render_basket_panel(
+        stripped, dates[-1]
+    )
+
+
+def test_do1_every_break_behind_a_mark_gets_its_own_line() -> None:
+    """G2: two members, two dates, two lines — symbol, date, return_1."""
+    dates, bars, index = _break_panel(breaks={"AAA": 67, "BBB": 65})
+    branch = _branch("b", ("AAA", "BBB"))
+    rows = compute_basket_metrics(bars, index, [("n1", branch)], dates[-1], FAKE_THEMES)
+    panel = render_basket_panel(rows, dates[-1])
+    listed = [ln for ln in panel.splitlines() if "return_1" in ln]
+    assert len(listed) == 2
+    assert listed[0].strip() == PRICE_BREAK_LINE.format(
+        symbol="BBB", date=dates[65].isoformat(), ret="-50.0%"
+    )
+    assert listed[1].strip() == PRICE_BREAK_LINE.format(
+        symbol="AAA", date=dates[67].isoformat(), ret="-50.0%"
+    )
+    assert panel.count(PRICE_BREAK_HEADER) == 1
+
+
+def test_do1_one_session_is_listed_once_however_many_baskets_hold_it() -> None:
+    """A break is a fact about a session, not about a basket: a symbol in both
+    either_way and if_true still contributes one line to the branch block."""
+    dates, bars, index = _break_panel(breaks={"AAA": 67})
+    branch = _branch("b", ("AAA",), either_way=("t_up",))  # t_up is ("AAA",)
+    rows = compute_basket_metrics(bars, index, [("n1", branch)], dates[-1], FAKE_THEMES)
+    assert _kind(rows, "b", BASKET_EITHER_WAY).breaks_20
+    assert _kind(rows, "b", BASKET_IF_TRUE).breaks_20
+    panel = render_basket_panel(rows, dates[-1])
+    assert len([ln for ln in panel.splitlines() if "return_1" in ln]) == 1
+
+
+def test_do1_no_number_gets_no_mark() -> None:
+    """An RS the panel prints as n/a has no window to be inside of: the short
+    history that makes it n/a is also what makes the mark meaningless."""
+    dates, bars, index = _break_panel(n=30, breaks={"AAA": 27})
+    branch = _branch("b", ("AAA",))
+    rows = compute_basket_metrics(bars, index, [("n1", branch)], dates[-1], FAKE_THEMES)
+    row = _kind(rows, "b", BASKET_IF_TRUE)
+    assert row.rs60 is None and row.breaks_60 == ()
+    assert row.breaks_20 and row.breaks_5
+    line = next(ln for ln in _body_lines(render_basket_panel(rows, dates[-1]))
+                if BASKET_LABEL[BASKET_IF_TRUE] in ln)
+    assert "n/a " in line and "n/a*" not in line
+
+
+# ── sprint 015 DO-3: F8's criterion is one shared theme_id, not one shared set
+
+
+def test_do3_one_shared_id_in_two_stories_is_enough() -> None:
+    """G8: the upstreams are written differently; the id they have in common
+    is what cannot tell the two stories apart, and it is named."""
+    dates, bars, index = _three_basket_panel()
+    branches = [
+        ("n1", _branch("b1", ("AAA",), either_way=("t_up", "t_down"))),
+        ("n2", _branch("b2", ("BBB",), either_way=("t_down", "t_mixed"))),
+    ]
+    rows = compute_basket_metrics(bars, index, branches, dates[-1], FAKE_THEMES)
+    assert shared_upstream(rows) == {
+        ("n1", "b1"): (("t_down", ("n2/b2",)),),
+        ("n2", "b2"): (("t_down", ("n1/b1",)),),
+    }
+    panel = render_basket_panel(rows, dates[-1])
+    assert SHARED_UPSTREAM_NOTE.format(theme_id="t_down", others="n2/b2") in panel
+    assert SHARED_UPSTREAM_NOTE.format(theme_id="t_down", others="n1/b1") in panel
+    # the ids that are not shared are not named
+    assert "t_up" not in panel and "t_mixed" not in panel
+
+
+def test_do3_one_shared_id_across_three_stories_hints_all_three() -> None:
+    """G8/G9 in miniature: three stories, three differently-written upstreams,
+    one id in common — all three branches carry the hint."""
+    dates, bars, index = _three_basket_panel()
+    branches = [
+        ("n1", _branch("b1", ("AAA",), either_way=("t_up", "t_down"))),
+        ("n2", _branch("b2", ("BBB",), either_way=("t_down", "t_mixed"))),
+        ("n3", _branch("b3", ("AAA",), either_way=("t_down",))),
+    ]
+    rows = compute_basket_metrics(bars, index, branches, dates[-1], FAKE_THEMES)
+    shared = shared_upstream(rows)
+    assert set(shared) == {("n1", "b1"), ("n2", "b2"), ("n3", "b3")}
+    assert shared[("n3", "b3")] == (("t_down", ("n1/b1", "n2/b2")),)
+    panel = render_basket_panel(rows, dates[-1])
+    assert panel.count("這條上游不區辨") == 3
+
+
+def test_do3_disjoint_upstreams_hint_nothing() -> None:
+    """No id in common → no hint, on any branch."""
+    dates, bars, index = _three_basket_panel()
+    branches = [
+        ("n1", _branch("b1", ("AAA",), either_way=("t_up",))),
+        ("n2", _branch("b2", ("BBB",), either_way=("t_down",))),
+        ("n3", _branch("b3", ("AAA",), either_way=("t_mixed",))),
+    ]
+    rows = compute_basket_metrics(bars, index, branches, dates[-1], FAKE_THEMES)
+    assert shared_upstream(rows) == {}
+    assert "這條上游不區辨" not in render_basket_panel(rows, dates[-1])
+
+
+def test_do3_a_branch_can_carry_more_than_one_shared_id() -> None:
+    """Two ids shared with two different stories → two hints on one row, one
+    per id. They are not merged into a set: the set was 014's mistake."""
+    dates, bars, index = _three_basket_panel()
+    branches = [
+        ("n1", _branch("b1", ("AAA",), either_way=("t_up", "t_down"))),
+        ("n2", _branch("b2", ("BBB",), either_way=("t_up",))),
+        ("n3", _branch("b3", ("AAA",), either_way=("t_down",))),
+    ]
+    rows = compute_basket_metrics(bars, index, branches, dates[-1], FAKE_THEMES)
+    assert shared_upstream(rows)[("n1", "b1")] == (
+        ("t_down", ("n3/b3",)),
+        ("t_up", ("n2/b2",)),
+    )
+
+
+def test_do3_real_narratives_semiconductor_test_is_named_on_three_branches() -> None:
+    """G9 on the real narratives/ directory.
+
+    `as_of` is pinned to 2026-09-08 — the snapshot this assertion is about —
+    so a snapshot written later cannot overtake it, and the assertions are
+    inclusion, not equality (contract §9.1).
+    """
+    snapshot = load_as_of(date(2026, 9, 8), REPO_ROOT / "narratives")
+    live = [
+        (n.narrative_id, b)
+        for n in snapshot.narratives
+        for b in n.branches
+        if b.status == "live"
+    ]
+    rows = [
+        BasketMetrics(
+            narrative_id=nid,
+            branch_id=b.branch_id,
+            kind=BASKET_EITHER_WAY,
+            claim=b.claim,
+            basket=(),
+            declared=tuple(b.either_way),
+            unknown=(),
+            member_count=0,
+            rs5=None, rs20=None, rs60=None, breadth=None, value_share=None,
+        )
+        for nid, b in live
+    ]
+    shared = shared_upstream(rows)
+    carriers = {
+        bid
+        for (_, bid), notes in shared.items()
+        if any(theme_id == "semiconductor_test" for theme_id, _ in notes)
+    }
+    assert {
+        "mediatek_asic_share",
+        "hbm4_base_die_tsmc",
+        "nand_price_passthrough",
+    } <= carriers
+
+    # 014's whole-set criterion would have fired on none of them: the three
+    # upstreams are written differently (014-review.md §4).
+    declared = {
+        b.branch_id: frozenset(b.either_way)
+        for _, b in live
+        if b.branch_id in carriers
+    }
+    assert len(set(declared.values())) == len(declared)
