@@ -455,16 +455,26 @@ def _rs_cell(value: float | None, breaks: tuple[PriceBreak, ...]) -> str:
 def _break_lines(block: list[BasketMetrics]) -> list[str]:
     """The `(symbol, date, return_1)` behind every mark in one branch block,
     one per line (G2), de-duplicated across the three baskets and the three
-    windows — a break is a fact about a session, not about a basket."""
+    windows — a break is a fact about a session, not about a basket.
+
+    Biggest `|return_1|` first (016 DO-3 H6). Before that it was `(date,
+    symbol)` order, which put `2449 -14.5%` above `6669 -66.5%` because July
+    comes before September — the reader met the small one first. Ties keep the
+    `(date, symbol)` order underneath, so the output stays deterministic; a
+    break with no `return_1` goes last."""
     found: dict[tuple[str, date], PriceBreak] = {}
     for row in block:
         for brk in row.breaks_5 + row.breaks_20 + row.breaks_60:
             found[(brk.symbol, brk.date)] = brk
     if not found:
         return []
+    by_session = sorted(found.items(), key=lambda kv: (kv[0][1], kv[0][0]))
     pad = _ljust("", BRANCH_COL_WIDTH)
     lines = [pad + PRICE_BREAK_HEADER]
-    for _, brk in sorted(found.items(), key=lambda kv: (kv[0][1], kv[0][0])):
+    for _, brk in sorted(
+        by_session,
+        key=lambda kv: (kv[1].return_1 is None, -abs(kv[1].return_1 or 0.0)),
+    ):
         lines.append(
             pad
             + "  "
@@ -484,24 +494,49 @@ def _plain_pct(value: float | None) -> str:
 def _row_notes(
     row: BasketMetrics,
     overlaps: dict[tuple[str, str], int],
-    shared: dict[tuple[str, str], tuple[tuple[str, tuple[str, ...]], ...]],
 ) -> str:
     """Trailing notes for one row. Facts about the basket's composition, not
-    about its strength — nothing here reads the RS columns."""
+    about its strength — nothing here reads the RS columns.
+
+    016 DO-3 H7: the shared-upstream note is no longer one of these. Two of
+    them on one row pushed that row past 300 characters and the reader met the
+    prose before the numbers; it is a fact about the branch, not about a single
+    basket, so it belongs under the block — see `_shared_upstream_lines`."""
     key = (row.narrative_id, row.branch_id)
     notes: list[str] = []
-    if row.kind == BASKET_EITHER_WAY:
-        if row.unknown:
-            notes.append(f"{UNKNOWN_THEME_ID_NOTE}: {'、'.join(row.unknown)}")
-        for theme_id, others in shared.get(key, ()):
-            notes.append(
-                SHARED_UPSTREAM_NOTE.format(
-                    theme_id=theme_id, others="、".join(others)
-                )
-            )
+    if row.kind == BASKET_EITHER_WAY and row.unknown:
+        notes.append(f"{UNKNOWN_THEME_ID_NOTE}: {'、'.join(row.unknown)}")
     if row.kind == BASKET_IF_FALSE and overlaps.get(key):
         notes.append(OVERLAP_NOTE.format(n=overlaps[key]))
     return ("  " + "  ".join(notes)) if notes else ""
+
+
+def _shared_upstream_lines(
+    block: list[BasketMetrics],
+    shared: dict[tuple[str, str], tuple[tuple[str, tuple[str, ...]], ...]],
+) -> list[str]:
+    """One line per shared upstream, under the branch block (016 DO-3 H7).
+
+    Indented to the same column as the price-break header so the two read as
+    one footer under the three baskets. Empty when the branch has none, so a
+    branch without a note keeps exactly the lines it had before."""
+    if not block:
+        return []
+    key = (block[0].narrative_id, block[0].branch_id)
+    pad = _ljust("", BRANCH_COL_WIDTH)
+    return [
+        pad + SHARED_UPSTREAM_NOTE.format(theme_id=theme_id, others="、".join(others))
+        for theme_id, others in shared.get(key, ())
+    ]
+
+
+def _block_footer(
+    block: list[BasketMetrics],
+    shared: dict[tuple[str, str], tuple[tuple[str, tuple[str, ...]], ...]],
+) -> list[str]:
+    """What closes one branch block: what the basket is made of, then what the
+    marks in it mean."""
+    return _shared_upstream_lines(block, shared) + _break_lines(block)
 
 
 def render_basket_panel(rows: list[BasketMetrics], as_of: date) -> str:
@@ -537,7 +572,7 @@ def render_basket_panel(rows: list[BasketMetrics], as_of: date) -> str:
         # before that blank line.
         first = key not in seen
         if first and seen:
-            lines.extend(_break_lines(block))
+            lines.extend(_block_footer(block, shared))
             block = []
             lines.append("")
         head_cell = f"{m.narrative_id}/{m.branch_id}" if first else ""
@@ -546,7 +581,7 @@ def render_basket_panel(rows: list[BasketMetrics], as_of: date) -> str:
         label = _ljust(head_cell, BRANCH_COL_WIDTH) + _ljust(
             BASKET_LABEL[m.kind], KIND_COL_WIDTH
         )
-        notes = _row_notes(m, overlaps, shared)
+        notes = _row_notes(m, overlaps)
         if m.is_empty:
             lines.append((label + EMPTY_BASKET_LABEL + notes).rstrip())
             continue
@@ -557,5 +592,5 @@ def render_basket_panel(rows: list[BasketMetrics], as_of: date) -> str:
             f"{_rs_cell(m.rs60, m.breaks_60)}"
             f"{_plain_pct(m.breadth):>8}  {_plain_pct(m.value_share):>7}{notes}"
         )
-    lines.extend(_break_lines(block))
+    lines.extend(_block_footer(block, shared))
     return "\n".join(lines) + "\n"

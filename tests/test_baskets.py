@@ -21,6 +21,7 @@ from marketpulse.baskets import (
     PRICE_BREAK_HEADER,
     PRICE_BREAK_LINE,
     PRICE_BREAK_MARK,
+    PriceBreak,
     SHARED_UPSTREAM_NOTE,
     compute_basket_metrics,
     overlap_counts,
@@ -810,3 +811,101 @@ def test_do3_real_narratives_semiconductor_test_is_named_on_three_branches() -> 
         if b.branch_id in carriers
     }
     assert len(set(declared.values())) == len(declared)
+
+
+# --- sprint 016 DO-3: two things that were in the wrong place ---------------
+
+
+def _one_branch_with_breaks(breaks: tuple[PriceBreak, ...]):
+    """One branch whose either_way basket carries exactly the given breaks."""
+    dates, bars, index = _three_basket_panel()
+    branch = _branch("b", ("AAA",), either_way=("t_up",))
+    rows = compute_basket_metrics(bars, index, [("n1", branch)], dates[-1], FAKE_THEMES)
+    rows = [
+        replace(r, breaks_20=breaks) if r.kind == BASKET_EITHER_WAY else r for r in rows
+    ]
+    return render_basket_panel(rows, dates[-1])
+
+
+def _listed(panel: str) -> list[str]:
+    return [ln.strip() for ln in panel.splitlines() if "return_1" in ln]
+
+
+def test_do3_break_list_leads_with_the_largest_absolute_return() -> None:
+    """H6: the earlier order was (date, symbol), which put a -14.5% in July
+    above a -66.5% in September. Sign does not matter, size does."""
+    panel = _one_branch_with_breaks(
+        (
+            PriceBreak(symbol="2449", date=date(2026, 7, 28), return_1=-0.145),
+            PriceBreak(symbol="6669", date=date(2026, 9, 2), return_1=-0.665),
+            PriceBreak(symbol="1234", date=date(2026, 8, 1), return_1=0.301),
+        )
+    )
+    assert _listed(panel) == [
+        PRICE_BREAK_LINE.format(symbol="6669", date="2026-09-02", ret="-66.5%"),
+        PRICE_BREAK_LINE.format(symbol="1234", date="2026-08-01", ret="+30.1%"),
+        PRICE_BREAK_LINE.format(symbol="2449", date="2026-07-28", ret="-14.5%"),
+    ]
+
+
+def test_do3_equal_sizes_keep_the_session_order_underneath() -> None:
+    """Ties are broken by (date, symbol), so the list is deterministic whatever
+    order the baskets happened to contribute the breaks in. A break with no
+    return_1 goes last rather than sorting as zero."""
+    same = (
+        PriceBreak(symbol="ZZZ", date=date(2026, 9, 2), return_1=-0.5),
+        PriceBreak(symbol="AAA", date=date(2026, 7, 28), return_1=0.5),
+        PriceBreak(symbol="MMM", date=date(2026, 8, 1), return_1=None),
+        PriceBreak(symbol="BBB", date=date(2026, 7, 28), return_1=-0.5),
+    )
+    listed = _listed(_one_branch_with_breaks(same))
+    assert [ln.split()[0] for ln in listed] == ["AAA", "BBB", "ZZZ", "MMM"]
+    assert _listed(_one_branch_with_breaks(tuple(reversed(same)))) == listed
+
+
+def _shared_panel() -> str:
+    dates, bars, index = _three_basket_panel()
+    branches = [
+        ("n1", _branch("b1", ("AAA",), either_way=("t_up",))),
+        ("n2", _branch("b2", ("BBB",), either_way=("t_up",))),
+    ]
+    rows = compute_basket_metrics(bars, index, branches, dates[-1], FAKE_THEMES)
+    return render_basket_panel(rows, dates[-1])
+
+
+def test_do3_shared_upstream_note_is_not_on_a_data_row() -> None:
+    """H7: the note used to be appended to the either_way row, which pushed
+    that row past 300 characters on 2026-09-09."""
+    note = SHARED_UPSTREAM_NOTE.format(theme_id="t_up", others="n2/b2")
+    panel = _shared_panel()
+    assert note in panel
+    for line in panel.splitlines():
+        if "誰贏都賺" in line or "成真" in line or "反面" in line:
+            assert "這條上游不區辨" not in line
+
+
+def test_do3_shared_upstream_note_gets_its_own_line_after_the_three_rows() -> None:
+    """H7: one note, one line, under the block it belongs to."""
+    note = SHARED_UPSTREAM_NOTE.format(theme_id="t_up", others="n2/b2")
+    lines = _shared_panel().splitlines()
+    idx = next(i for i, ln in enumerate(lines) if note in ln)
+    assert lines[idx].strip() == note
+    block = _body_lines("\n".join(lines))
+    at = block.index(lines[idx])
+    assert [BASKET_LABEL[k] in block[at - 3 + j] for j, k in enumerate(BASKET_ORDER)] == [
+        True,
+        True,
+        True,
+    ]
+
+
+def test_do3_a_branch_with_no_note_prints_the_same_lines_as_before() -> None:
+    """A branch with nothing to add at the bottom gains no line, blank or
+    otherwise."""
+    dates, bars, index = _three_basket_panel()
+    branches = [("n1", _branch("b1", ("AAA",), either_way=("t_mixed",)))]
+    rows = compute_basket_metrics(bars, index, branches, dates[-1], FAKE_THEMES)
+    panel = render_basket_panel(rows, dates[-1])
+    assert "這條上游不區辨" not in panel
+    assert not panel.endswith("\n\n")
+    assert len(_body_lines(panel)) == 3
